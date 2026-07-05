@@ -1,7 +1,25 @@
 import os
-import requests
+import threading
+from flask import Flask
 import telebot
+import requests
 
+# ====== WEB SERVER FOR RENDER ======
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "AHAD AI is running 🚀"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_web).start()
+
+
+# ====== TELEGRAM BOT ======
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -12,91 +30,59 @@ bot = telebot.TeleBot(BOT_TOKEN)
 def start(message):
     bot.reply_to(
         message,
-        "🚀 AHAD AI v1.1 ONLINE\n\nاكتب /scan للصيد 🔥"
+        "🚀 AHAD AI v1.0 is online\n\nSend /scan"
     )
 
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
 
-    bot.reply_to(
-        message,
-        "🔍 AHAD AI scanning market...\nانتظر 🚀"
-    )
+    bot.reply_to(message, "🔍 AHAD AI scanning market...")
 
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr"
-
         data = requests.get(
-            url,
+            "https://api.binance.com/api/v3/ticker/24hr",
             timeout=10
         ).json()
 
         coins = []
 
-        for c in data:
+        for coin in data:
+            if coin["symbol"].endswith("USDT"):
+                change = float(coin["priceChangePercent"])
+                volume = float(coin["quoteVolume"])
 
-            symbol = c.get("symbol", "")
-
-            if symbol.endswith("USDT"):
-
-                change = float(
-                    c.get("priceChangePercent", 0)
-                )
-
-                volume = float(
-                    c.get("quoteVolume", 0)
-                )
-
-                if change > 0 and volume > 1000000:
-
-                    strength = change + volume / 100000000
-
+                if change > 3 and volume > 10000000:
                     coins.append(
-                        [
-                            symbol,
+                        (
+                            coin["symbol"],
                             change,
-                            strength
-                        ]
+                            volume
+                        )
                     )
 
-
-        coins.sort(
+        coins = sorted(
+            coins,
             key=lambda x: x[2],
             reverse=True
-        )
-
+        )[:3]
 
         text = "🚀 AHAD AI TOP 3 SIGNALS\n\n"
 
-        for i, c in enumerate(coins[:3], 1):
-
-            text += f"""
-{i}️⃣ {c[0]}
-
-🟢 LONG
-🔥 Strength: {round(c[2],2)}
-📈 Move: {c[1]}%
-
-🎯 TP1 +3%
-🎯 TP2 +6%
-🛑 SL -2%
-
------------
-"""
-
+        for c in coins:
+            text += (
+                f"🟢 {c[0]}\n"
+                f"📈 Change: {round(c[1],2)}%\n"
+                f"Signal: LONG\n\n"
+            )
 
         bot.reply_to(message, text)
 
-
     except Exception as e:
-
-        bot.reply_to(
-            message,
-            f"ERROR ❌ {e}"
-        )
+        bot.reply_to(message, "Scanner error ⚠️")
 
 
+print("Starting AHAD AI v1.0...")
 print("AHAD AI Bot is running 🚀")
 
 bot.infinity_polling()

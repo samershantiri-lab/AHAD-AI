@@ -1,116 +1,187 @@
 import os
-import asyncio
 import requests
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes
+)
 
 
+# TOKEN FROM RENDER ENVIRONMENT
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 
+# START COMMAND
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
-        "🚀 AHAD AI v1.1 is online\n\n"
-        "Send /scan to hunt opportunities 🔥"
+        "🚀 AHAD AI v1.1 ONLINE\n\n"
+        "اكتب /scan لبدء فحص السوق 🔥"
     )
 
 
+# SCANNER
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "🔎 AHAD AI scanning market...\nPlease wait 🚀"
+        "🔍 AHAD AI scanning all coins...\nانتظر قليلاً 🚀"
     )
 
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr"
-        data = requests.get(url, timeout=10).json()
 
-        coins = []
+        url = "https://api.binance.com/api/v3/ticker/24hr"
+
+        response = requests.get(
+            url,
+            timeout=15
+        )
+
+        data = response.json()
+
+
+        opportunities = []
+
 
         for coin in data:
+
             symbol = coin.get("symbol", "")
 
             if symbol.endswith("USDT"):
 
-                change = float(coin["priceChangePercent"])
-                volume = float(coin["quoteVolume"])
+                change = float(
+                    coin.get("priceChangePercent", 0)
+                )
 
-                # فلتر فرص LONG
+                volume = float(
+                    coin.get("quoteVolume", 0)
+                )
+
+
+                # LONG FILTER
                 if change > 0 and volume > 1000000:
 
-                    strength = change + (volume / 100000000)
+                    strength = (
+                        change +
+                        (volume / 100000000)
+                    )
 
-                    coins.append({
+
+                    opportunities.append({
                         "symbol": symbol,
                         "change": change,
-                        "volume": volume,
                         "strength": strength
                     })
 
-        coins = sorted(
-            coins,
+
+
+        opportunities = sorted(
+            opportunities,
             key=lambda x: x["strength"],
             reverse=True
-        )[:3]
+        )
 
 
-        if not coins:
+        top3 = opportunities[:3]
+
+
+        if not top3:
+
             await update.message.reply_text(
-                "❌ No strong opportunities now"
+                "❌ لا توجد فرص قوية الآن"
             )
+
             return
 
 
-        message = "🚀 AHAD AI SMART SIGNALS\n\n"
+
+        message = """
+🚀 AHAD AI SMART SIGNALS
+
+TOP 3 OPPORTUNITIES
+
+"""
+
 
         number = 1
 
-        for c in coins:
-            message += (
-                f"{number}️⃣ {c['symbol']}\n"
-                f"🟢 LONG\n"
-                f"🔥 Strength: {round(c['strength'],2)}\n"
-                f"📈 Move: {c['change']}%\n\n"
-                f"🎯 TP1: +3%\n"
-                f"🎯 TP2: +6%\n"
-                f"🛑 SL: -2%\n\n"
-            )
+
+        for c in top3:
+
+            message += f"""
+{number}️⃣ {c['symbol']}
+
+🟢 SIGNAL: LONG
+
+🔥 Strength:
+{round(c['strength'],2)}
+
+📈 Move:
+{c['change']} %
+
+🎯 TP1: +3%
+🎯 TP2: +6%
+
+🛑 SL: -2%
+
+-----------------
+
+"""
 
             number += 1
+
 
 
         await update.message.reply_text(message)
 
 
+
     except Exception as e:
+
         await update.message.reply_text(
-            f"Error: {e}"
+            f"ERROR ❌\n{e}"
         )
 
 
-async def main():
+
+# RUN BOT
+def main():
 
     print("Starting AHAD AI v1.1...")
     print("AHAD AI Bot is running 🚀")
 
-    app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(
-        CommandHandler("start", start)
+    app = (
+        Application
+        .builder()
+        .token(BOT_TOKEN)
+        .build()
     )
 
+
     app.add_handler(
-        CommandHandler("scan", scan)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
 
-    while True:
-        await asyncio.sleep(3600)
+    app.add_handler(
+        CommandHandler(
+            "scan",
+            scan
+        )
+    )
+
+
+    app.run_polling(
+        drop_pending_updates=True
+    )
+
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+
+    main()

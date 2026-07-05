@@ -8,33 +8,38 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 AHAD AI v1.0 is online 🤖"
+        "🚀 AHAD AI v1.0 is online"
     )
 
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     message = """
 🚀 AHAD AI SMART SIGNALS
 
 Scanner is running...
 
-📊 TOP 3 OPPORTUNITIES
+📊 Top 3 opportunities:
 
-🟢 LONG Scanner Active
-⏱ Timeframe: 15m
+1️⃣ BTCUSDT
+Type: LONG 🟢
+Strength: 90%
 
-1️⃣ Waiting for market data...
-2️⃣ Waiting for Alpha Hunter...
-3️⃣ Waiting for AI Signal...
+2️⃣ ETHUSDT
+Type: LONG 🟢
+Strength: 85%
 
-🔥 AHAD AI v1.0
+3️⃣ SOLUSDT
+Type: LONG 🟢
+Strength: 80%
+
+AHAD AI v1.0 🚀
 """
 
     await update.message.reply_text(message)
 
 
 def main():
-
     print("Starting AHAD AI v1.0...")
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -44,7 +49,9 @@ def main():
 
     print("AHAD AI Bot is running 🚀")
 
-    app.run_polling()
+    app.run_polling(
+        close_loop=False
+    )
 
 
 if __name__ == "__main__":

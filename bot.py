@@ -13,7 +13,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     message = """
 🚀 AHAD AI SMART SIGNALS
 
@@ -34,7 +33,7 @@ Scanner is running...
     await update.message.reply_text(message)
 
 
-async def main():
+def main():
 
     print("Starting AHAD AI v1.0...")
 
@@ -45,9 +44,8 @@ async def main():
 
     print("AHAD AI Bot is running 🚀")
 
-    await app.run_polling()
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()

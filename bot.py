@@ -129,7 +129,7 @@ def get_candles(symbol):
     except Exception as e:
         print("Candle Error:", e)
         return None
-        # ==============================
+# ==============================
 # 🧠 AHAD ANALYSIS ENGINE
 # ==============================
 
@@ -323,7 +323,7 @@ def analyze(symbol):
         )
 
         return None
-        # ==============================
+# ==============================
 # 🤖 TELEGRAM COMMANDS
 # ==============================
 
@@ -333,7 +333,7 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v5.9 STABLE ONLINE
+🚀 AHAD AI v5.9.1 STABLE ONLINE
 
 🐋 Whale Engine ACTIVE
 📊 Auto Futures Scanner ACTIVE
@@ -351,25 +351,34 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI scanning futures market..."
+        "🐋 AHAD AI v5.9.1 scanning futures market..."
     )
 
 
     results = []
 
-
     symbols = get_futures_symbols()
 
 
-    for symbol in symbols[:150]:
+    for symbol in symbols[:200]:
 
-        result = analyze(symbol)
+        try:
 
-        if result:
+            result = analyze(symbol)
 
-            results.append(result)
+            if result:
+                results.append(result)
 
-        time.sleep(0.03)
+            time.sleep(0.03)
+
+
+        except Exception as e:
+
+            print(
+                "Scan error:",
+                symbol,
+                e
+            )
 
 
 
@@ -386,8 +395,9 @@ def scan(message):
     ][:3]
 
 
+
     # ==================
-    # SEND SIGNALS
+    # SEND STRONG SIGNALS
     # ==================
 
     if signals:
@@ -395,7 +405,7 @@ def scan(message):
         for s in signals:
 
             msg = f"""
-🐋 AHAD AI WHALE SIGNAL
+🐋 AHAD AI WHALE SIGNAL 🚀
 
 🟢 LONG SETUP
 
@@ -428,29 +438,46 @@ def scan(message):
 {chr(10).join(s['reasons'])}
 """
 
+
             bot.send_message(
                 message.chat.id,
                 msg
             )
 
 
+
     else:
 
-        watch = results[:3]
+        watch = results[:5]
 
 
         text = """
-👀 AHAD WATCHLIST
+👀 AHAD WATCHLIST v5.9.1
 
-No perfect entry yet 🛡
+😴 No sniper LONG yet 🛡
 
-Closest setups:
+📊 Closest market setups:
 """
 
 
-        for w in watch:
+        if len(results) == 0:
 
-            text += f"""
+            text += """
+
+⚠️ Scanner ACTIVE
+⚠️ Market quiet now
+
+🐋 Waiting for whale movement...
+"""
+
+
+        else:
+
+
+            for w in watch:
+
+
+                text += f"""
 
 🪙 {w['coin']}
 
@@ -462,6 +489,9 @@ Closest setups:
 
 🐋 Whale:
 {round(w['whale'],2)}X
+
+👀 Status:
+Watching
 
 ━━━━━━━━━━
 """
@@ -497,13 +527,16 @@ def telegram_engine():
 
         except Exception:
 
+
             print(
                 traceback.format_exc()
             )
 
+
             print(
                 "🔄 Restarting Telegram..."
             )
+
 
             time.sleep(5)
 
@@ -526,7 +559,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v5.9 FULL ONLINE"
+    "🔥 AHAD AI v5.9.1 FULL ONLINE"
 )
 
 

@@ -216,4 +216,5 @@ print("Starting AHAD AI v2.0...")
 print("AHAD AI Bot running 🚀")
 
 
-bot.infinity_polling()
+bot.remove_webhook()
+bot.infinity_polling(skip_pending=True)

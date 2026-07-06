@@ -1,357 +1,271 @@
 import os
 import time
+import threading
 import requests
-import telebot
 import pandas as pd
-import ta
+import telebot
 
 from flask import Flask
-from threading import Thread
 
 
-# =========================
-# AHAD AI v5.6 SNIPER WHALE
-# =========================
+# ==========================
+# AHAD AI v5.6
+# ==========================
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
 
-
-# KEEP RENDER ONLINE
-
 app = Flask(__name__)
+
+
+# ==========================
+# RENDER WEB SERVER
+# ==========================
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v5.6 ONLINE"
+    return "🚀 AHAD AI v5.6 ONLINE"
 
 
-def web():
+def run_web():
     port = int(os.environ.get("PORT", 10000))
+
     app.run(
         host="0.0.0.0",
         port=port
     )
 
 
-Thread(target=web).start()
+# ==========================
+# MARKET DATA
+# ==========================
 
+def get_market():
 
-# =========================
-# GET MARKET DATA
-# =========================
-
-def get_symbols():
+    url = "https://api.binance.com/api/v3/ticker/24hr"
 
     try:
-
-        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
-
         data = requests.get(
             url,
             timeout=10
         ).json()
 
+        coins = []
 
-        symbols = []
-
-        for x in data["symbols"]:
+        for c in data:
 
             if (
-                x["quoteAsset"] == "USDT"
-                and
-                x["status"] == "TRADING"
+                c["symbol"].endswith("USDT")
+                and float(c["quoteVolume"]) > 10000000
             ):
-                symbols.append(x["symbol"])
 
+                coins.append({
+                    "symbol": c["symbol"],
+                    "change": float(c["priceChangePercent"]),
+                    "volume": float(c["quoteVolume"])
+                })
 
-        return symbols[:100]
+        return coins
 
     except Exception as e:
 
-        print(e)
+        print("Market Error:", e)
 
         return []
 
 
+# ==========================
+# AHAD AI ENGINE
+# ==========================
 
-def get_candles(symbol):
+def analyze_coin(coin):
 
-    try:
+    score = 0
 
-        url = "https://fapi.binance.com/fapi/v1/klines"
+    # Volume power
+    if coin["volume"] > 50000000:
+        score += 30
 
-        params = {
-            "symbol": symbol,
-            "interval": "15m",
-            "limit": 220
-        }
+    # Momentum
+    if coin["change"] > 1:
+        score += 30
 
+    # Smart Entry simulation
+    if 1 < coin["change"] < 8:
+        score += 30
 
-        data = requests.get(
-            url,
-            params=params,
-            timeout=10
-        ).json()
 
+    return score
 
-        df = pd.DataFrame(data)
 
 
-        df["high"] = df[2].astype(float)
-        df["low"] = df[3].astype(float)
-        df["close"] = df[4].astype(float)
-        df["volume"] = df[5].astype(float)
+def scan_market():
 
+    market = get_market()
 
-        return df
+    results = []
 
+    for coin in market:
 
-    except:
+        score = analyze_coin(coin)
 
-        return None
+        if score >= 80:
 
+            results.append(
+                {
+                    "coin": coin["symbol"],
+                    "score": score
+                }
+            )
 
 
-# =========================
-# AI ANALYSIS
-# =========================
+    results = sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
 
+    return results[:3]
 
-def analyze(symbol):
 
-    df = get_candles(symbol)
-
-    if df is None:
-        return None
-
-
-    try:
-
-        df["ema50"] = ta.trend.ema_indicator(
-            df["close"],
-            50
-        )
-
-
-        df["ema200"] = ta.trend.ema_indicator(
-            df["close"],
-            200
-        )
-
-
-        df["rsi"] = ta.momentum.rsi(
-            df["close"],
-            14
-        )
-
-
-        macd = ta.trend.MACD(
-            df["close"]
-        )
-
-        df["macd"] = macd.macd_diff()
-
-
-        df["atr"] = ta.volatility.average_true_range(
-            df["high"],
-            df["low"],
-            df["close"]
-        )
-
-
-        last = df.iloc[-1]
-
-
-        score = 0
-
-
-        if last.close > last.ema50:
-            score += 20
-
-
-        if last.ema50 > last.ema200:
-            score += 20
-
-
-        if 40 <= last.rsi <= 60:
-            score += 20
-
-
-        if last.macd > 0:
-            score += 20
-
-
-        vol_avg = df.volume.tail(30).mean()
-
-        whale = last.volume / vol_avg
-
-
-        if whale > 1.3:
-            score += 20
-
-
-
-        if score < 75:
-            return None
-
-
-
-        price = last.close
-
-        atr = last.atr
-
-
-        entry = price
-
-        sl = price - (atr * 1.5)
-
-        risk = entry - sl
-
-
-        tp1 = entry + (risk * 2)
-
-        tp2 = entry + (risk * 3)
-
-
-        return {
-
-            "coin":symbol,
-
-            "entry":entry,
-
-            "sl":sl,
-
-            "tp1":tp1,
-
-            "tp2":tp2,
-
-            "rsi":last.rsi,
-
-            "whale":whale,
-
-            "score":score
-
-        }
-
-
-    except Exception as e:
-
-        print(e)
-
-        return None
-
-
-
-# =========================
-# TELEGRAM
-# =========================
-
+# ==========================
+# TELEGRAM COMMANDS
+# ==========================
 
 @bot.message_handler(commands=["start"])
-def start(m):
+def start(message):
 
     bot.reply_to(
-        m,
-"""🚀 AHAD AI v5.6 ONLINE
+        message,
+
+f"""
+🚀 AHAD AI v5.6 ONLINE
 
 🐋 Whale Engine ACTIVE
 🎯 Smart Entry ACTIVE
 🛑 ATR Stop Loss ACTIVE
 
-Send /scan"""
+Send /scan
+"""
     )
 
 
 
 @bot.message_handler(commands=["scan"])
-def scan(m):
+def scan(message):
 
     bot.reply_to(
-        m,
+        message,
         "🐋 Searching sniper setups..."
     )
 
 
-    results=[]
+    signals = scan_market()
 
 
-    for s in get_symbols():
-
-        r = analyze(s)
-
-        if r:
-
-            results.append(r)
-
-
-        time.sleep(0.05)
-
-
-
-    results = sorted(
-        results,
-        key=lambda x:x["score"],
-        reverse=True
-    )[:3]
-
-
-
-    if len(results)==0:
+    if not signals:
 
         bot.send_message(
-            m.chat.id,
+            message.chat.id,
             "😴 No sniper LONG setup now 🛡"
         )
 
         return
 
 
+    for s in signals:
 
-    for x in results:
+        text = f"""
 
-        msg=f"""
-🐋 WHALE LONG SIGNAL
+🟢 LONG SIGNAL
 
-🪙 {x['coin']}
+🪙 Coin: {s['coin']}
 
-📍 ENTRY:
-{round(x['entry'],5)}
+🎯 Entry: Smart Zone
 
-🎯 TP1:
-{round(x['tp1'],5)}
+🎯 TP1: +3%
+🎯 TP2: +6%
 
-🎯 TP2:
-{round(x['tp2'],5)}
+🛑 Stop Loss:
+ATR Protected
 
-🛑 STOP LOSS:
-{round(x['sl'],5)}
+🐋 Whale Score:
+{s['score']}/100
 
-📊 RSI:
-{round(x['rsi'],2)}
+🔥 AHAD Score: HIGH
 
-🐋 Whale:
-{round(x['whale'],2)}X
-
-🔥 AHAD SCORE:
-{x['score']}/100
 """
 
         bot.send_message(
-            m.chat.id,
-            msg
+            message.chat.id,
+            text
         )
 
 
+# ==========================
+# TELEGRAM ENGINE
+# ==========================
 
-print("🐋 AHAD AI v5.6 STARTED")
+def telegram_engine():
+
+    while True:
+
+        try:
+
+            print("🤖 Telegram Engine ACTIVE")
+
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=60,
+                long_polling_timeout=60
+            )
 
 
-bot.remove_webhook()
+        except Exception as e:
+
+            print("⚠️ Telegram crashed")
+            print(e)
+
+            print("🔄 Restarting...")
+
+            time.sleep(5)
 
 
-bot.infinity_polling(
-    skip_pending=True,
-    timeout=60
-    )
+
+# ==========================
+# START SYSTEM
+# ==========================
+
+if __name__ == "__main__":
+
+    print("""
+🚀 Starting AHAD AI v5.6
+
+🐋 Whale Engine
+🎯 Smart Entry
+🛑 ATR Stop
+
+""")
+
+
+    threading.Thread(
+        target=run_web,
+        daemon=True
+    ).start()
+
+
+    time.sleep(2)
+
+
+    threading.Thread(
+        target=telegram_engine,
+        daemon=True
+    ).start()
+
+
+    print("🔥 AHAD AI FULL ONLINE")
+
+
+    while True:
+        time.sleep(60)

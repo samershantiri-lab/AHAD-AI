@@ -1,17 +1,19 @@
 import os
-import threading
-import requests
-from flask import Flask
 import telebot
+import requests
+import pandas as pd
+import ta
+from flask import Flask
+import threading
 
 
-# ========== WEB SERVER FOR RENDER ==========
+# ========== WEB SERVER RENDER ==========
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🚀 AHAD AI is running"
+    return "🚀 AHAD AI v2.0 is running"
 
 
 def run_web():
@@ -31,11 +33,99 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=["start"])
 def start(message):
-
     bot.reply_to(
         message,
-        "🚀 AHAD AI v1.1 ONLINE\n\nSend /scan"
+        "🚀 AHAD AI v2.0 QUANT ENGINE ONLINE\n\nSend /scan"
     )
+
+
+# ========== INDICATORS ==========
+
+
+def analyze(symbol):
+
+    url = (
+        "https://api.binance.com/api/v3/klines"
+        f"?symbol={symbol}&interval=15m&limit=100"
+    )
+
+    data = requests.get(url, timeout=10).json()
+
+    df = pd.DataFrame(
+        data,
+        columns=[
+            "time","open","high","low","close",
+            "volume","x","x2","x3","x4","x5","x6"
+        ]
+    )
+
+    df["close"] = df["close"].astype(float)
+    df["volume"] = df["volume"].astype(float)
+
+
+    # EMA
+
+    df["ema50"] = ta.trend.ema_indicator(
+        df["close"], window=50
+    )
+
+    df["ema200"] = ta.trend.ema_indicator(
+        df["close"], window=100
+    )
+
+
+    # RSI
+
+    rsi = ta.momentum.rsi(
+        df["close"], window=14
+    ).iloc[-1]
+
+
+    # MACD
+
+    macd = ta.trend.macd_diff(
+        df["close"]
+    ).iloc[-1]
+
+
+    # VOLUME
+
+    volume_now = df["volume"].iloc[-1]
+    volume_avg = df["volume"].tail(20).mean()
+
+
+    price = df["close"].iloc[-1]
+
+
+    score = 0
+
+
+    if price > df["ema50"].iloc[-1]:
+        score += 25
+
+    if price > df["ema200"].iloc[-1]:
+        score += 20
+
+    if 45 <= rsi <= 65:
+        score += 20
+
+    if macd > 0:
+        score += 15
+
+    if volume_now > volume_avg * 1.5:
+        score += 20
+
+
+    return {
+        "coin": symbol,
+        "price": price,
+        "rsi": round(rsi,2),
+        "score": score
+    }
+
+
+
+# ========== SCANNER ==========
 
 
 @bot.message_handler(commands=["scan"])
@@ -43,85 +133,45 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🔍 AHAD AI scanning market..."
+        "🔍 AHAD AI v2.0 scanning market..."
     )
-
 
     try:
 
-        response = requests.get(
-            "https://api.binance.us/api/v3/ticker/24hr",
-            timeout=15
-        )
+        coins_data = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            timeout=10
+        ).json()
 
 
-        data = response.json()
+        results = []
 
 
-        if not isinstance(data, list):
+        for c in coins_data:
 
-            bot.reply_to(
-                message,
-                f"API ERROR ⚠️\n\n{data}"
-            )
-
-            return
-
-
-        coins = []
-
-
-        for coin in data:
-
-
-            symbol = coin.get("symbol", "")
-
+            symbol = c["symbol"]
 
             if symbol.endswith("USDT"):
 
+                try:
 
-                change = float(
-                    coin.get(
-                        "priceChangePercent",
-                        0
-                    )
-                )
+                    result = analyze(symbol)
 
+                    if result["score"] >= 80:
+                        results.append(result)
 
-                volume = float(
-                    coin.get(
-                        "quoteVolume",
-                        0
-                    )
-                )
+                except:
+                    pass
 
 
-                strength = change + (volume / 10000000)
-
-
-                if change > 2 and volume > 1000000:
-
-
-                    coins.append(
-                        (
-                            symbol,
-                            change,
-                            volume,
-                            strength
-                        )
-                    )
-
-
-
-        coins = sorted(
-            coins,
-            key=lambda x: x[3],
+        results = sorted(
+            results,
+            key=lambda x: x["score"],
             reverse=True
         )[:3]
 
 
-
-        if len(coins) == 0:
+        if not results:
 
             bot.reply_to(
                 message,
@@ -131,34 +181,29 @@ def scan(message):
             return
 
 
+        text = "🚀 AHAD AI TOP 3 LONG SIGNALS\n\n"
 
-        text = "🚀 AHAD AI TOP 3 SIGNALS\n\n"
 
-
-        for c in coins:
+        for r in results:
 
             text += (
+                f"🪙 COIN: {r['coin']}\n"
+                f"🟢 TYPE: LONG\n\n"
+                f"PRICE: {r['price']}\n"
+                f"RSI: {r['rsi']} ✅\n"
+                f"POWER: {r['score']}/100 🔥\n\n"
+                f"ENTRY: Market Zone\n"
+                f"TP1: +3%\n"
+                f"TP2: +6%\n"
+                f"SL: ATR Zone\n"
                 "----------------\n"
-                f"🪙 COIN: {c[0]}\n"
-                "TYPE: LONG 📈\n\n"
-                "ENTRY: Market Zone\n"
-                "SL: -2%\n"
-                "TP1: +3%\n"
-                "TP2: +6%\n\n"
-                f"CHANGE: {round(c[1],2)}%\n"
-                f"STRENGTH: {round(c[3],2)}\n\n"
             )
 
 
-        bot.reply_to(
-            message,
-            text
-        )
-
+        bot.reply_to(message,text)
 
 
     except Exception as e:
-
 
         bot.reply_to(
             message,
@@ -166,13 +211,9 @@ def scan(message):
         )
 
 
-        print(e)
 
-
-
-
-print("🚀 Starting AHAD AI v1.1")
-print("🤖 Bot running...")
+print("Starting AHAD AI v2.0...")
+print("AHAD AI Bot running 🚀")
 
 
 bot.infinity_polling()

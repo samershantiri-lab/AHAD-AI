@@ -12,10 +12,9 @@ from ta.trend import EMAIndicator, MACD
 from ta.volatility import AverageTrueRange
 
 
-# =============================
-# AHAD AI v5.8 AUTO FUTURES PRO
-# =============================
-
+# ==========================
+# AHAD AI v5.8.1 FIX BUILD
+# ==========================
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -24,75 +23,54 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 
-# =============================
-# RENDER KEEP ALIVE
-# =============================
+# ==========================
+# KEEP RENDER ONLINE
+# ==========================
 
 @app.route("/")
 def home():
-    return "🚀 AHAD AI v5.8 ONLINE"
+    return "🚀 AHAD AI v5.8.1 ONLINE"
 
 
-def run_web():
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
+def web_server():
+    port = int(os.environ.get("PORT", 10000))
     app.run(
         host="0.0.0.0",
         port=port
     )
 
 
-# =============================
-# BINANCE FUTURES SYMBOLS
-# =============================
-
+# ==========================
+# GET FUTURES COINS AUTO
+# ==========================
 
 def get_symbols():
 
     try:
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/exchangeInfo"
-        )
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 
         data = requests.get(
             url,
             timeout=10
         ).json()
 
+        symbols = []
 
-        coins = []
-
-
-        for s in data["symbols"]:
+        for item in data["symbols"]:
 
             if (
-                s["quoteAsset"] == "USDT"
-                and
-                s["status"] == "TRADING"
+                item["quoteAsset"] == "USDT"
+                and item["status"] == "TRADING"
             ):
-
-                coins.append(
-                    s["symbol"]
+                symbols.append(
+                    item["symbol"]
                 )
 
-
-        return coins[:150]
-
+        return symbols[:200]
 
     except Exception as e:
 
-        print(
-            "Symbol error:",
-            e
-        )
+        print("Symbol Error", e)
 
         return [
             "BTCUSDT",
@@ -101,29 +79,21 @@ def get_symbols():
         ]
 
 
-# =============================
-# GET 15M DATA
-# =============================
+# ==========================
+# 15M MARKET DATA
+# ==========================
 
-
-def get_data(symbol):
+def get_candles(symbol):
 
     try:
 
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/klines"
-        )
-
+        url = "https://fapi.binance.com/fapi/v1/klines"
 
         params = {
-
             "symbol": symbol,
             "interval": "15m",
             "limit": 200
-
         }
-
 
         data = requests.get(
             url,
@@ -141,12 +111,12 @@ def get_data(symbol):
                 "low",
                 "close",
                 "volume",
-                "a",
-                "b",
-                "c",
-                "d",
-                "e",
-                "f"
+                "x1",
+                "x2",
+                "x3",
+                "x4",
+                "x5",
+                "x6"
             ]
         )
 
@@ -161,37 +131,29 @@ def get_data(symbol):
             ]
         ]
 
-
         return df.astype(float)
 
 
     except Exception as e:
 
-        print(
-            "Data error:",
-            e
-        )
+        print("Candle Error", e)
 
         return None
 
 
-
-# =============================
-# ANALYSIS ENGINE
-# =============================
-
+# ==========================
+# AHAD ANALYSIS ENGINE
+# ==========================
 
 def analyze(symbol):
 
-    df = get_data(symbol)
-
-
-    if df is None:
-
-        return None
-
-
     try:
+
+        df = get_candles(symbol)
+
+        if df is None:
+            return None
+
 
         close = df["close"]
 
@@ -211,127 +173,79 @@ def analyze(symbol):
 
         macd = MACD(close)
 
-
         macd_power = (
             macd.macd().iloc[-1]
             -
             macd.macd_signal().iloc[-1]
-        )
-
-
-        atr = AverageTrueRange(
+        )atr = AverageTrueRange(
             df["high"],
             df["low"],
             df["close"]
         ).average_true_range().iloc[-1]
 
 
-        volume_now = (
-            df["volume"]
-            .iloc[-1]
-        )
+        volume_now = df["volume"].iloc[-1]
+        volume_avg = df["volume"].tail(30).mean()
 
-
-        volume_avg = (
-            df["volume"]
-            .tail(30)
-            .mean()
-        )
-
-
-        whale = (
-            volume_now
-            /
-            volume_avg
-        )
+        whale = volume_now / volume_avg
 
 
         score = 0
-
         reasons = []
 
 
+        # TREND
         if price > ema50:
-
             score += 30
+            reasons.append("EMA Trend UP")
 
-            reasons.append(
-                "Trend Bullish"
-            )
-if 40 <= rsi <= 65:
 
+        # RSI
+        if 40 <= rsi <= 65:
             score += 20
-
-            reasons.append(
-                "RSI Healthy"
-            )
+            reasons.append("RSI Healthy")
 
 
+        # MACD
         if macd_power > 0:
-
             score += 20
-
-            reasons.append(
-                "MACD Bullish"
-            )
+            reasons.append("MACD Momentum")
 
 
+        # WHALE VOLUME
         if whale >= 1.3:
-
             score += 30
-
-            reasons.append(
-                "Whale Volume"
-            )
+            reasons.append("Whale Volume")
 
 
-        stop_loss = (
-            price -
-            (atr * 1.5)
-        )
+        # SMART ENTRY
+        entry = price
+
+        stop_loss = price - (atr * 1.5)
+
+        risk = entry - stop_loss
+
+        tp1 = entry + (risk * 2)
+        tp2 = entry + (risk * 3)
 
 
-        risk = (
-            price -
-            stop_loss
-        )
-
-
-        tp1 = (
-            price +
-            risk * 2
-        )
-
-
-        tp2 = (
-            price +
-            risk * 3
-        )
-
-
-        result = {
-
+        return {
             "coin": symbol,
-            "price": price,
-            "entry": price,
+            "entry": entry,
             "sl": stop_loss,
             "tp1": tp1,
             "tp2": tp2,
-            "score": score,
             "rsi": rsi,
+            "score": score,
             "whale": whale,
             "reasons": reasons
-
         }
-
-
-        return result
 
 
     except Exception as e:
 
         print(
-            "Analyze error:",
+            "Analyze Error:",
             e
         )
 
@@ -339,26 +253,22 @@ if 40 <= rsi <= 65:
 
 
 
-# =============================
-# TELEGRAM COMMANDS
-# =============================
+# ==========================
+# TELEGRAM START
+# ==========================
 
-
-@bot.message_handler(
-    commands=["start"]
-)
-
+@bot.message_handler(commands=["start"])
 def start(message):
 
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v5.8 ONLINE
+🚀 AHAD AI v5.8.1 ONLINE
 
-🐋 Auto Futures Scanner
-🎯 Smart Entry Engine
-🛑 ATR Stop Loss
-🧠 Score System
+🐋 Whale Engine ACTIVE
+🎯 Smart Entry ACTIVE
+🛑 ATR Stop ACTIVE
+📊 Futures Auto Scan
 
 Send /scan
 """
@@ -366,15 +276,16 @@ Send /scan
 
 
 
-@bot.message_handler(
-    commands=["scan"]
-)
+# ==========================
+# SCAN COMMAND
+# ==========================
 
+@bot.message_handler(commands=["scan"])
 def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 Scanning Futures Market..."
+        "🐋 AHAD AI scanning market..."
     )
 
 
@@ -383,22 +294,17 @@ def scan(message):
 
     for coin in get_symbols():
 
-        data = analyze(coin)
+        result = analyze(coin)
 
+        if result:
+            results.append(result)
 
-        if data:
-
-            results.append(data)
-
-
-        time.sleep(0.03)
-
+        time.sleep(0.02)
 
 
     results = sorted(
         results,
-        key=lambda x:
-        x["score"],
+        key=lambda x: x["score"],
         reverse=True
     )
 
@@ -411,22 +317,17 @@ def scan(message):
 
     if signals:
 
-
         for s in signals:
 
-
             text = f"""
-🐋 AHAD AI v5.8 SIGNAL
+🟢 LONG SIGNAL
 
-🟢 LONG
+🪙 Coin: {s['coin']}
 
-🪙 Coin:
-{s['coin']}
-
-🎯 ENTRY:
+🎯 Entry:
 {round(s['entry'],5)}
 
-🛑 STOP LOSS:
+🛑 Stop Loss:
 {round(s['sl'],5)}
 
 🎯 TP1:
@@ -435,7 +336,7 @@ def scan(message):
 🎯 TP2:
 {round(s['tp2'],5)}
 
-📊 RSI:
+💪 RSI:
 {round(s['rsi'],2)}
 
 🐋 Whale:
@@ -444,100 +345,66 @@ def scan(message):
 🔥 AHAD SCORE:
 {s['score']}/100
 
-✅
+✅ Confirmation:
 {chr(10).join(s['reasons'])}
 """
-
 
             bot.send_message(
                 message.chat.id,
                 text
             )
 
-
     else:
-
-
-        watch = results[:3]
-
-
-        msg = "👀 AHAD WATCHLIST\n\n"
-
-
-        for w in watch:
-
-
-            msg += f"""
-🪙 {w['coin']}
-
-Score:
-{w['score']}/100
-
-Waiting confirmation...
-━━━━━━━━━━
-"""
-
 
         bot.send_message(
             message.chat.id,
-            msg
+            "😴 No perfect LONG setup now 🛡"
         )
 
 
 
-# =============================
-# TELEGRAM AUTO RESTART
-# =============================
+# ==========================
+# TELEGRAM ENGINE
+# ==========================
 
-
-def telegram_engine():
+def telegram():
 
     while True:
 
         try:
 
-            print(
-                "🤖 Telegram Engine ACTIVE"
-            )
-
+            print("🤖 Telegram ACTIVE")
 
             bot.infinity_polling(
                 skip_pending=True,
                 timeout=60
             )
 
-
         except Exception as e:
 
-
             print(e)
-
-            print(
-                "Restarting Telegram..."
-            )
 
             time.sleep(5)
 
 
 
-# =============================
-# START SYSTEM
-# =============================
-
+# ==========================
+# START AHAD SYSTEM
+# ==========================
 
 print(
-    "🚀 AHAD AI v5.8 STARTED"
+    "🚀 Starting AHAD AI v5.8.1"
 )
 
 
 threading.Thread(
-    target=run_web,
+    target=web_server,
     daemon=True
 ).start()
 
 
 threading.Thread(
-    target=telegram_engine,
+    target=telegram,
     daemon=True
 ).start()
 

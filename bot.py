@@ -5,7 +5,7 @@ from flask import Flask
 import telebot
 
 
-# ===== WEB SERVER FOR RENDER =====
+# ========== WEB SERVER FOR RENDER ==========
 
 app = Flask(__name__)
 
@@ -22,7 +22,7 @@ def run_web():
 threading.Thread(target=run_web).start()
 
 
-# ===== TELEGRAM BOT =====
+# ========== TELEGRAM BOT ==========
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -31,9 +31,10 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=["start"])
 def start(message):
+
     bot.reply_to(
         message,
-        "🚀 AHAD AI v1.0 is online\n\nSend /scan"
+        "🚀 AHAD AI v1.1 ONLINE\n\nSend /scan"
     )
 
 
@@ -45,55 +46,90 @@ def scan(message):
         "🔍 AHAD AI scanning market..."
     )
 
+
     try:
 
-        data = requests.get(
-            "https://api.binance.com/api/v3/ticker/24hr",
-            timeout=10
-        ).json()
+        response = requests.get(
+            "https://api.binance.us/api/v3/ticker/24hr",
+            timeout=15
+        )
+
+
+        data = response.json()
+
+
+        if not isinstance(data, list):
+
+            bot.reply_to(
+                message,
+                f"API ERROR ⚠️\n\n{data}"
+            )
+
+            return
 
 
         coins = []
 
+
         for coin in data:
 
-            if coin["symbol"].endswith("USDT"):
+
+            symbol = coin.get("symbol", "")
+
+
+            if symbol.endswith("USDT"):
+
 
                 change = float(
-                    coin["priceChangePercent"]
+                    coin.get(
+                        "priceChangePercent",
+                        0
+                    )
                 )
+
 
                 volume = float(
-                    coin["quoteVolume"]
+                    coin.get(
+                        "quoteVolume",
+                        0
+                    )
                 )
 
 
-                if change > 3 and volume > 10000000:
+                strength = change + (volume / 10000000)
+
+
+                if change > 2 and volume > 1000000:
+
 
                     coins.append(
                         (
-                            coin["symbol"],
+                            symbol,
                             change,
-                            volume
+                            volume,
+                            strength
                         )
                     )
 
 
+
         coins = sorted(
             coins,
-            key=lambda x: x[1],
+            key=lambda x: x[3],
             reverse=True
         )[:3]
 
 
-        if not coins:
+
+        if len(coins) == 0:
 
             bot.reply_to(
                 message,
-                "❌ No strong signals now"
+                "😴 No strong LONG signals now"
             )
 
             return
+
 
 
         text = "🚀 AHAD AI TOP 3 SIGNALS\n\n"
@@ -109,7 +145,8 @@ def scan(message):
                 "SL: -2%\n"
                 "TP1: +3%\n"
                 "TP2: +6%\n\n"
-                f"STRENGTH: {round(c[1],2)}\n"
+                f"CHANGE: {round(c[1],2)}%\n"
+                f"STRENGTH: {round(c[3],2)}\n\n"
             )
 
 
@@ -119,19 +156,23 @@ def scan(message):
         )
 
 
+
     except Exception as e:
+
 
         bot.reply_to(
             message,
             f"Scanner error ⚠️\n\n{e}"
         )
 
+
         print(e)
 
 
 
-print("Starting AHAD AI v1.0...")
-print("AHAD AI Bot is running 🚀")
+
+print("🚀 Starting AHAD AI v1.1")
+print("🤖 Bot running...")
 
 
 bot.infinity_polling()

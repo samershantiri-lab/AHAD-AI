@@ -1,16 +1,20 @@
 import os
-import time
-import threading
+import telebot
 import requests
 import pandas as pd
-import telebot
-
+import numpy as np
 from flask import Flask
+from threading import Thread
+from ta.momentum import RSIIndicator
+from ta.trend import EMAIndicator, MACD
+from ta.volatility import AverageTrueRange
 
 
-# ==========================
-# AHAD AI v5.6
-# ==========================
+# =========================
+# AHAD AI v5.7
+# SMART MONEY EDITION
+# =========================
+
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -19,253 +23,117 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 
-# ==========================
-# RENDER WEB SERVER
-# ==========================
+# =========================
+# KEEP RENDER ONLINE
+# =========================
 
 @app.route("/")
 def home():
-    return "🚀 AHAD AI v5.6 ONLINE"
+    return "🚀 AHAD AI v5.7 SMART MONEY ONLINE"
 
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
-
     app.run(
         host="0.0.0.0",
         port=port
     )
 
 
-# ==========================
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
+
+# =========================
 # MARKET DATA
-# ==========================
+# =========================
 
-def get_market():
+def get_data(symbol):
 
-    url = "https://api.binance.com/api/v3/ticker/24hr"
+    url = "https://api.binance.com/api/v3/klines"
+
+    params = {
+        "symbol": symbol,
+        "interval": "15m",
+        "limit": 120
+    }
 
     try:
-        data = requests.get(
+        r = requests.get(
             url,
+            params=params,
             timeout=10
-        ).json()
-
-        coins = []
-
-        for c in data:
-
-            if (
-                c["symbol"].endswith("USDT")
-                and float(c["quoteVolume"]) > 10000000
-            ):
-
-                coins.append({
-                    "symbol": c["symbol"],
-                    "change": float(c["priceChangePercent"]),
-                    "volume": float(c["quoteVolume"])
-                })
-
-        return coins
-
-    except Exception as e:
-
-        print("Market Error:", e)
-
-        return []
-
-
-# ==========================
-# AHAD AI ENGINE
-# ==========================
-
-def analyze_coin(coin):
-
-    score = 0
-
-    # Volume power
-    if coin["volume"] > 50000000:
-        score += 30
-
-    # Momentum
-    if coin["change"] > 1:
-        score += 30
-
-    # Smart Entry simulation
-    if 1 < coin["change"] < 8:
-        score += 30
-
-
-    return score
-
-
-
-def scan_market():
-
-    market = get_market()
-
-    results = []
-
-    for coin in market:
-
-        score = analyze_coin(coin)
-
-        if score >= 80:
-
-            results.append(
-                {
-                    "coin": coin["symbol"],
-                    "score": score
-                }
-            )
-
-
-    results = sorted(
-        results,
-        key=lambda x: x["score"],
-        reverse=True
-    )
-
-    return results[:3]
-
-
-# ==========================
-# TELEGRAM COMMANDS
-# ==========================
-
-@bot.message_handler(commands=["start"])
-def start(message):
-
-    bot.reply_to(
-        message,
-
-f"""
-🚀 AHAD AI v5.6 ONLINE
-
-🐋 Whale Engine ACTIVE
-🎯 Smart Entry ACTIVE
-🛑 ATR Stop Loss ACTIVE
-
-Send /scan
-"""
-    )
-
-
-
-@bot.message_handler(commands=["scan"])
-def scan(message):
-
-    bot.reply_to(
-        message,
-        "🐋 Searching sniper setups..."
-    )
-
-
-    signals = scan_market()
-
-
-    if not signals:
-
-        bot.send_message(
-            message.chat.id,
-            "😴 No sniper LONG setup now 🛡"
         )
 
-        return
+        data = r.json()
 
-
-    for s in signals:
-
-        text = f"""
-
-🟢 LONG SIGNAL
-
-🪙 Coin: {s['coin']}
-
-🎯 Entry: Smart Zone
-
-🎯 TP1: +3%
-🎯 TP2: +6%
-
-🛑 Stop Loss:
-ATR Protected
-
-🐋 Whale Score:
-{s['score']}/100
-
-🔥 AHAD Score: HIGH
-
-"""
-
-        bot.send_message(
-            message.chat.id,
-            text
+        df = pd.DataFrame(
+            data,
+            columns=[
+                "time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "x1",
+                "x2",
+                "x3",
+                "x4",
+                "x5",
+                "x6"
+            ]
         )
 
+        df = df[
+            [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+            ]
+        ]
 
-# ==========================
-# TELEGRAM ENGINE
-# ==========================
+        df = df.astype(float)
 
-def telegram_engine():
+        return df
 
-    while True:
-
-        try:
-
-            print("🤖 Telegram Engine ACTIVE")
-
-            bot.infinity_polling(
-                skip_pending=True,
-                timeout=60,
-                long_polling_timeout=60
-            )
+    except:
+        return None
 
 
-        except Exception as e:
+# =========================
+# INDICATORS ENGINE
+# =========================
 
-            print("⚠️ Telegram crashed")
-            print(e)
+def analyze(symbol):
 
-            print("🔄 Restarting...")
+    df = get_data(symbol)
 
-            time.sleep(5)
+    if df is None:
+        return None
 
+    close = df["close"]
 
+    rsi = RSIIndicator(close).rsi().iloc[-1]
 
-# ==========================
-# START SYSTEM
-# ==========================
+    ema50 = EMAIndicator(
+        close,
+        window=50
+    ).ema_indicator().iloc[-1]
 
-if __name__ == "__main__":
+    macd = MACD(close)
 
-    print("""
-🚀 Starting AHAD AI v5.6
+    macd_value = (
+        macd.macd().iloc[-1]
+        -
+        macd.macd_signal().iloc[-1]
+    )
 
-🐋 Whale Engine
-🎯 Smart Entry
-🛑 ATR Stop
-
-""")
-
-
-    threading.Thread(
-        target=run_web,
-        daemon=True
-    ).start()
-
-
-    time.sleep(2)
-
-
-    threading.Thread(
-        target=telegram_engine,
-        daemon=True
-    ).start()
-
-
-    print("🔥 AHAD AI FULL ONLINE")
-
-
-    while True:
-        time.sleep(60)
+    atr = AverageTrueRange(
+        df["high"],
+        df["low"],
+        df["close"]
+    ).average_true_range().iloc[-1]

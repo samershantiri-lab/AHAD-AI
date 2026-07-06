@@ -9,61 +9,44 @@ from flask import Flask
 from threading import Thread
 
 
-# ==========================
-# AHAD AI v5.5 WHALE ENGINE
-# ==========================
+# =========================
+# AHAD AI v5.6 SNIPER WHALE
+# =========================
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
 
 
-# ==========================
-# RENDER KEEP ALIVE
-# ==========================
+# KEEP RENDER ONLINE
 
 app = Flask(__name__)
 
-
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v5.5 WHALE ENGINE ONLINE"
+    return "🐋 AHAD AI v5.6 ONLINE"
 
 
-def run_web():
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
+def web():
+    port = int(os.environ.get("PORT", 10000))
     app.run(
         host="0.0.0.0",
         port=port
     )
 
 
-Thread(
-    target=run_web
-).start()
+Thread(target=web).start()
 
 
-
-# ==========================
-# FUTURES SYMBOLS
-# ==========================
-
+# =========================
+# GET MARKET DATA
+# =========================
 
 def get_symbols():
 
-    url = (
-        "https://fapi.binance.com"
-        "/fapi/v1/exchangeInfo"
-    )
-
     try:
+
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 
         data = requests.get(
             url,
@@ -73,54 +56,38 @@ def get_symbols():
 
         symbols = []
 
-
-        for s in data.get("symbols", []):
+        for x in data["symbols"]:
 
             if (
-                s.get("quoteAsset") == "USDT"
+                x["quoteAsset"] == "USDT"
                 and
-                s.get("status") == "TRADING"
+                x["status"] == "TRADING"
             ):
-
-                symbols.append(
-                    s["symbol"]
-                )
+                symbols.append(x["symbol"])
 
 
-        return symbols[:120]
+        return symbols[:100]
 
+    except Exception as e:
 
-    except:
+        print(e)
 
         return []
 
 
 
-# ==========================
-# GET 15M CANDLES
-# ==========================
-
-
-def get_chart(symbol):
-
-    url = (
-        "https://fapi.binance.com"
-        "/fapi/v1/klines"
-    )
-
-
-    params = {
-
-        "symbol": symbol,
-
-        "interval": "15m",
-
-        "limit": 200
-
-    }
-
+def get_candles(symbol):
 
     try:
+
+        url = "https://fapi.binance.com/fapi/v1/klines"
+
+        params = {
+            "symbol": symbol,
+            "interval": "15m",
+            "limit": 220
+        }
+
 
         data = requests.get(
             url,
@@ -129,38 +96,13 @@ def get_chart(symbol):
         ).json()
 
 
-        if not isinstance(
-            data,
-            list
-        ):
-
-            return None
+        df = pd.DataFrame(data)
 
 
-        df = pd.DataFrame(
-            data
-        )
-
-
-        df["high"] = (
-            df[2]
-            .astype(float)
-        )
-
-        df["low"] = (
-            df[3]
-            .astype(float)
-        )
-
-        df["close"] = (
-            df[4]
-            .astype(float)
-        )
-
-        df["volume"] = (
-            df[5]
-            .astype(float)
-        )
+        df["high"] = df[2].astype(float)
+        df["low"] = df[3].astype(float)
+        df["close"] = df[4].astype(float)
+        df["volume"] = df[5].astype(float)
 
 
         return df
@@ -172,355 +114,238 @@ def get_chart(symbol):
 
 
 
-# ==========================
-# ANALYSIS ENGINE
-# ==========================
+# =========================
+# AI ANALYSIS
+# =========================
 
 
 def analyze(symbol):
 
+    df = get_candles(symbol)
+
+    if df is None:
+        return None
+
+
     try:
 
-        df = get_chart(
-            symbol
+        df["ema50"] = ta.trend.ema_indicator(
+            df["close"],
+            50
         )
 
 
-        if df is None:
+        df["ema200"] = ta.trend.ema_indicator(
+            df["close"],
+            200
+        )
 
+
+        df["rsi"] = ta.momentum.rsi(
+            df["close"],
+            14
+        )
+
+
+        macd = ta.trend.MACD(
+            df["close"]
+        )
+
+        df["macd"] = macd.macd_diff()
+
+
+        df["atr"] = ta.volatility.average_true_range(
+            df["high"],
+            df["low"],
+            df["close"]
+        )
+
+
+        last = df.iloc[-1]
+
+
+        score = 0
+
+
+        if last.close > last.ema50:
+            score += 20
+
+
+        if last.ema50 > last.ema200:
+            score += 20
+
+
+        if 40 <= last.rsi <= 60:
+            score += 20
+
+
+        if last.macd > 0:
+            score += 20
+
+
+        vol_avg = df.volume.tail(30).mean()
+
+        whale = last.volume / vol_avg
+
+
+        if whale > 1.3:
+            score += 20
+
+
+
+        if score < 75:
             return None
 
 
-        # EMA TREND
 
-        df["EMA50"] = (
-            ta.trend
-            .ema_indicator(
-                df["close"],
-                window=50
-            )
-        )
+        price = last.close
 
+        atr = last.atr
 
-        df["EMA200"] = (
-            ta.trend
-            .ema_indicator(
-                df["close"],
-                window=200
-            )
-        )
 
+        entry = price
 
-        # RSI
+        sl = price - (atr * 1.5)
 
-        df["RSI"] = (
-            ta.momentum
-            .rsi(
-                df["close"],
-                window=14
-            )
-        )
+        risk = entry - sl
 
 
-        # MACD
+        tp1 = entry + (risk * 2)
 
-        macd = (
-            ta.trend.MACD(
-                df["close"]
-            )
-        )
+        tp2 = entry + (risk * 3)
 
 
-        df["MACD"] = (
-            macd.macd_diff()
-        )
+        return {
 
+            "coin":symbol,
 
-        # ATR
+            "entry":entry,
 
-        df["ATR"] = (
-            ta.volatility
-            .average_true_range(
-                df["high"],
-                df["low"],
-                df["close"],
-                window=14
-            )
-        ) 
-last = df.iloc[-1]
+            "sl":sl,
 
-        score = 0
-        reasons = []
+            "tp1":tp1,
 
+            "tp2":tp2,
 
-        # ==================
-        # TREND SCORE
-        # ==================
+            "rsi":last.rsi,
 
-        if last["close"] > last["EMA50"]:
-            score += 20
-            reasons.append("Trend above EMA50 ✅")
+            "whale":whale,
 
+            "score":score
 
-        if last["EMA50"] > last["EMA200"]:
-            score += 20
-            reasons.append("EMA Bull Trend 🐂")
-
-
-        # ==================
-        # MOMENTUM
-        # ==================
-
-        if 40 < last["RSI"] < 65:
-            score += 15
-            reasons.append("RSI Healthy ✅")
-
-
-        if last["MACD"] > 0:
-            score += 15
-            reasons.append("MACD Momentum ✅")
-
-
-        # ==================
-        # WHALE VOLUME
-        # ==================
-
-        avg_volume = (
-            df["volume"]
-            .tail(30)
-            .mean()
-        )
-
-
-        volume_power = (
-            last["volume"]
-            /
-            avg_volume
-        )
-
-
-        if volume_power > 1.5:
-
-            score += 30
-
-            reasons.append(
-                "Whale Volume 🐋"
-            )
-
-
-        # ==================
-        # ENTRY ENGINE
-        # ==================
-
-        price = last["close"]
-
-        atr = last["ATR"]
-
-
-        entry_low = (
-            price -
-            (atr * 0.3)
-        )
-
-
-        entry_high = (
-            price +
-            (atr * 0.2)
-        )
-
-
-        stop_loss = (
-            price -
-            (atr * 1.5)
-        )
-
-
-        risk = (
-            price -
-            stop_loss
-        )
-
-
-        tp1 = (
-            price +
-            risk * 2
-        )
-
-
-        tp2 = (
-            price +
-            risk * 3
-        )
-
-
-        if score >= 75:
-
-            return {
-
-                "symbol": symbol,
-
-                "score": score,
-
-                "price": price,
-
-                "entry_low": entry_low,
-
-                "entry_high": entry_high,
-
-                "sl": stop_loss,
-
-                "tp1": tp1,
-
-                "tp2": tp2,
-
-                "rsi": last["RSI"],
-
-                "volume": volume_power,
-
-                "reasons": reasons
-
-            }
+        }
 
 
     except Exception as e:
 
         print(e)
 
-
-    return None
-
+        return None
 
 
-# ==========================
+
+# =========================
 # TELEGRAM
-# ==========================
+# =========================
 
 
 @bot.message_handler(commands=["start"])
-def start(message):
+def start(m):
 
     bot.reply_to(
-        message,
-"""
-🐋 AHAD AI v5.5 ONLINE
+        m,
+"""🚀 AHAD AI v5.6 ONLINE
 
-🔥 WHALE ENGINE ACTIVE
+🐋 Whale Engine ACTIVE
+🎯 Smart Entry ACTIVE
+🛑 ATR Stop Loss ACTIVE
 
-⏱ Timeframe:
-15 Minutes
-
-Send /scan
-"""
+Send /scan"""
     )
 
 
 
 @bot.message_handler(commands=["scan"])
-def scan(message):
+def scan(m):
 
     bot.reply_to(
-        message,
-        "🐋 AHAD AI hunting whales..."
+        m,
+        "🐋 Searching sniper setups..."
     )
 
 
-    signals = []
+    results=[]
 
 
-    for symbol in get_symbols():
+    for s in get_symbols():
 
+        r = analyze(s)
 
-        result = analyze(symbol)
+        if r:
 
-
-        if result:
-
-            signals.append(
-                result
-            )
+            results.append(r)
 
 
         time.sleep(0.05)
 
 
 
-    signals = sorted(
-        signals,
-        key=lambda x:
-        x["score"],
+    results = sorted(
+        results,
+        key=lambda x:x["score"],
         reverse=True
     )[:3]
 
 
 
-    if not signals:
+    if len(results)==0:
 
         bot.send_message(
-            message.chat.id,
-            "😴 No whale LONG setup now 🛡️"
+            m.chat.id,
+            "😴 No sniper LONG setup now 🛡"
         )
 
         return
 
 
 
-    for s in signals:
+    for x in results:
 
+        msg=f"""
+🐋 WHALE LONG SIGNAL
 
-        text = f"""
-🐋 AHAD AI WHALE SIGNAL
+🪙 {x['coin']}
 
-🟢 LONG
-
-🪙 Coin:
-{s['symbol']}
-
-💰 Current:
-{round(s['price'],5)}
-
-🎯 ENTRY ZONE:
-{round(s['entry_low'],5)}
--
-{round(s['entry_high'],5)}
-
-🛑 STOP LOSS:
-{round(s['sl'],5)}
+📍 ENTRY:
+{round(x['entry'],5)}
 
 🎯 TP1:
-{round(s['tp1'],5)}
+{round(x['tp1'],5)}
 
 🎯 TP2:
-{round(s['tp2'],5)}
+{round(x['tp2'],5)}
+
+🛑 STOP LOSS:
+{round(x['sl'],5)}
 
 📊 RSI:
-{round(s['rsi'],2)}
+{round(x['rsi'],2)}
 
-🐋 Volume Power:
-{x:=.2f}
+🐋 Whale:
+{round(x['whale'],2)}X
 
 🔥 AHAD SCORE:
-{s['score']}/100
-
-Reasons:
-{chr(10).join(s['reasons'])}
-""".replace("{x:=.2f}", str(round(s["volume"],2)))
-
+{x['score']}/100
+"""
 
         bot.send_message(
-            message.chat.id,
-            text
+            m.chat.id,
+            msg
         )
 
 
 
-# ==========================
-# START BOT
-# ==========================
-
-
-print(
-    "🐋 AHAD AI v5.5 STARTED"
-)
+print("🐋 AHAD AI v5.6 STARTED")
 
 
 bot.remove_webhook()
@@ -529,4 +354,4 @@ bot.remove_webhook()
 bot.infinity_polling(
     skip_pending=True,
     timeout=60
-)
+    )

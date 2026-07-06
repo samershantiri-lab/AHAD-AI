@@ -1,232 +1,420 @@
-import telebot
 import os
+import threading
 import time
+import requests
+import pandas as pd
+import ta
+import telebot
+
 from flask import Flask
-from threading import Thread
 
-from tradingview_ta import TA_Handler, Interval
 
 # ==========================
-# AHAD AI v3.0
-# TradingView Quant Engine
+# AHAD AI v4.0
 # ==========================
 
-TOKEN = os.environ.get("BOT_TOKEN")
+
+TOKEN = os.getenv("BOT_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
+
+
+# ==========================
+# RENDER KEEP ALIVE
+# ==========================
+
 
 app = Flask(__name__)
 
 
-# ===== KEEP RENDER ALIVE =====
-
 @app.route("/")
 def home():
-    return "🚀 AHAD AI v3.0 TradingView Engine ONLINE"
+    return "🚀 AHAD AI v4.0 ONLINE"
 
 
 def run_web():
-    app.run(host="0.0.0.0", port=10000)
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
 
 
-Thread(target=run_web).start()
+threading.Thread(
+    target=run_web
+).start()
 
 
-# ===== COINS LIST =====
 
-COINS = [
-    "BTCUSDT",
-    "ETHUSDT",
-    "SOLUSDT",
-    "BNBUSDT",
-    "XRPUSDT",
-    "DOGEUSDT",
-    "ADAUSDT",
-    "AVAXUSDT",
-    "LINKUSDT",
-    "SUIUSDT",
-    "ARBUSDT",
-    "OPUSDT",
-    "PEPEUSDT",
-    "WIFUSDT"
-]
+# ==========================
+# GET FUTURES SYMBOLS
+# ==========================
 
 
-# ===== ANALYZE COIN =====
+def get_symbols():
 
-def analyze_coin(symbol):
+    url = (
+        "https://fapi.binance.com"
+        "/fapi/v1/exchangeInfo"
+    )
+
+    data = requests.get(
+        url,
+        timeout=10
+    ).json()
+
+
+    symbols = []
+
+
+    if "symbols" not in data:
+        return symbols
+
+
+    for s in data["symbols"]:
+
+        if (
+            s.get("quoteAsset") == "USDT"
+            and
+            s.get("status") == "TRADING"
+        ):
+
+            symbols.append(
+                s["symbol"]
+            )
+
+
+    return symbols
+
+
+
+# ==========================
+# GET CANDLES
+# ==========================
+
+
+def get_chart(symbol):
+
+    url = (
+        "https://fapi.binance.com"
+        "/fapi/v1/klines"
+    )
+
+
+    params = {
+        "symbol": symbol,
+        "interval": "15m",
+        "limit": 200
+    }
+
+
+    data = requests.get(
+        url,
+        params=params,
+        timeout=10
+    ).json()
+
+
+    if not isinstance(data, list):
+        return None
+
+
+    df = pd.DataFrame(data)
+
+
+    df["close"] = df[4].astype(float)
+
+    df["volume"] = df[5].astype(float)
+
+
+    return df
+
+
+
+# ==========================
+# ANALYSIS ENGINE
+# ==========================
+
+
+def analyze(symbol):
 
     try:
-        handler = TA_Handler(
-            symbol=symbol,
-            screener="crypto",
-            exchange="BINANCE",
-            interval=Interval.INTERVAL_15_MINUTES
+
+        df = get_chart(symbol)
+
+
+        if df is None:
+            return None
+
+
+        df["EMA50"] = (
+            ta.trend
+            .ema_indicator(
+                df["close"],
+                window=50
+            )
         )
 
-        data = handler.get_analysis()
 
-        indicators = data.indicators
+        df["EMA200"] = (
+            ta.trend
+            .ema_indicator(
+                df["close"],
+                window=200
+            )
+        )
 
-        rsi = indicators.get("RSI")
-        macd = indicators.get("MACD.macd")
-        macd_signal = indicators.get("MACD.signal")
 
-        ema50 = indicators.get("EMA50")
-        ema200 = indicators.get("EMA200")
-        close = indicators.get("close")
+        df["RSI"] = (
+            ta.momentum
+            .rsi(
+                df["close"],
+                window=14
+            )
+        )
+
+
+        last = df.iloc[-1]
+
 
         score = 0
+
 
         reasons = []
 
 
-        # Trend
-        if close and ema50 and ema200:
-            if close > ema50 > ema200:
-                score += 35
-                reasons.append("EMA Bull Trend ✅")
+        # TREND
+
+        if (
+            last["close"]
+            >
+            last["EMA50"]
+        ):
+
+            score += 30
+
+            reasons.append(
+                "EMA50 Bullish"
+            )
+
+
+        if (
+            last["EMA50"]
+            >
+            last["EMA200"]
+        ):
+
+            score += 30
+
+            reasons.append(
+                "Trend UP"
+            )
 
 
         # RSI
-        if rsi:
-            if 40 < rsi < 65:
-                score += 25
-                reasons.append("RSI Healthy ✅")
+
+        if (
+            last["RSI"] > 40
+            and
+            last["RSI"] < 65
+        ):
+
+            score += 20
+
+            reasons.append(
+                "RSI Healthy"
+            )
 
 
-        # MACD
-        if macd and macd_signal:
-            if macd > macd_signal:
-                score += 25
-                reasons.append("MACD Bullish ✅")
+        # VOLUME
+
+        avg_volume = (
+            df["volume"]
+            .tail(30)
+            .mean()
+        )
 
 
-        # TradingView recommendation
+        if (
+            last["volume"]
+            >
+            avg_volume * 1.5
+        ):
 
-        if data.summary["RECOMMENDATION"] in ["BUY", "STRONG_BUY"]:
-            score += 15
-            reasons.append("TV BUY Signal ✅")
+            score += 20
+
+            reasons.append(
+                "Volume Spike"
+            )
 
 
         if score >= 70:
 
-            entry = round(close, 5)
-
-            sl = round(entry * 0.98, 5)
-            tp1 = round(entry * 1.03, 5)
-            tp2 = round(entry * 1.06, 5)
-
             return {
-                "coin": symbol,
+
+                "symbol": symbol,
+
+                "price":
+                round(
+                    last["close"],
+                    5
+                ),
+
+                "rsi":
+                round(
+                    last["RSI"],
+                    2
+                ),
+
                 "score": score,
-                "entry": entry,
-                "sl": sl,
-                "tp1": tp1,
-                "tp2": tp2,
+
                 "reasons": reasons
             }
 
 
-    except Exception:
+    except:
+
         return None
 
 
-# ===== TELEGRAM =====
 
-@bot.message_handler(commands=["start"])
-def start(msg):
+# ==========================
+# TELEGRAM
+# ==========================
+
+
+@bot.message_handler(
+    commands=["start"]
+)
+
+def start(message):
 
     bot.reply_to(
-        msg,
+        message,
         """
-🚀 AHAD AI v3.0 ONLINE
+🚀 AHAD AI v4.0 ONLINE
 
-🧠 TradingView Quant Engine ACTIVE
+🧠 Futures Quant Engine ACTIVE
 
-Timeframe: 15M
+⏱ Timeframe: 15M
 
 Send /scan
-        """
+"""
     )
 
 
-@bot.message_handler(commands=["scan"])
-def scan(msg):
+
+@bot.message_handler(
+    commands=["scan"]
+)
+
+def scan(message):
+
 
     bot.reply_to(
-        msg,
-        "🔎 AHAD AI scanning TradingView..."
+        message,
+        "🔎 AHAD AI scanning market..."
     )
+
 
     results = []
 
-    for coin in COINS:
 
-        signal = analyze_coin(coin)
+    symbols = get_symbols()
+
+
+    for symbol in symbols[:100]:
+
+        signal = analyze(symbol)
+
 
         if signal:
+
             results.append(signal)
 
-        time.sleep(1)
+
+        time.sleep(0.05)
+
 
 
     results = sorted(
         results,
-        key=lambda x: x["score"],
+        key=lambda x:
+        x["score"],
         reverse=True
     )[:3]
+
 
 
     if not results:
 
         bot.send_message(
-            msg.chat.id,
+            message.chat.id,
             "😴 No strong LONG signals now"
         )
 
         return
 
 
-    for s in results:
 
-        text = f"""
-🚀 AHAD AI LONG SIGNAL 🟢
+    text = (
+        "🔥 AHAD AI TOP 3 LONG\n\n"
+    )
 
-Coin:
-{s['coin']}
 
-Entry:
-{s['entry']}
 
-🎯 TP1:
-{s['tp1']}
+    for r in results:
 
-🎯 TP2:
-{s['tp2']}
 
-🛑 SL:
-{s['sl']}
+        text += f"""
 
-Strength:
-{s['score']} / 100 🧠
+🚀 {r['symbol']}
 
-Reasons:
-{chr(10).join(s['reasons'])}
+💰 Entry:
+{r['price']}
 
-Timeframe:
-15M
+📊 RSI:
+{r['rsi']}
+
+🧠 Strength:
+{r['score']}%
+
+🎯 TP1: +3%
+🎯 TP2: +6%
+
+🛑 SL: -2%
+
+------------------
+
 """
 
-        bot.send_message(
-            msg.chat.id,
-            text
-        )
+
+    bot.send_message(
+        message.chat.id,
+        text
+    )
 
 
-# ===== RUN BOT =====
 
-print("Starting AHAD AI v3.0 🚀")
+# ==========================
+# START
+# ==========================
+
+
+print(
+    "🚀 AHAD AI v4.0 Started"
+)
+
+
+bot.remove_webhook()
+
 
 bot.infinity_polling(
     skip_pending=True

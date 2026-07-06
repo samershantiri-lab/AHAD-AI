@@ -177,7 +177,8 @@ def analyze(symbol):
             macd.macd().iloc[-1]
             -
             macd.macd_signal().iloc[-1]
-        )atr = AverageTrueRange(
+        )
+        atr = AverageTrueRange(
             df["high"],
             df["low"],
             df["close"]

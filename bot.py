@@ -1,209 +1,4 @@
 # ==============================
-# 🚀 AHAD AI v6.0 STABLE CORE
-# ==============================
-
-import os
-import time
-import threading
-import traceback
-import requests
-import telebot
-
-from flask import Flask
-
-
-# ==============================
-# ⚙️ CONFIG
-# ==============================
-
-TOKEN = os.environ.get("BOT_TOKEN")
-
-bot = telebot.TeleBot(TOKEN)
-
-
-print("🚀 Starting AHAD AI v6.0")
-print("🤖 Telegram Engine ACTIVE")
-
-
-# ==============================
-# 🌐 RENDER KEEP ALIVE
-# ==============================
-
-app = Flask(__name__)
-
-
-@app.route("/")
-def home():
-    return "🚀 AHAD AI v6.0 ONLINE 🐋"
-
-
-def run_web():
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
-
-
-# ==============================
-# 📊 BINANCE FUTURES DATA
-# ==============================
-
-def get_futures_symbols():
-
-    try:
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/ticker/24hr"
-        )
-
-        data = requests.get(
-            url,
-            timeout=10
-        ).json()
-
-
-        coins = []
-
-        for c in data:
-
-            if (
-                c["symbol"].endswith("USDT")
-                and float(c["quoteVolume"]) > 10000000
-            ):
-
-                coins.append(
-                    c["symbol"]
-                )
-
-        return coins
-
-
-    except Exception as e:
-
-        print(
-            "Symbols error:",
-            e
-        )
-
-        return []
-# ==============================
-# 🧠 AHAD AI ANALYSIS ENGINE
-# ==============================
-
-def analyze(symbol):
-
-    try:
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/klines"
-        )
-
-        params = {
-            "symbol": symbol,
-            "interval": "15m",
-            "limit": 50
-        }
-
-
-        candles = requests.get(
-            url,
-            params=params,
-            timeout=10
-        ).json()
-
-
-        closes = [
-            float(x[4])
-            for x in candles
-        ]
-
-        volumes = [
-            float(x[5])
-            for x in candles
-        ]
-
-
-        price = closes[-1]
-
-
-        avg_volume = (
-            sum(volumes[:-1])
-            /
-            len(volumes[:-1])
-        )
-
-        whale = (
-            volumes[-1]
-            /
-            avg_volume
-        )
-
-
-        change = (
-            (closes[-1] - closes[-5])
-            /
-            closes[-5]
-        ) * 100
-
-
-        score = 0
-
-
-        # 🐋 Whale power
-        if whale > 1.5:
-            score += 40
-
-
-        # 🟢 LONG momentum
-        if change > 0:
-            score += 30
-
-
-        # 📊 Volume boost
-        if volumes[-1] > avg_volume:
-            score += 20
-
-
-        # 🔥 Strong move
-        if change > 1:
-            score += 10
-
-
-        if score >= 70:
-
-            return {
-
-                "coin": symbol,
-                "price": price,
-                "score": score,
-                "whale": whale
-
-            }
-
-
-        return None
-
-
-    except Exception as e:
-
-        print(
-            "Analyze error:",
-            symbol,
-            e
-        )
-
-        return None
-# ==============================
 # 🤖 TELEGRAM COMMANDS
 # ==============================
 
@@ -213,110 +8,161 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v6.0 ONLINE
+🚀 AHAD AI v6.1 ONLINE
 
 🐋 Whale Engine ACTIVE
-📊 Futures Scanner ACTIVE
+📊 Auto Futures Scanner ACTIVE
 🟢 LONG Priority ACTIVE
 ⏱ 15m Smart Entry ACTIVE
 🎯 TP / SL Engine ACTIVE
+👀 Smart Watchlist ACTIVE
 
 Send /scan
 """
     )
 
 
-# ==============================
-# 🐋 SCAN COMMAND
-# ==============================
-
 @bot.message_handler(commands=["scan"])
 def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI scanning market...\n⏱ Timeframe: 15m"
+        "🐋 AHAD AI scanning futures market...\n⏱ Timeframe: 15m"
     )
 
 
-    try:
-
-        results = []
-
-        symbols = get_futures_symbols()
+    results = []
 
 
-        for symbol in symbols[:200]:
-
-            signal = analyze(symbol)
-
-            if signal:
-
-                results.append(signal)
+    symbols = get_futures_symbols()
 
 
-            time.sleep(0.05)
+    for symbol in symbols[:200]:
+
+        try:
+
+            result = analyze(symbol)
+
+            if result:
+
+                results.append(result)
 
 
-        results = sorted(
-            results,
-            key=lambda x: x["score"],
-            reverse=True
-        )
+            time.sleep(0.03)
+
+
+        except Exception as e:
+
+            print(
+                "Scan error:",
+                symbol,
+                e
+            )
+
+
+    results = sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+
+    strong = [
+        x for x in results
+        if x["score"] >= 75
+    ][:3]
+
+
+    almost = [
+        x for x in results
+        if 60 <= x["score"] < 75
+    ][:5]
+
+
+    # ==================
+    # 🟢 STRONG SIGNALS
+    # ==================
+
+    if strong:
+
+        for s in strong:
+
+            msg = f"""
+🐋 AHAD AI v6.1 SIGNAL 🚀
+
+🟢 LONG SETUP CONFIRMED
+
+🪙 Coin:
+{s['coin']}
+
+🎯 ENTRY:
+{round(s['entry'],5)}
+
+🛑 STOP LOSS:
+{round(s['sl'],5)}
+
+🎯 TP1:
+{round(s['tp1'],5)}
+
+🎯 TP2:
+{round(s['tp2'],5)}
+
+📊 RSI:
+{round(s['rsi'],2)}
+
+🐋 Whale Power:
+{round(s['whale'],2)}X
+
+🔥 AHAD SCORE:
+{s['score']}/100
+
+
+✅ Confirmation:
+{chr(10).join(s['reasons'])}
+"""
+
+
+            bot.send_message(
+                message.chat.id,
+                msg
+            )
+
+
+    # ==================
+    # 🟡 ALMOST READY
+    # ==================
+
+    elif almost:
 
 
         text = """
-🚀 AHAD AI v6 SIGNALS
+🟡 AHAD AI WATCHLIST
 
-🏆 TOP 3 SETUPS
+Almost ready setups 👀
+
+Waiting confirmation:
 """
 
 
-        if len(results) == 0:
-
-            text += """
-
-😴 No sniper LONG yet 🛡
-
-Market quiet now...
-Waiting for whale movement 🐋
-"""
+        for a in almost:
 
 
-        else:
+            text += f"""
 
-            for coin in results[:3]:
+🪙 {a['coin']}
 
-                entry = coin["price"]
+🔥 Score:
+{a['score']}/100
 
-                tp1 = entry * 1.03
-                tp2 = entry * 1.06
-                sl = entry * 0.98
-
-
-                text += f"""
-
-🟢 LONG {coin['coin']}
-
-💰 Entry:
-{round(entry,6)}
-
-🎯 TP1:
-{round(tp1,6)}
-
-🎯 TP2:
-{round(tp2,6)}
-
-🛑 SL:
-{round(sl,6)}
-
-🔥 Strength:
-{coin['score']}/100
+📊 RSI:
+{round(a['rsi'],2)}
 
 🐋 Whale:
-{round(coin['whale'],2)}X
+{round(a['whale'],2)}X
 
-────────────
+⏱ 15m Setup forming
+
+━━━━━━━━━━
 """
 
 
@@ -326,21 +172,72 @@ Waiting for whale movement 🐋
         )
 
 
-    except Exception as e:
 
-        print(
-            "SCAN ERROR:",
-            e
-        )
+    # ==================
+    # QUIET MARKET
+    # ==================
+
+    else:
+
+
+        watch = results[:5]
+
+
+        text = """
+👀 AHAD WATCHLIST
+
+😴 No sniper LONG yet 🛡
+
+Closest coins:
+"""
+
+
+        if len(results) == 0:
+
+
+            text += """
+
+⚠️ Scanner ACTIVE
+⚠️ Market quiet now
+
+🐋 Waiting for whale movement...
+"""
+
+
+        else:
+
+
+            for w in watch:
+
+
+                text += f"""
+
+🪙 {w['coin']}
+
+🔥 Score:
+{w['score']}/100
+
+📊 RSI:
+{round(w['rsi'],2)}
+
+🐋 Whale:
+{round(w['whale'],2)}X
+
+👀 Monitoring...
+
+━━━━━━━━━━
+"""
+
 
         bot.send_message(
             message.chat.id,
-            "⚠️ Scanner temporary error"
+            text
         )
 
 
+
 # ==============================
-# 🛡 AUTO RECOVERY ENGINE
+# 🛡 TELEGRAM AUTO RECOVERY
 # ==============================
 
 def telegram_engine():
@@ -349,21 +246,29 @@ def telegram_engine():
 
         try:
 
-            print("🤖 Bot polling started")
+            print(
+                "🤖 Telegram Engine Running"
+            )
+
 
             bot.infinity_polling(
-                timeout=60,
-                long_polling_timeout=60
+                skip_pending=True,
+                timeout=60
             )
 
 
         except Exception:
 
-            traceback.print_exc()
+
+            print(
+                traceback.format_exc()
+            )
+
 
             print(
                 "🔄 Restarting Telegram..."
             )
+
 
             time.sleep(5)
 
@@ -373,11 +278,23 @@ def telegram_engine():
 # 🚀 START SYSTEM
 # ==============================
 
-if __name__ == "__main__":
+threading.Thread(
+    target=run_web,
+    daemon=True
+).start()
 
-    threading.Thread(
-        target=run_web
-    ).start()
+
+threading.Thread(
+    target=telegram_engine,
+    daemon=True
+).start()
 
 
-    telegram_engine()
+print(
+    "🔥 AHAD AI v6.1 FULL ONLINE"
+)
+
+
+while True:
+
+    time.sleep(60)

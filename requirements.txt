@@ -1,5 +1,6 @@
 pyTelegramBotAPI
-requests
 flask
+requests
 pandas
-ta
+numpy
+tradingview_ta

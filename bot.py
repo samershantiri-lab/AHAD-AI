@@ -1,39 +1,32 @@
 # ==============================
-# 🚀 AHAD AI v8.0 DATA CORE
+# 🚀 AHAD AI v8.1 - PART 1
+# DATA CORE + TRADINGVIEW
 # ==============================
 
-import os
-import time
-import threading
-import traceback
 import requests
+import time
+import traceback
+import threading
 import pandas as pd
+import numpy as np
 
 from flask import Flask
 import telebot
 
-from ta.trend import EMAIndicator, MACD
-from ta.momentum import RSIIndicator
-from ta.volatility import AverageTrueRange
+from tradingview_ta import TA_Handler, Interval
 
 
 # ==============================
-# TELEGRAM CONFIG
+# 🔑 TELEGRAM
 # ==============================
 
-TOKEN = os.environ.get("BOT_TOKEN")
-
-if TOKEN is None:
-    raise Exception("BOT_TOKEN NOT FOUND")
+TOKEN = "PUT_YOUR_TOKEN_HERE"
 
 bot = telebot.TeleBot(TOKEN)
 
-print("🚀 Starting AHAD AI v8.0")
-print("🐋 DATA CORE ACTIVE")
-
 
 # ==============================
-# RENDER KEEP ALIVE
+# 🌐 KEEP ALIVE SERVER
 # ==============================
 
 app = Flask(__name__)
@@ -42,301 +35,218 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🚀 AHAD AI v8.0 ONLINE 🐋"
+    return "🐋 AHAD AI v8.1 ONLINE"
 
 
 def run_web():
 
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
     app.run(
         host="0.0.0.0",
-        port=port
+        port=10000
     )
 
 
 # ==============================
-# TIMEFRAMES
-# ==============================
-
-TIMEFRAMES = {
-
-    "15m": "ENTRY 🎯",
-
-    "1h": "TREND 📈",
-
-    "4h": "POWER 🐋",
-
-    "1d": "MACRO 👑"
-
-}
-
-
-# ==============================
-# 🟨 BINANCE SYMBOLS
-# ==============================
-
-def binance_symbols():
-
-    try:
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/exchangeInfo"
-        )
-
-        data = requests.get(
-            url,
-            timeout=10
-        ).json()
-
-
-        result = []
-
-
-        for s in data.get("symbols", []):
-
-            if (
-                s["quoteAsset"] == "USDT"
-                and
-                s["status"] == "TRADING"
-            ):
-
-                result.append(
-                    s["symbol"]
-                )
-
-
-        print(
-            "🟨 Binance:",
-            len(result)
-        )
-
-
-        return result
-
-
-    except Exception as e:
-
-        print(
-            "❌ Binance:",
-            e
-        )
-
-        return []
-
-
-
-# ==============================
-# 🟧 BYBIT SYMBOLS
-# ==============================
-
-def bybit_symbols():
-
-    try:
-
-        url = (
-            "https://api.bybit.com"
-            "/v5/market/instruments-info"
-        )
-
-
-        params = {
-            "category": "linear"
-        }
-
-
-        data = requests.get(
-            url,
-            params=params,
-            timeout=10
-        ).json()
-
-
-        result = []
-
-
-        for s in data["result"]["list"]:
-
-            if s["quoteCoin"] == "USDT":
-
-                result.append(
-                    s["symbol"]
-                )
-
-
-        print(
-            "🟧 Bybit:",
-            len(result)
-        )
-
-
-        return result
-
-
-    except Exception as e:
-
-        print(
-            "❌ Bybit:",
-            e
-        )
-
-        return []
-
-
-
-# ==============================
-# 🟦 MEXC SYMBOLS
-# ==============================
-
-def mexc_symbols():
-
-    try:
-
-        url = (
-            "https://contract.mexc.com"
-            "/api/v1/contract/detail"
-        )
-
-
-        data = requests.get(
-            url,
-            timeout=10
-        ).json()
-
-
-        result = []
-
-
-        for s in data["data"]:
-
-            if s["quoteCoin"] == "USDT":
-
-                result.append(
-                    s["symbol"].replace("_","")
-                )
-
-
-        print(
-            "🟦 MEXC:",
-            len(result)
-        )
-
-
-        return result
-
-
-    except Exception as e:
-
-        print(
-            "❌ MEXC:",
-            e
-        )
-
-        return []
-
-
-
-# ==============================
-# MARKET COLLECTOR
+# 📊 GET MARKETS
 # ==============================
 
 def get_futures_symbols():
 
-    markets = []
-
-    markets += binance_symbols()
-    markets += bybit_symbols()
-    markets += mexc_symbols()
+    all_symbols = []
 
 
-    markets = list(
-        set(markets)
+    # 🟨 BINANCE
+
+    try:
+
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+
+        data = requests.get(
+            url,
+            timeout=10
+        ).json()
+
+
+        binance = [
+            x["symbol"]
+            for x in data["symbols"]
+            if x["quoteAsset"] == "USDT"
+        ]
+
+
+        print(
+            "🟨 Binance:",
+            len(binance)
+        )
+
+
+        all_symbols += binance
+
+
+    except Exception as e:
+
+        print(
+            "❌ Binance Error:",
+            e
+        )
+
+
+    # 🟧 BYBIT
+
+    try:
+
+        url = "https://api.bybit.com/v5/market/instruments-info?category=linear"
+
+        data = requests.get(
+            url,
+            timeout=10
+        ).json()
+
+
+        bybit = [
+            x["symbol"]
+            for x in data["result"]["list"]
+            if "USDT" in x["symbol"]
+        ]
+
+
+        print(
+            "🟧 Bybit:",
+            len(bybit)
+        )
+
+
+        all_symbols += bybit
+
+
+    except Exception as e:
+
+        print(
+            "❌ Bybit Error:",
+            e
+        )
+
+
+    # 🟦 MEXC
+
+    try:
+
+        url = "https://contract.mexc.com/api/v1/contract/detail"
+
+        data = requests.get(
+            url,
+            timeout=10
+        ).json()
+
+
+        mexc = [
+            x["symbol"].replace("_", "")
+            for x in data["data"]
+        ]
+
+
+        print(
+            "🟦 MEXC:",
+            len(mexc)
+        )
+
+
+        all_symbols += mexc
+
+
+    except Exception as e:
+
+        print(
+            "❌ MEXC Error:",
+            e
+        )
+
+
+    # REMOVE DUPLICATES
+
+    final = list(
+        set(all_symbols)
     )
 
 
     print(
         "🐋 TOTAL MARKETS:",
-        len(markets)
+        len(final)
     )
 
 
-    return markets
+    return final
 
 
 
 # ==============================
-# MULTI TIMEFRAME CANDLES
+# 🧠 TRADINGVIEW ENGINE
 # ==============================
 
-def get_candles(symbol, timeframe="15m"):
+def tradingview_analysis(symbol):
 
     try:
 
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/klines"
-        )
+        results = {}
 
 
-        params = {
+        frames = {
 
-            "symbol": symbol,
+            "15m":
+            Interval.INTERVAL_15_MINUTES,
 
-            "interval": timeframe,
+            "1H":
+            Interval.INTERVAL_1_HOUR,
 
-            "limit": 200
+            "4H":
+            Interval.INTERVAL_4_HOURS,
+
+            "1D":
+            Interval.INTERVAL_1_DAY
 
         }
 
 
-        data = requests.get(
-            url,
-            params=params,
-            timeout=10
-        ).json()
+        for name, frame in frames.items():
 
 
-        if not isinstance(data, list):
+            handler = TA_Handler(
 
-            return None
+                symbol=symbol,
 
+                screener="crypto",
 
-        df = pd.DataFrame(
-            data
-        )
+                exchange="BINANCE",
 
+                interval=frame
 
-        df = df.iloc[:,1:6]
-
-
-        df.columns = [
-
-            "open",
-
-            "high",
-
-            "low",
-
-            "close",
-
-            "volume"
-
-        ]
+            )
 
 
-        return df.astype(float)
+            tv = handler.get_analysis()
+
+
+            results[name] = {
+
+                "signal":
+                tv.summary["RECOMMENDATION"],
+
+                "buy":
+                tv.summary["BUY"],
+
+                "sell":
+                tv.summary["SELL"]
+
+            }
+
+
+        return results
 
 
     except Exception as e:
 
         print(
-            "Candle Error:",
+            "❌ TradingView:",
             symbol,
             e
         )
@@ -347,26 +257,52 @@ def get_candles(symbol, timeframe="15m"):
 
 
 # ==============================
-# 📊 TRADINGVIEW BRIDGE
+# 🐋 PRICE DATA
 # ==============================
 
-def tradingview_score(symbol):
+def get_price(symbol):
 
-    # v8.1 connection
+    try:
 
-    return 0
+        url = (
+            "https://api.binance.com/api/v3/ticker/price?symbol="
+            + symbol
+        )
+
+
+        data = requests.get(
+            url,
+            timeout=5
+        ).json()
+
+
+        return float(
+            data["price"]
+        )
+
+
+    except:
+
+
+        return None
 
 
 
 # ==============================
-# 🐋 COINGLASS BRIDGE
+# 🧠 START LOG
 # ==============================
 
-def coinglass_score(symbol):
+print(
+    "🚀 Starting AHAD AI v8.1"
+)
 
-    # v8.1 connection
+print(
+    "🐋 DATA CORE ACTIVE"
+)
 
-    return 0
+print(
+    "📊 TradingView ACTIVE"
+)
 # ==============================
 # 🧠 AHAD AI v8.0 BRAIN ENGINE
 # ==============================

@@ -388,7 +388,7 @@ def analyze(symbol):
 
         return None
 # ==============================
-# 🤖 TELEGRAM COMMANDS v6.2
+# 🤖 TELEGRAM COMMANDS v6.3
 # ==============================
 
 @bot.message_handler(commands=["start"])
@@ -397,15 +397,15 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v6.2 PRE-WHALE HUNTER
+🚀 AHAD AI v6.3 RADAR ONLINE
 
 🐋 Whale Engine ACTIVE
-📊 Auto Futures Scanner ACTIVE
+📊 Futures Scanner ACTIVE
 🟢 LONG Hunter ACTIVE
 ⏱ 15m Timeframe ACTIVE
 🎯 Smart Entry ACTIVE
-🛑 ATR Stop Loss ACTIVE
-👀 Pre-Whale Watchlist ACTIVE
+🛑 ATR Risk ACTIVE
+👀 Radar Mode ACTIVE
 
 Send /scan
 """
@@ -417,7 +417,7 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v6.2 scanning market..."
+        "🐋 AHAD AI v6.3 scanning market..."
     )
 
 
@@ -432,7 +432,6 @@ def scan(message):
         try:
 
             result = analyze(symbol)
-
 
             if result:
 
@@ -451,7 +450,6 @@ def scan(message):
             )
 
 
-
     results = sorted(
         results,
         key=lambda x: x["score"],
@@ -465,43 +463,42 @@ def scan(message):
     ][:3]
 
 
-    pre_whale = [
+    pre_long = [
         x for x in results
         if 60 <= x["score"] < 75
     ][:5]
 
 
-    watch = [
-        x for x in results
-        if 45 <= x["score"] < 60
-    ][:5]
-
+    radar = results[:5]
 
 
     # ==================
-    # 🔥 SNIPER SIGNAL
+    # 🟢 SNIPER LONG
     # ==================
 
     if sniper:
 
+        text = """
+🚀 AHAD AI v6.3 SIGNALS
+
+🏆 TOP SNIPER LONG
+"""
+
 
         for s in sniper:
 
-
-            bot.send_message(
-                message.chat.id,
-f"""
-🐋 AHAD AI v6.2 SIGNAL
-
-🟢 SNIPER LONG
+            text += f"""
 
 🪙 Coin:
 {s['coin']}
 
-🎯 Entry:
+🔥 Score:
+{s['score']}/100
+
+🎯 ENTRY:
 {round(s['entry'],5)}
 
-🛑 Stop Loss:
+🛑 SL:
 {round(s['sl'],5)}
 
 🎯 TP1:
@@ -516,32 +513,33 @@ f"""
 🐋 Whale:
 {round(s['whale'],2)}X
 
-🔥 SCORE:
-{s['score']}/100
-
-✅ Confirmations:
+✅ Reasons:
 {chr(10).join(s['reasons'])}
+
+━━━━━━━━━━
 """
-            )
 
+
+        bot.send_message(
+            message.chat.id,
+            text
+        )
 
 
     # ==================
-    # 🟡 PRE WHALE
+    # 🟡 PRE LONG
     # ==================
 
-    elif pre_whale:
-
+    elif pre_long:
 
         text = """
-🟡 PRE-WHALE WATCHLIST 🐋
+🟡 AHAD PRE-LONG WATCH 🐋
 
-Potential moves forming:
+Almost ready setups:
 """
 
 
-        for p in pre_whale:
-
+        for p in pre_long:
 
             text += f"""
 
@@ -568,36 +566,35 @@ Potential moves forming:
         )
 
 
-
     # ==================
-    # 👀 WATCH ONLY
+    # 👀 RADAR ALWAYS
     # ==================
 
-    elif watch:
-
+    else:
 
         text = """
-👀 AHAD WATCH MODE
+👀 AHAD AI RADAR MODE
 
-Early setups:
+No sniper yet 🛡
+
+Closest 5 coins:
 """
 
 
-        for w in watch:
-
+        for r in radar:
 
             text += f"""
 
-🪙 {w['coin']}
+🪙 {r['coin']}
 
 🔥 Score:
-{w['score']}/100
+{r['score']}/100
 
 📊 RSI:
-{round(w['rsi'],2)}
+{round(r['rsi'],2)}
 
 🐋 Whale:
-{round(w['whale'],2)}X
+{round(r['whale'],2)}X
 
 ━━━━━━━━━━
 """
@@ -610,24 +607,8 @@ Early setups:
 
 
 
-    else:
-
-
-        bot.send_message(
-            message.chat.id,
-"""
-😴 Market quiet now 🛡
-
-No clean LONG structure.
-
-🐋 Waiting for better setup...
-"""
-        )
-
-
-
 # ==============================
-# 🛡 AUTO RECOVERY
+# 🛡 TELEGRAM AUTO RECOVERY
 # ==============================
 
 def telegram_engine():
@@ -649,16 +630,13 @@ def telegram_engine():
 
         except Exception:
 
-
             print(
                 traceback.format_exc()
             )
 
-
             print(
-                "🔄 Restarting..."
+                "🔄 Restarting Telegram..."
             )
-
 
             time.sleep(5)
 
@@ -681,7 +659,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v6.2 FULL ONLINE"
+    "🔥 AHAD AI v6.3 FULL ONLINE"
 )
 
 

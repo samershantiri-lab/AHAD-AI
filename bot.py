@@ -1,70 +1,11 @@
 # ==============================
-# 🚀 AHAD AI v7.0 MULTI SOURCE ENGINE
+# 🐋 AHAD AI v7.1
+# MULTI SOURCE DATA ENGINE
 # ==============================
-
-import os
-import time
-import threading
-import traceback
-import requests
-import pandas as pd
-
-from flask import Flask
-import telebot
-
-from ta.trend import EMAIndicator, MACD
-from ta.momentum import RSIIndicator
-from ta.volatility import AverageTrueRange
 
 
 # ==============================
-# CONFIG
-# ==============================
-
-TOKEN = os.environ.get("BOT_TOKEN")
-
-if TOKEN is None:
-    raise Exception("BOT_TOKEN NOT FOUND")
-
-
-bot = telebot.TeleBot(TOKEN)
-
-
-print("🚀 Starting AHAD AI v7.0")
-print("🐋 Multi Source Engine ACTIVE")
-
-
-# ==============================
-# KEEP RENDER ONLINE
-# ==============================
-
-app = Flask(__name__)
-
-
-@app.route("/")
-def home():
-
-    return "🚀 AHAD AI v7.0 ONLINE 🐋"
-
-
-def run_web():
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
-
-
-# ==============================
-# 🟨 BINANCE SYMBOLS
+# 🟨 BINANCE FUTURES
 # ==============================
 
 def binance_symbols():
@@ -78,58 +19,45 @@ def binance_symbols():
             timeout=10
         ).json()
 
+        symbols = []
 
-        coins = []
+        for s in data.get("symbols", []):
 
+            if (
+                s.get("quoteAsset") == "USDT"
+                and
+                s.get("status") == "TRADING"
+            ):
 
-        if "symbols" in data:
+                symbols.append(
+                    {
+                        "symbol": s["symbol"],
+                        "source": "BINANCE"
+                    }
+                )
 
-            for s in data["symbols"]:
+        print("🟨 Binance:", len(symbols))
 
-                if (
-                    s["quoteAsset"] == "USDT"
-                    and
-                    s["status"] == "TRADING"
-                ):
-
-                    coins.append(
-                        s["symbol"]
-                    )
-
-
-        print(
-            "🟨 Binance:",
-            len(coins)
-        )
-
-
-        return coins
+        return symbols
 
 
     except Exception as e:
 
-        print(
-            "Binance Error:",
-            e
-        )
+        print("Binance Failed:", e)
 
         return []
 
 
 
 # ==============================
-# 🟧 BYBIT SYMBOLS BACKUP
+# 🟧 BYBIT FUTURES
 # ==============================
 
 def bybit_symbols():
 
     try:
 
-        url = (
-            "https://api.bybit.com"
-            "/v5/market/instruments-info"
-        )
-
+        url = "https://api.bybit.com/v5/market/instruments-info"
 
         params = {
             "category": "linear"
@@ -143,258 +71,268 @@ def bybit_symbols():
         ).json()
 
 
-        coins = []
+        symbols = []
 
 
         for s in data["result"]["list"]:
 
-            if (
-                s["quoteCoin"] == "USDT"
-                and
-                s["status"] == "Trading"
-            ):
 
-                coins.append(
-                    s["symbol"]
+            if s["quoteCoin"] == "USDT":
+
+                symbols.append(
+                    {
+                        "symbol": s["symbol"],
+                        "source": "BYBIT"
+                    }
                 )
 
 
-        print(
-            "🟧 Bybit:",
-            len(coins)
-        )
+        print("🟧 Bybit:", len(symbols))
 
-
-        return coins
+        return symbols
 
 
     except Exception as e:
 
-        print(
-            "Bybit Error:",
-            e
-        )
+        print("Bybit Failed:", e)
 
         return []
 
 
 
 # ==============================
-# AUTO SOURCE SELECTOR
+# 🟦 MEXC FUTURES
 # ==============================
 
-def get_futures_symbols():
-
-    coins = binance_symbols()
-
-
-    if len(coins) > 0:
-
-        print(
-            "✅ Using Binance Data"
-        )
-
-        return coins
-
-
-    coins = bybit_symbols()
-
-
-    if len(coins) > 0:
-
-        print(
-            "✅ Using Bybit Data"
-        )
-
-
-    return coins
-
-
-
-# ==============================
-# GET CANDLES MULTI SOURCE
-# ==============================
-
-def get_candles(symbol):
-
-
-    # TRY BINANCE FIRST
+def mexc_symbols():
 
     try:
 
-        url = "https://fapi.binance.com/fapi/v1/klines"
-
-
-        params = {
-
-            "symbol": symbol,
-
-            "interval": "15m",
-
-            "limit": 150
-
-        }
+        url = "https://contract.mexc.com/api/v1/contract/detail"
 
 
         data = requests.get(
             url,
-            params=params,
             timeout=10
         ).json()
 
 
-        if isinstance(data, list):
-
-            return make_dataframe(data)
+        symbols = []
 
 
-    except Exception:
-
-        pass
+        for s in data["data"]:
 
 
+            if s["quoteCoin"] == "USDT":
 
-    # BYBIT BACKUP
-
-    try:
-
-        url = (
-            "https://api.bybit.com"
-            "/v5/market/kline"
-        )
-
-
-        params = {
-
-            "category": "linear",
-
-            "symbol": symbol,
-
-            "interval": "15",
-
-            "limit": 150
-
-        }
+                symbols.append(
+                    {
+                        "symbol": s["symbol"].replace("_",""),
+                        "source": "MEXC"
+                    }
+                )
 
 
-        data = requests.get(
-            url,
-            params=params,
-            timeout=10
-        ).json()
+        print("🟦 MEXC:", len(symbols))
 
 
-        candles = data["result"]["list"]
-
-
-        candles.reverse()
-
-
-        return pd.DataFrame({
-
-            "open": [
-                float(x[1]) for x in candles
-            ],
-
-            "high": [
-                float(x[2]) for x in candles
-            ],
-
-            "low": [
-                float(x[3]) for x in candles
-            ],
-
-            "close": [
-                float(x[4]) for x in candles
-            ],
-
-            "volume": [
-                float(x[5]) for x in candles
-            ]
-
-        })
+        return symbols
 
 
     except Exception as e:
 
+
+        print("MEXC Failed:", e)
+
+
+        return []
+
+
+
+# ==============================
+# 🌍 MERGE SOURCES
+# ==============================
+
+def get_futures_symbols():
+
+
+    all_symbols = []
+
+
+    all_symbols += binance_symbols()
+
+    all_symbols += bybit_symbols()
+
+    all_symbols += mexc_symbols()
+
+
+
+    clean = {}
+
+
+    for x in all_symbols:
+
+        clean[x["symbol"]] = x
+
+
+
+    final = list(
+        clean.values()
+    )
+
+
+    print(
+        "🐋 TOTAL MARKETS:",
+        len(final)
+    )
+
+
+    return final
+
+
+
+# ==============================
+# 📊 UNIVERSAL CANDLES
+# ==============================
+
+def get_candles(market):
+
+
+    symbol = market["symbol"]
+
+    source = market["source"]
+
+
+    try:
+
+
+        if source == "BINANCE":
+
+
+            url = "https://fapi.binance.com/fapi/v1/klines"
+
+
+            params = {
+                "symbol": symbol,
+                "interval": "15m",
+                "limit": 150
+            }
+
+
+            data = requests.get(
+                url,
+                params=params,
+                timeout=10
+            ).json()
+
+
+            candles = [
+                [
+                    x[1],
+                    x[2],
+                    x[3],
+                    x[4],
+                    x[5]
+                ]
+
+                for x in data
+            ]
+
+
+        elif source == "BYBIT":
+
+
+            url = "https://api.bybit.com/v5/market/kline"
+
+
+            params = {
+                "category": "linear",
+                "symbol": symbol,
+                "interval": "15",
+                "limit": 150
+            }
+
+
+            data = requests.get(
+                url,
+                params=params,
+                timeout=10
+            ).json()
+
+
+            candles = [
+
+                [
+                    x[1],
+                    x[2],
+                    x[3],
+                    x[4],
+                    x[5]
+                ]
+
+                for x in data["result"]["list"]
+
+            ]
+
+
+
+        else:
+
+            return None
+
+
+
+        df = pd.DataFrame(
+
+            candles,
+
+            columns=[
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+            ]
+
+        )
+
+
+        return df.astype(float)
+
+
+
+    except Exception as e:
+
+
         print(
-            "Candle Error:",
+            "Candle Failed:",
             symbol,
+            source,
             e
         )
 
 
         return None
-
-
-
 # ==============================
-# DATAFRAME BUILDER
+# 🧠 AHAD ANALYSIS ENGINE v7.1
+# MULTI SOURCE READY
 # ==============================
 
-def make_dataframe(data):
-
-
-    df = pd.DataFrame(
-
-        data,
-
-        columns=[
-
-            "time",
-
-            "open",
-
-            "high",
-
-            "low",
-
-            "close",
-
-            "volume",
-
-            "x1",
-
-            "x2",
-
-            "x3",
-
-            "x4",
-
-            "x5",
-
-            "x6"
-
-        ]
-
-    )
-
-
-    df = df[
-        [
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume"
-        ]
-    ]
-
-
-    return df.astype(float)
-# ==============================
-# 🧠 AHAD ANALYSIS ENGINE v6.5
-# ==============================
-
-def analyze(symbol):
+def analyze(market):
 
     try:
 
-        df = get_candles(symbol)
+        df = get_candles(market)
 
-        # allow new futures coins
+
         if df is None or len(df) < 60:
+
             return None
+
+
+        symbol = market["symbol"]
+
+        source = market["source"]
 
 
         close = df["close"]
@@ -434,6 +372,7 @@ def analyze(symbol):
 
         macd = MACD(close)
 
+
         macd_value = (
             macd.macd().iloc[-1]
             -
@@ -442,7 +381,7 @@ def analyze(symbol):
 
 
         # ==================
-        # ATR RISK ENGINE
+        # ATR
         # ==================
 
         atr = AverageTrueRange(
@@ -491,7 +430,7 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "Price above EMA50 ✅"
+                "EMA50 Bullish ✅"
             )
 
 
@@ -499,7 +438,7 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "Trend Bullish 🟢"
+                "Trend Confirmed 🟢"
             )
 
 
@@ -528,11 +467,10 @@ def analyze(symbol):
 
 
         # ==================
-        # SMART ENTRY
+        # ENTRY ENGINE
         # ==================
 
         entry = price
-
 
         stop_loss = (
             price -
@@ -562,6 +500,8 @@ def analyze(symbol):
 
             "coin": symbol,
 
+            "source": source,
+
             "entry": entry,
 
             "sl": stop_loss,
@@ -585,13 +525,13 @@ def analyze(symbol):
 
         print(
             "Analyze Error:",
-            symbol,
             e
         )
 
+
         return None
 # ==============================
-# 🤖 TELEGRAM COMMANDS v6.5
+# 🤖 TELEGRAM COMMANDS v7.1
 # ==============================
 
 @bot.message_handler(commands=["start"])
@@ -600,15 +540,18 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v6.5 RADAR ONLINE
+🚀 AHAD AI v7.1 MULTI SOURCE ONLINE
 
-🐋 Whale Engine ACTIVE
+🟨 Binance Engine
+🟧 Bybit Engine
+🟦 MEXC Engine
+
+🐋 Whale Scanner ACTIVE
 📊 Futures Scanner ACTIVE
 🟢 LONG Hunter ACTIVE
-⏱ 15m Timeframe ACTIVE
+⏱ 15m ACTIVE
 🎯 Smart Entry ACTIVE
 🛑 ATR Risk ACTIVE
-👀 TRUE Radar ACTIVE
 
 Send /scan
 """
@@ -621,8 +564,13 @@ def scan(message):
     bot.reply_to(
         message,
 """
-🐋 AHAD AI v6.5 scanning market...
-⏱ Timeframe: 15m
+🐋 AHAD AI v7.1 scanning...
+
+🟨 Binance
+🟧 Bybit
+🟦 MEXC
+
+⏱ 15m
 """
     )
 
@@ -630,18 +578,15 @@ def scan(message):
     results = []
 
 
-    symbols = get_futures_symbols()
+    markets = get_futures_symbols()
 
 
-    # ==================
-    # SCAN ENGINE
-    # ==================
-
-    for symbol in symbols[:200]:
+    for market in markets[:300]:
 
         try:
 
-            result = analyze(symbol)
+            result = analyze(market)
+
 
             if result:
 
@@ -655,9 +600,9 @@ def scan(message):
 
             print(
                 "Scan Error:",
-                symbol,
                 e
             )
+
 
 
     results = sorted(
@@ -667,14 +612,15 @@ def scan(message):
     )
 
 
-    # ==================
-    # 🟢 SNIPER LONG
-    # ==================
 
     signals = [
+
         x for x in results
+
         if x["score"] >= 80
+
     ][:3]
+
 
 
     if signals:
@@ -686,20 +632,24 @@ def scan(message):
             bot.send_message(
                 message.chat.id,
 f"""
-🚀 AHAD AI SNIPER SIGNAL 🐋
+🚨 AHAD AI SIGNAL 🐋
 
-🟢 LONG SETUP FOUND
+🟢 LONG FOUND
 
 🪙 Coin:
 {s['coin']}
 
+📡 Source:
+{s['source']}
+
 🔥 Score:
 {s['score']}/100
+
 
 🎯 ENTRY:
 {round(s['entry'],5)}
 
-🛑 STOP LOSS:
+🛑 STOP:
 {round(s['sl'],5)}
 
 🎯 TP1:
@@ -708,11 +658,13 @@ f"""
 🎯 TP2:
 {round(s['tp2'],5)}
 
+
 📊 RSI:
 {round(s['rsi'],2)}
 
 🐋 Whale:
 {round(s['whale'],2)}X
+
 
 ✅ Reasons:
 {chr(10).join(s['reasons'])}
@@ -720,9 +672,6 @@ f"""
             )
 
 
-    # ==================
-    # 👀 TRUE RADAR
-    # ==================
 
     else:
 
@@ -731,11 +680,11 @@ f"""
 
 
         text = """
-👀 AHAD AI TRUE RADAR
+👀 AHAD AI RADAR
 
-No sniper LONG yet 🛡
+No sniper yet 🛡
 
-🐋 Closest Market Setups:
+Closest setups:
 """
 
 
@@ -749,6 +698,8 @@ No sniper LONG yet 🛡
 
 🪙 {r['coin']}
 
+📡 {r['source']}
+
 🔥 Score:
 {r['score']}/100
 
@@ -757,8 +708,6 @@ No sniper LONG yet 🛡
 
 🐋 Whale:
 {round(r['whale'],2)}X
-
-👀 Monitoring...
 
 ━━━━━━━━━━
 """
@@ -769,11 +718,12 @@ No sniper LONG yet 🛡
 
             text += """
 
-⚠️ No market data detected
+⚠️ No data from sources
 
-Check:
-- Binance API
-- Futures connection
+Checking:
+🟨 Binance
+🟧 Bybit
+🟦 MEXC
 """
 
 
@@ -785,7 +735,7 @@ Check:
 
 
 # ==============================
-# 🛡 TELEGRAM AUTO RECOVERY
+# 🛡 AUTO RECOVERY
 # ==============================
 
 def telegram_engine():
@@ -814,7 +764,7 @@ def telegram_engine():
 
 
             print(
-                "🔄 Restart Telegram..."
+                "🔄 Restart Telegram"
             )
 
 
@@ -839,7 +789,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v6.5 FULL ONLINE"
+    "🔥 AHAD AI v7.1 FULL ONLINE"
 )
 
 

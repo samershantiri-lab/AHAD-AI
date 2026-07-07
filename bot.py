@@ -1,6 +1,5 @@
 # ==============================
-# 🚀 AHAD AI v7.1
-# MULTI SOURCE AI SCANNER
+# 🚀 AHAD AI v7.2 MULTI SOURCE ENGINE
 # ==============================
 
 import os
@@ -19,7 +18,7 @@ from ta.volatility import AverageTrueRange
 
 
 # ==============================
-# 🤖 TELEGRAM CONFIG
+# CONFIG
 # ==============================
 
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -29,25 +28,31 @@ if TOKEN is None:
 
 bot = telebot.TeleBot(TOKEN)
 
-print("🚀 Starting AHAD AI v7.1")
-print("🐋 Multi Source Engine ACTIVE")
+print("🚀 Starting AHAD AI v7.2")
+print("🐋 Multi Source Engine Loading")
 
 
 # ==============================
-# 🌐 RENDER KEEP ALIVE
+# KEEP RENDER ONLINE
 # ==============================
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def home():
 
-    return "🚀 AHAD AI v7.1 ONLINE 🐋"
+    return "🚀 AHAD AI v7.2 ONLINE 🐋"
 
 
 def run_web():
 
-    port = int(os.environ.get("PORT",10000))
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
 
     app.run(
         host="0.0.0.0",
@@ -56,10 +61,18 @@ def run_web():
 
 
 # ==============================
-# 🟨 BINANCE FUTURES
+# 🐋 MULTI SOURCE SYMBOL ENGINE
+# Binance + Bybit + MEXC
 # ==============================
 
-def binance_symbols():
+def get_futures_symbols():
+
+    all_symbols = []
+
+
+    # ==================
+    # 🟨 BINANCE
+    # ==================
 
     try:
 
@@ -70,154 +83,170 @@ def binance_symbols():
             timeout=10
         ).json()
 
-        result = []
+        binance = []
 
-        for s in data.get("symbols", []):
+        if "symbols" in data:
 
-            if (
-                s.get("quoteAsset") == "USDT"
-                and s.get("status") == "TRADING"
-            ):
+            for s in data["symbols"]:
 
-                result.append(
-                    {
-                        "symbol":s["symbol"],
-                        "source":"BINANCE"
-                    }
-                )
+                if (
+                    s["quoteAsset"] == "USDT"
+                    and
+                    s["status"] == "TRADING"
+                ):
+
+                    binance.append(
+                        s["symbol"]
+                    )
 
 
-        print("🟨 Binance:",len(result))
+        print(
+            "🟨 Binance:",
+            len(binance)
+        )
 
-        return result
+
+        all_symbols.extend(
+            binance
+        )
 
 
     except Exception as e:
 
-        print("Binance Error:",e)
+        print(
+            "❌ Binance Error:",
+            e
+        )
 
-        return []
 
 
-
-# ==============================
-# 🟧 BYBIT FUTURES
-# ==============================
-
-def bybit_symbols():
+    # ==================
+    # 🟧 BYBIT
+    # ==================
 
     try:
 
-        url="https://api.bybit.com/v5/market/instruments-info"
+        url = "https://api.bybit.com/v5/market/instruments-info"
 
-        params={
-            "category":"linear"
+        params = {
+            "category": "linear"
         }
 
-        data=requests.get(
+
+        data = requests.get(
             url,
             params=params,
             timeout=10
         ).json()
 
 
-        result=[]
+        bybit = []
 
 
-        for s in data["result"]["list"]:
-
-            if s["quoteCoin"]=="USDT":
-
-                result.append(
-                    {
-                        "symbol":s["symbol"],
-                        "source":"BYBIT"
-                    }
-                )
+        if "result" in data:
 
 
-        print("🟧 Bybit:",len(result))
+            for s in data["result"]["list"]:
 
 
-        return result
+                if (
+                    s["quoteCoin"] == "USDT"
+                    and
+                    s["status"] == "Trading"
+                ):
+
+                    bybit.append(
+                        s["symbol"]
+                    )
+
+
+        print(
+            "🟧 Bybit:",
+            len(bybit)
+        )
+
+
+        all_symbols.extend(
+            bybit
+        )
 
 
     except Exception as e:
 
-        print("Bybit Error:",e)
+        print(
+            "❌ Bybit Error:",
+            e
+        )
 
-        return []
 
 
-
-# ==============================
-# 🟦 MEXC FUTURES
-# ==============================
-
-def mexc_symbols():
+    # ==================
+    # 🟦 MEXC
+    # ==================
 
     try:
 
-        url="https://contract.mexc.com/api/v1/contract/detail"
+        url = "https://contract.mexc.com/api/v1/contract/detail"
 
 
-        data=requests.get(
+        data = requests.get(
             url,
             timeout=10
         ).json()
 
 
-        result=[]
+        mexc = []
 
 
-        for s in data["data"]:
-
-            if s["quoteCoin"]=="USDT":
-
-                result.append(
-                    {
-                        "symbol":s["symbol"].replace("_",""),
-                        "source":"MEXC"
-                    }
-                )
+        if "data" in data:
 
 
-        print("🟦 MEXC:",len(result))
+            for s in data["data"]:
 
 
-        return result
+                if s["quoteCoin"] == "USDT":
+
+
+                    symbol = (
+                        s["symbol"]
+                        .replace("_", "")
+                    )
+
+
+                    mexc.append(
+                        symbol
+                    )
+
+
+        print(
+            "🟦 MEXC:",
+            len(mexc)
+        )
+
+
+        all_symbols.extend(
+            mexc
+        )
 
 
     except Exception as e:
 
-        print("MEXC Error:",e)
-
-        return []
-
-
-
-# ==============================
-# 🐋 MERGE SOURCES
-# ==============================
-
-def get_futures_symbols():
-
-    markets=[]
-
-    markets += binance_symbols()
-    markets += bybit_symbols()
-    markets += mexc_symbols()
+        print(
+            "❌ MEXC Error:",
+            e
+        )
 
 
-    clean={}
 
+    # ==================
+    # REMOVE DUPLICATES
+    # ==================
 
-    for m in markets:
-
-        clean[m["symbol"]] = m
-
-
-    final=list(clean.values())
+    final = list(
+        set(
+            all_symbols
+        )
+    )
 
 
     print(
@@ -227,6 +256,96 @@ def get_futures_symbols():
 
 
     return final
+
+
+
+# ==============================
+# GET MARKET CANDLES
+# ==============================
+
+def get_candles(symbol):
+
+    try:
+
+        url = "https://fapi.binance.com/fapi/v1/klines"
+
+
+        params = {
+
+            "symbol": symbol,
+
+            "interval": "15m",
+
+            "limit": 150
+
+        }
+
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10
+        )
+
+
+        data = response.json()
+
+
+        if not isinstance(data, list):
+
+            return None
+
+
+
+        df = pd.DataFrame(
+
+            data,
+
+            columns=[
+
+                "time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "qav",
+                "trades",
+                "tb",
+                "tq",
+                "ignore"
+
+            ]
+
+        )
+
+
+        df = df[
+            [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+            ]
+        ]
+
+
+        return df.astype(float)
+
+
+
+    except Exception as e:
+
+        print(
+            "Candle Error:",
+            symbol,
+            e
+        )
+
+
+        return None
 # ==============================
 # 📊 GET CANDLES
 # ==============================

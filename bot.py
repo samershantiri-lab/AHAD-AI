@@ -170,8 +170,7 @@ def get_candles(symbol):
 
         return None
 # ==============================
-# 🧠 AHAD AI ANALYSIS ENGINE v6.4
-# TRUE RADAR MODE
+# 🧠 AHAD ANALYSIS ENGINE v6.5
 # ==============================
 
 def analyze(symbol):
@@ -180,7 +179,7 @@ def analyze(symbol):
 
         df = get_candles(symbol)
 
-        if df is None:
+        if df is None or len(df) < 100:
             return None
 
 
@@ -221,7 +220,7 @@ def analyze(symbol):
 
         macd = MACD(close)
 
-        macd_power = (
+        macd_value = (
             macd.macd().iloc[-1]
             -
             macd.macd_signal().iloc[-1]
@@ -229,7 +228,7 @@ def analyze(symbol):
 
 
         # ==================
-        # ATR RISK ENGINE
+        # ATR
         # ==================
 
         atr = AverageTrueRange(
@@ -241,7 +240,7 @@ def analyze(symbol):
 
 
         # ==================
-        # WHALE ENGINE 🐋
+        # WHALE VOLUME
         # ==================
 
         volume_now = df["volume"].iloc[-1]
@@ -254,11 +253,8 @@ def analyze(symbol):
 
 
         if volume_avg == 0:
-
             whale_power = 0
-
         else:
-
             whale_power = (
                 volume_now /
                 volume_avg
@@ -266,7 +262,7 @@ def analyze(symbol):
 
 
         # ==================
-        # AHAD SCORE ENGINE
+        # SCORE ENGINE v6.5
         # ==================
 
         score = 0
@@ -276,8 +272,7 @@ def analyze(symbol):
 
         if price > ema50:
 
-            score += 25
-
+            score += 20
             reasons.append(
                 "Price Above EMA50 ✅"
             )
@@ -286,46 +281,34 @@ def analyze(symbol):
         if ema50 > ema200:
 
             score += 20
-
             reasons.append(
-                "Bull Trend 🐂"
+                "Trend Bullish 🟢"
             )
 
 
         if 35 <= rsi <= 70:
 
             score += 20
-
             reasons.append(
-                "Good RSI Zone 🎯"
+                "RSI Zone OK 🎯"
             )
 
 
-        if macd_power > 0:
+        if macd_value > 0:
 
             score += 20
-
             reasons.append(
-                "MACD Positive 🔥"
+                "MACD Positive 📈"
             )
 
 
-        if whale_power >= 1.5:
+        if whale_power >= 1:
 
-            score += 15
-
+            score += 20
             reasons.append(
-                "Whale Volume 🐋"
+                "Volume Increasing 🐋"
             )
 
-
-        elif whale_power >= 1.0:
-
-            score += 8
-
-            reasons.append(
-                "Volume Building 👀"
-            )
 
 
         # ==================
@@ -359,8 +342,6 @@ def analyze(symbol):
         )
 
 
-        # IMPORTANT:
-        # ALWAYS RETURN RESULT FOR RADAR
 
         return {
 
@@ -388,13 +369,11 @@ def analyze(symbol):
 
     except Exception as e:
 
-
         print(
             "Analyze Error:",
             symbol,
             e
         )
-
 
         return None
 # ==============================

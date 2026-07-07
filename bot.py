@@ -1,5 +1,5 @@
 # ==============================
-# 🚀 AHAD AI v6.1 STABLE
+# 🚀 AHAD AI v6.6 DATA ENGINE
 # ==============================
 
 import os
@@ -28,19 +28,21 @@ if TOKEN is None:
 
 bot = telebot.TeleBot(TOKEN)
 
-print("🚀 Starting AHAD AI v6.1")
-print("🤖 Telegram Engine ACTIVE")
+print("🚀 Starting AHAD AI v6.6")
+print("🐋 Data Engine Loading")
 
 
 # ==============================
-# RENDER KEEP ALIVE
+# KEEP RENDER ONLINE
 # ==============================
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def home():
-    return "🚀 AHAD AI v6.1 ONLINE 🐋"
+
+    return "🚀 AHAD AI v6.6 DATA ENGINE ONLINE 🐋"
 
 
 def run_web():
@@ -59,91 +61,154 @@ def run_web():
 
 
 # ==============================
-# BINANCE FUTURES LIST
+# FUTURES SYMBOL ENGINE
 # ==============================
 
 def get_futures_symbols():
 
+    symbols = []
+
+
     try:
 
-        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+        print(
+            "📡 Connecting Binance Futures..."
+        )
 
-        data = requests.get(
+
+        url = (
+            "https://fapi.binance.com"
+            "/fapi/v1/exchangeInfo"
+        )
+
+
+        response = requests.get(
             url,
             timeout=10
-        ).json()
+        )
 
 
-        symbols = []
+        data = response.json()
 
 
-        for s in data["symbols"]:
+        if "symbols" in data:
 
-            if (
-                s["quoteAsset"] == "USDT"
-                and
-                s["status"] == "TRADING"
-            ):
 
-                symbols.append(
-                    s["symbol"]
-                )
+            for s in data["symbols"]:
+
+
+                if (
+                    s["quoteAsset"] == "USDT"
+                    and
+                    s["status"] == "TRADING"
+                ):
+
+                    symbols.append(
+                        s["symbol"]
+                    )
+
+
+        print(
+            "🐋 Futures Found:",
+            len(symbols)
+        )
 
 
         return symbols
 
 
+
     except Exception as e:
 
+
         print(
-            "Symbol Error:",
+            "❌ Binance Error:",
             e
         )
+
 
         return []
 
 
 # ==============================
-# GET 15M CANDLES
+# GET MARKET CANDLES
 # ==============================
 
 def get_candles(symbol):
 
     try:
 
-        url = "https://fapi.binance.com/fapi/v1/klines"
+
+        url = (
+            "https://fapi.binance.com"
+            "/fapi/v1/klines"
+        )
 
 
         params = {
+
             "symbol": symbol,
+
             "interval": "15m",
-            "limit": 200
+
+            "limit": 150
+
         }
 
 
-        data = requests.get(
+        response = requests.get(
             url,
             params=params,
             timeout=10
-        ).json()
+        )
+
+
+        data = response.json()
+
+
+        if not isinstance(data, list):
+
+            print(
+                "Candle API Error:",
+                data
+            )
+
+            return None
+
 
 
         df = pd.DataFrame(
+
             data,
+
             columns=[
+
                 "time",
+
                 "open",
+
                 "high",
+
                 "low",
+
                 "close",
+
                 "volume",
-                "x1",
-                "x2",
-                "x3",
-                "x4",
-                "x5",
-                "x6"
+
+                "close_time",
+
+                "qav",
+
+                "trades",
+
+                "tb",
+
+                "tq",
+
+                "ignore"
+
             ]
+
         )
 
 
@@ -161,12 +226,16 @@ def get_candles(symbol):
         return df.astype(float)
 
 
+
     except Exception as e:
+
 
         print(
             "Candle Error:",
+            symbol,
             e
         )
+
 
         return None
 # ==============================

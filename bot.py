@@ -170,7 +170,7 @@ def get_candles(symbol):
 
         return None
 # ==============================
-# 🧠 AHAD AI v6.1 ANALYSIS ENGINE
+# 🧠 AHAD AI ANALYSIS ENGINE v6.2
 # ==============================
 
 def analyze(symbol):
@@ -188,7 +188,9 @@ def analyze(symbol):
         price = close.iloc[-1]
 
 
+        # ==================
         # EMA TREND
+        # ==================
 
         ema50 = EMAIndicator(
             close,
@@ -202,7 +204,9 @@ def analyze(symbol):
         ).ema_indicator().iloc[-1]
 
 
+        # ==================
         # RSI
+        # ==================
 
         rsi = RSIIndicator(
             close,
@@ -210,7 +214,9 @@ def analyze(symbol):
         ).rsi().iloc[-1]
 
 
+        # ==================
         # MACD
+        # ==================
 
         macd = MACD(close)
 
@@ -221,7 +227,9 @@ def analyze(symbol):
         )
 
 
-        # ATR STOP ENGINE
+        # ==================
+        # ATR
+        # ==================
 
         atr = AverageTrueRange(
             df["high"],
@@ -231,7 +239,9 @@ def analyze(symbol):
         ).average_true_range().iloc[-1]
 
 
-        # WHALE VOLUME
+        # ==================
+        # WHALE ENGINE
+        # ==================
 
         volume_now = df["volume"].iloc[-1]
 
@@ -242,18 +252,18 @@ def analyze(symbol):
         )
 
 
-        whale = (
-            volume_now
-            /
+        whale_power = (
+            volume_now /
             volume_avg
         )
 
 
         # ==================
-        # AHAD SCORE
+        # AHAD SCORE v6.2
         # ==================
 
         score = 0
+
         reasons = []
 
 
@@ -262,7 +272,7 @@ def analyze(symbol):
             score += 25
 
             reasons.append(
-                "EMA50 Bullish ✅"
+                "Trend Above EMA50 ✅"
             )
 
 
@@ -271,7 +281,7 @@ def analyze(symbol):
             score += 20
 
             reasons.append(
-                "Trend Confirmed 🐂"
+                "Bullish Structure 🐂"
             )
 
 
@@ -280,7 +290,7 @@ def analyze(symbol):
             score += 20
 
             reasons.append(
-                "RSI LONG Zone ✅"
+                "RSI Entry Zone 🎯"
             )
 
 
@@ -289,26 +299,40 @@ def analyze(symbol):
             score += 20
 
             reasons.append(
-                "MACD Momentum 🚀"
+                "MACD Momentum 🔥"
             )
 
 
-        if whale >= 1.1:
+        # WHALE CONFIRMATION
+
+        if whale_power >= 1.5:
 
             score += 15
 
             reasons.append(
-                "Whale Activity 🐋"
+                "Whale Entered 🐋"
             )
 
 
-        # ENTRY + RISK
+        elif whale_power >= 1.1:
+
+            score += 8
+
+            reasons.append(
+                "Pre Whale Activity 👀"
+            )
+
+
+        # ==================
+        # SMART ENTRY
+        # ==================
 
         entry = price
 
+
         stop_loss = (
             price -
-            atr * 1.5
+            (atr * 1.5)
         )
 
 
@@ -330,31 +354,24 @@ def analyze(symbol):
         )
 
 
-        if score >= 80:
-
-            status = "🔥 SNIPER LONG"
-
-        elif score >= 60:
-
-            status = "🟡 ALMOST READY"
-
-        else:
-
-            status = "👀 WATCHING"
-
-
-
         return {
 
             "coin": symbol,
+
             "entry": entry,
+
             "sl": stop_loss,
+
             "tp1": tp1,
+
             "tp2": tp2,
+
             "score": score,
+
             "rsi": rsi,
-            "whale": whale,
-            "status": status,
+
+            "whale": whale_power,
+
             "reasons": reasons
 
         }
@@ -362,14 +379,16 @@ def analyze(symbol):
 
     except Exception as e:
 
+
         print(
             "Analyze Error:",
             e
         )
 
+
         return None
 # ==============================
-# 🤖 TELEGRAM COMMANDS
+# 🤖 TELEGRAM COMMANDS v6.2
 # ==============================
 
 @bot.message_handler(commands=["start"])
@@ -378,14 +397,15 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v6.1 ONLINE
+🚀 AHAD AI v6.2 PRE-WHALE HUNTER
 
 🐋 Whale Engine ACTIVE
 📊 Auto Futures Scanner ACTIVE
 🟢 LONG Hunter ACTIVE
 ⏱ 15m Timeframe ACTIVE
-🎯 Smart Entry + ATR SL ACTIVE
-👀 Watchlist ACTIVE
+🎯 Smart Entry ACTIVE
+🛑 ATR Stop Loss ACTIVE
+👀 Pre-Whale Watchlist ACTIVE
 
 Send /scan
 """
@@ -397,7 +417,7 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v6.1 scanning market..."
+        "🐋 AHAD AI v6.2 scanning market..."
     )
 
 
@@ -412,6 +432,7 @@ def scan(message):
         try:
 
             result = analyze(symbol)
+
 
             if result:
 
@@ -440,16 +461,26 @@ def scan(message):
 
     sniper = [
         x for x in results
-        if x["score"] >= 80
+        if x["score"] >= 75
     ][:3]
 
 
-    almost = [
+    pre_whale = [
         x for x in results
-        if 60 <= x["score"] < 80
+        if 60 <= x["score"] < 75
     ][:5]
 
 
+    watch = [
+        x for x in results
+        if 45 <= x["score"] < 60
+    ][:5]
+
+
+
+    # ==================
+    # 🔥 SNIPER SIGNAL
+    # ==================
 
     if sniper:
 
@@ -460,14 +491,12 @@ def scan(message):
             bot.send_message(
                 message.chat.id,
 f"""
-🐋 AHAD AI SNIPER SIGNAL
+🐋 AHAD AI v6.2 SIGNAL
 
-🟢 LONG
+🟢 SNIPER LONG
 
 🪙 Coin:
 {s['coin']}
-
-{s['status']}
 
 🎯 Entry:
 {round(s['entry'],5)}
@@ -487,42 +516,47 @@ f"""
 🐋 Whale:
 {round(s['whale'],2)}X
 
-🔥 Score:
+🔥 SCORE:
 {s['score']}/100
 
-✅ Reasons:
+✅ Confirmations:
 {chr(10).join(s['reasons'])}
 """
             )
 
 
-    elif almost:
+
+    # ==================
+    # 🟡 PRE WHALE
+    # ==================
+
+    elif pre_whale:
 
 
         text = """
-🟡 AHAD WATCHLIST
+🟡 PRE-WHALE WATCHLIST 🐋
 
-Almost Ready Setups 👀
+Potential moves forming:
 """
 
 
-        for a in almost:
+        for p in pre_whale:
 
 
             text += f"""
 
-🪙 {a['coin']}
+🪙 {p['coin']}
 
 🔥 Score:
-{a['score']}/100
+{p['score']}/100
 
 📊 RSI:
-{round(a['rsi'],2)}
+{round(p['rsi'],2)}
 
 🐋 Whale:
-{round(a['whale'],2)}X
+{round(p['whale'],2)}X
 
-{a['status']}
+👀 Waiting confirmation
 
 ━━━━━━━━━━
 """
@@ -534,12 +568,60 @@ Almost Ready Setups 👀
         )
 
 
+
+    # ==================
+    # 👀 WATCH ONLY
+    # ==================
+
+    elif watch:
+
+
+        text = """
+👀 AHAD WATCH MODE
+
+Early setups:
+"""
+
+
+        for w in watch:
+
+
+            text += f"""
+
+🪙 {w['coin']}
+
+🔥 Score:
+{w['score']}/100
+
+📊 RSI:
+{round(w['rsi'],2)}
+
+🐋 Whale:
+{round(w['whale'],2)}X
+
+━━━━━━━━━━
+"""
+
+
+        bot.send_message(
+            message.chat.id,
+            text
+        )
+
+
+
     else:
 
 
         bot.send_message(
             message.chat.id,
-            "😴 Market quiet now 🛡\n🐋 Waiting for whale movement..."
+"""
+😴 Market quiet now 🛡
+
+No clean LONG structure.
+
+🐋 Waiting for better setup...
+"""
         )
 
 
@@ -573,6 +655,11 @@ def telegram_engine():
             )
 
 
+            print(
+                "🔄 Restarting..."
+            )
+
+
             time.sleep(5)
 
 
@@ -594,7 +681,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v6.1 FULL ONLINE"
+    "🔥 AHAD AI v6.2 FULL ONLINE"
 )
 
 

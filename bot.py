@@ -227,7 +227,7 @@ def get_futures_symbols():
 
 
     return final
-    # ==============================
+# ==============================
 # 📊 GET CANDLES
 # ==============================
 
@@ -442,3 +442,236 @@ def analyze(market):
         print("Analyze Error:",e)
 
         return None
+# ==============================
+# 🤖 TELEGRAM COMMANDS
+# ==============================
+
+@bot.message_handler(commands=["start"])
+def start(message):
+
+    bot.reply_to(
+        message,
+"""
+🚀 AHAD AI v7.1 ONLINE 🐋
+
+🟨 Binance
+🟧 Bybit
+🟦 MEXC
+
+📊 Multi Source Scanner ACTIVE
+🐋 Whale Engine ACTIVE
+🟢 LONG Hunter ACTIVE
+⏱ Timeframe: 15m
+🎯 Smart Entry ACTIVE
+
+Send /scan
+"""
+    )
+
+
+@bot.message_handler(commands=["scan"])
+def scan(message):
+
+    bot.reply_to(
+        message,
+"""
+🐋 AHAD AI scanning market...
+
+Collecting data:
+🟨 Binance
+🟧 Bybit
+🟦 MEXC
+"""
+    )
+
+
+    results = []
+
+
+    markets = get_futures_symbols()
+
+
+    for market in markets[:300]:
+
+        try:
+
+            result = analyze(market)
+
+            if result:
+
+                results.append(result)
+
+
+            time.sleep(0.03)
+
+
+        except Exception as e:
+
+            print(
+                "Scan Error:",
+                e
+            )
+
+
+
+    results = sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+
+    signals = [
+        x for x in results
+        if x["score"] >= 80
+    ][:3]
+
+
+    if signals:
+
+
+        for s in signals:
+
+            bot.send_message(
+                message.chat.id,
+f"""
+🚨 AHAD AI SIGNAL 🐋
+
+🟢 LONG SETUP
+
+🪙 Coin:
+{s['coin']}
+
+📡 Source:
+{s['source']}
+
+🔥 Score:
+{s['score']}/100
+
+🎯 Entry:
+{round(s['entry'],5)}
+
+🛑 SL:
+{round(s['sl'],5)}
+
+🎯 TP1:
+{round(s['tp1'],5)}
+
+🎯 TP2:
+{round(s['tp2'],5)}
+
+📊 RSI:
+{round(s['rsi'],2)}
+
+🐋 Whale:
+{round(s['whale'],2)}X
+
+
+✅ Reasons:
+{chr(10).join(s['reasons'])}
+"""
+            )
+
+
+    else:
+
+
+        text = """
+👀 AHAD AI RADAR
+
+No perfect LONG yet 🛡
+
+Closest setups:
+"""
+
+
+        for r in results[:5]:
+
+            text += f"""
+
+🪙 {r['coin']}
+
+📡 Source:
+{r['source']}
+
+🔥 Score:
+{r['score']}/100
+
+📊 RSI:
+{round(r['rsi'],2)}
+
+🐋 Whale:
+{round(r['whale'],2)}X
+
+━━━━━━━━━━
+"""
+
+
+        bot.send_message(
+            message.chat.id,
+            text
+        )
+
+
+
+# ==============================
+# 🛡 TELEGRAM AUTO RECOVERY
+# ==============================
+
+def telegram_engine():
+
+    while True:
+
+        try:
+
+            print(
+                "🤖 Telegram ACTIVE"
+            )
+
+
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=60
+            )
+
+
+        except Exception:
+
+            print(
+                traceback.format_exc()
+            )
+
+
+            print(
+                "🔄 Restarting Telegram"
+            )
+
+
+            time.sleep(5)
+
+
+
+# ==============================
+# 🚀 START AHAD AI
+# ==============================
+
+threading.Thread(
+    target=run_web,
+    daemon=True
+).start()
+
+
+threading.Thread(
+    target=telegram_engine,
+    daemon=True
+).start()
+
+
+print(
+    "🔥 AHAD AI v7.1 FULL ONLINE"
+)
+
+
+while True:
+
+    time.sleep(60)

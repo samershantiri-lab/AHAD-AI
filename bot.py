@@ -1,5 +1,5 @@
 # ==============================
-# 🚀 AHAD AI v6.6 DATA ENGINE
+# 🚀 AHAD AI v7.0 MULTI SOURCE ENGINE
 # ==============================
 
 import os
@@ -26,10 +26,12 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if TOKEN is None:
     raise Exception("BOT_TOKEN NOT FOUND")
 
+
 bot = telebot.TeleBot(TOKEN)
 
-print("🚀 Starting AHAD AI v6.6")
-print("🐋 Data Engine Loading")
+
+print("🚀 Starting AHAD AI v7.0")
+print("🐋 Multi Source Engine ACTIVE")
 
 
 # ==============================
@@ -42,7 +44,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🚀 AHAD AI v6.6 DATA ENGINE ONLINE 🐋"
+    return "🚀 AHAD AI v7.0 ONLINE 🐋"
 
 
 def run_web():
@@ -54,6 +56,7 @@ def run_web():
         )
     )
 
+
     app.run(
         host="0.0.0.0",
         port=port
@@ -61,41 +64,27 @@ def run_web():
 
 
 # ==============================
-# FUTURES SYMBOL ENGINE
+# 🟨 BINANCE SYMBOLS
 # ==============================
 
-def get_futures_symbols():
-
-    symbols = []
-
+def binance_symbols():
 
     try:
 
-        print(
-            "📡 Connecting Binance Futures..."
-        )
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/exchangeInfo"
-        )
-
-
-        response = requests.get(
+        data = requests.get(
             url,
             timeout=10
-        )
+        ).json()
 
 
-        data = response.json()
+        coins = []
 
 
         if "symbols" in data:
 
-
             for s in data["symbols"]:
-
 
                 if (
                     s["quoteAsset"] == "USDT"
@@ -103,46 +92,137 @@ def get_futures_symbols():
                     s["status"] == "TRADING"
                 ):
 
-                    symbols.append(
+                    coins.append(
                         s["symbol"]
                     )
 
 
         print(
-            "🐋 Futures Found:",
-            len(symbols)
+            "🟨 Binance:",
+            len(coins)
         )
 
 
-        return symbols
-
+        return coins
 
 
     except Exception as e:
 
-
         print(
-            "❌ Binance Error:",
+            "Binance Error:",
             e
         )
-
 
         return []
 
 
+
 # ==============================
-# GET MARKET CANDLES
+# 🟧 BYBIT SYMBOLS BACKUP
+# ==============================
+
+def bybit_symbols():
+
+    try:
+
+        url = (
+            "https://api.bybit.com"
+            "/v5/market/instruments-info"
+        )
+
+
+        params = {
+            "category": "linear"
+        }
+
+
+        data = requests.get(
+            url,
+            params=params,
+            timeout=10
+        ).json()
+
+
+        coins = []
+
+
+        for s in data["result"]["list"]:
+
+            if (
+                s["quoteCoin"] == "USDT"
+                and
+                s["status"] == "Trading"
+            ):
+
+                coins.append(
+                    s["symbol"]
+                )
+
+
+        print(
+            "🟧 Bybit:",
+            len(coins)
+        )
+
+
+        return coins
+
+
+    except Exception as e:
+
+        print(
+            "Bybit Error:",
+            e
+        )
+
+        return []
+
+
+
+# ==============================
+# AUTO SOURCE SELECTOR
+# ==============================
+
+def get_futures_symbols():
+
+    coins = binance_symbols()
+
+
+    if len(coins) > 0:
+
+        print(
+            "✅ Using Binance Data"
+        )
+
+        return coins
+
+
+    coins = bybit_symbols()
+
+
+    if len(coins) > 0:
+
+        print(
+            "✅ Using Bybit Data"
+        )
+
+
+    return coins
+
+
+
+# ==============================
+# GET CANDLES MULTI SOURCE
 # ==============================
 
 def get_candles(symbol):
 
+
+    # TRY BINANCE FIRST
+
     try:
 
-
-        url = (
-            "https://fapi.binance.com"
-            "/fapi/v1/klines"
-        )
+        url = "https://fapi.binance.com/fapi/v1/klines"
 
 
         params = {
@@ -156,79 +236,86 @@ def get_candles(symbol):
         }
 
 
-        response = requests.get(
+        data = requests.get(
             url,
             params=params,
             timeout=10
+        ).json()
+
+
+        if isinstance(data, list):
+
+            return make_dataframe(data)
+
+
+    except Exception:
+
+        pass
+
+
+
+    # BYBIT BACKUP
+
+    try:
+
+        url = (
+            "https://api.bybit.com"
+            "/v5/market/kline"
         )
 
 
-        data = response.json()
+        params = {
+
+            "category": "linear",
+
+            "symbol": symbol,
+
+            "interval": "15",
+
+            "limit": 150
+
+        }
 
 
-        if not isinstance(data, list):
-
-            print(
-                "Candle API Error:",
-                data
-            )
-
-            return None
+        data = requests.get(
+            url,
+            params=params,
+            timeout=10
+        ).json()
 
 
+        candles = data["result"]["list"]
 
-        df = pd.DataFrame(
 
-            data,
+        candles.reverse()
 
-            columns=[
 
-                "time",
+        return pd.DataFrame({
 
-                "open",
+            "open": [
+                float(x[1]) for x in candles
+            ],
 
-                "high",
+            "high": [
+                float(x[2]) for x in candles
+            ],
 
-                "low",
+            "low": [
+                float(x[3]) for x in candles
+            ],
 
-                "close",
+            "close": [
+                float(x[4]) for x in candles
+            ],
 
-                "volume",
-
-                "close_time",
-
-                "qav",
-
-                "trades",
-
-                "tb",
-
-                "tq",
-
-                "ignore"
-
+            "volume": [
+                float(x[5]) for x in candles
             ]
 
-        )
-
-
-        df = df[
-            [
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume"
-            ]
-        ]
-
-
-        return df.astype(float)
-
+        })
 
 
     except Exception as e:
-
 
         print(
             "Candle Error:",
@@ -238,6 +325,63 @@ def get_candles(symbol):
 
 
         return None
+
+
+
+# ==============================
+# DATAFRAME BUILDER
+# ==============================
+
+def make_dataframe(data):
+
+
+    df = pd.DataFrame(
+
+        data,
+
+        columns=[
+
+            "time",
+
+            "open",
+
+            "high",
+
+            "low",
+
+            "close",
+
+            "volume",
+
+            "x1",
+
+            "x2",
+
+            "x3",
+
+            "x4",
+
+            "x5",
+
+            "x6"
+
+        ]
+
+    )
+
+
+    df = df[
+        [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ]
+    ]
+
+
+    return df.astype(float)
 # ==============================
 # 🧠 AHAD ANALYSIS ENGINE v6.5
 # ==============================

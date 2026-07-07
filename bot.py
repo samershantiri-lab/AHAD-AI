@@ -20,7 +20,7 @@ from tradingview_ta import TA_Handler, Interval
 # 🔑 TELEGRAM
 # ==============================
 
-TOKEN = "PUT_YOUR_TOKEN_HERE"
+TOKEN = "8697535359:AAGlWi6GbtR1XQLlzhC_hoApLcfYiCxQWwg"
 
 bot = telebot.TeleBot(TOKEN)
 

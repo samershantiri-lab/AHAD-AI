@@ -179,7 +179,8 @@ def analyze(symbol):
 
         df = get_candles(symbol)
 
-        if df is None or len(df) < 100:
+        # allow new futures coins
+        if df is None or len(df) < 60:
             return None
 
 
@@ -198,7 +199,7 @@ def analyze(symbol):
         ).ema_indicator().iloc[-1]
 
 
-        ema200 = EMAIndicator(
+        ema100 = EMAIndicator(
             close,
             window=100
         ).ema_indicator().iloc[-1]
@@ -228,7 +229,7 @@ def analyze(symbol):
 
 
         # ==================
-        # ATR
+        # ATR RISK ENGINE
         # ==================
 
         atr = AverageTrueRange(
@@ -240,7 +241,7 @@ def analyze(symbol):
 
 
         # ==================
-        # WHALE VOLUME
+        # 🐋 WHALE ENGINE
         # ==================
 
         volume_now = df["volume"].iloc[-1]
@@ -253,8 +254,11 @@ def analyze(symbol):
 
 
         if volume_avg == 0:
+
             whale_power = 0
+
         else:
+
             whale_power = (
                 volume_now /
                 volume_avg
@@ -262,7 +266,7 @@ def analyze(symbol):
 
 
         # ==================
-        # SCORE ENGINE v6.5
+        # SCORE ENGINE
         # ==================
 
         score = 0
@@ -274,11 +278,11 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "Price Above EMA50 ✅"
+                "Price above EMA50 ✅"
             )
 
 
-        if ema50 > ema200:
+        if ema50 > ema100:
 
             score += 20
             reasons.append(
@@ -290,7 +294,7 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "RSI Zone OK 🎯"
+                "RSI Healthy 🎯"
             )
 
 
@@ -298,7 +302,7 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "MACD Positive 📈"
+                "MACD Momentum 📈"
             )
 
 
@@ -306,9 +310,8 @@ def analyze(symbol):
 
             score += 20
             reasons.append(
-                "Volume Increasing 🐋"
+                "Whale Volume 🐋"
             )
-
 
 
         # ==================
@@ -320,7 +323,7 @@ def analyze(symbol):
 
         stop_loss = (
             price -
-            (atr * 1.5)
+            atr * 1.5
         )
 
 
@@ -340,7 +343,6 @@ def analyze(symbol):
             entry +
             risk * 3
         )
-
 
 
         return {
@@ -366,7 +368,6 @@ def analyze(symbol):
         }
 
 
-
     except Exception as e:
 
         print(
@@ -377,7 +378,7 @@ def analyze(symbol):
 
         return None
 # ==============================
-# 🤖 TELEGRAM COMMANDS
+# 🤖 TELEGRAM COMMANDS v6.5
 # ==============================
 
 @bot.message_handler(commands=["start"])
@@ -386,7 +387,7 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v6.4 RADAR ONLINE
+🚀 AHAD AI v6.5 RADAR ONLINE
 
 🐋 Whale Engine ACTIVE
 📊 Futures Scanner ACTIVE
@@ -394,7 +395,7 @@ def start(message):
 ⏱ 15m Timeframe ACTIVE
 🎯 Smart Entry ACTIVE
 🛑 ATR Risk ACTIVE
-👀 Radar Mode ACTIVE
+👀 TRUE Radar ACTIVE
 
 Send /scan
 """
@@ -407,15 +408,21 @@ def scan(message):
     bot.reply_to(
         message,
 """
-🐋 AHAD AI v6.4 scanning market...
+🐋 AHAD AI v6.5 scanning market...
 ⏱ Timeframe: 15m
 """
     )
 
+
     results = []
+
 
     symbols = get_futures_symbols()
 
+
+    # ==================
+    # SCAN ENGINE
+    # ==================
 
     for symbol in symbols[:200]:
 
@@ -424,9 +431,12 @@ def scan(message):
             result = analyze(symbol)
 
             if result:
+
                 results.append(result)
 
+
             time.sleep(0.03)
+
 
         except Exception as e:
 
@@ -444,7 +454,9 @@ def scan(message):
     )
 
 
-    # 🔥 PERFECT LONG
+    # ==================
+    # 🟢 SNIPER LONG
+    # ==================
 
     signals = [
         x for x in results
@@ -454,15 +466,22 @@ def scan(message):
 
     if signals:
 
+
         for s in signals:
 
-            msg = f"""
-🚀 AHAD AI v6.4 SIGNAL
+
+            bot.send_message(
+                message.chat.id,
+f"""
+🚀 AHAD AI SNIPER SIGNAL 🐋
 
 🟢 LONG SETUP FOUND
 
 🪙 Coin:
 {s['coin']}
+
+🔥 Score:
+{s['score']}/100
 
 🎯 ENTRY:
 {round(s['entry'],5)}
@@ -476,63 +495,57 @@ def scan(message):
 🎯 TP2:
 {round(s['tp2'],5)}
 
-🔥 SCORE:
-{s['score']}/100
-
 📊 RSI:
 {round(s['rsi'],2)}
 
-🐋 Whale Power:
+🐋 Whale:
 {round(s['whale'],2)}X
-
 
 ✅ Reasons:
 {chr(10).join(s['reasons'])}
 """
-
-            bot.send_message(
-                message.chat.id,
-                msg
             )
 
 
+    # ==================
+    # 👀 TRUE RADAR
+    # ==================
+
     else:
 
-        watch = [
-            x for x in results
-            if x["score"] >= 50
-        ][:5]
+
+        radar = results[:5]
 
 
         text = """
-👀 AHAD AI RADAR MODE
+👀 AHAD AI TRUE RADAR
 
-😴 No sniper LONG yet 🛡
+No sniper LONG yet 🛡
 
-🐋 Closest 5 coins:
+🐋 Closest Market Setups:
 """
 
 
-        if watch:
+        if radar:
 
 
-            for w in watch:
+            for r in radar:
+
 
                 text += f"""
 
-🪙 {w['coin']}
+🪙 {r['coin']}
 
 🔥 Score:
-{w['score']}/100
+{r['score']}/100
 
 📊 RSI:
-{round(w['rsi'],2)}
+{round(r['rsi'],2)}
 
 🐋 Whale:
-{round(w['whale'],2)}X
+{round(r['whale'],2)}X
 
-👀 Status:
-Watching...
+👀 Monitoring...
 
 ━━━━━━━━━━
 """
@@ -543,11 +556,11 @@ Watching...
 
             text += """
 
-⚠️ Market quiet now
+⚠️ No market data detected
 
-No clean structure.
-
-🐋 Waiting for whale movement...
+Check:
+- Binance API
+- Futures connection
 """
 
 
@@ -572,6 +585,7 @@ def telegram_engine():
                 "🤖 Telegram Engine ACTIVE"
             )
 
+
             bot.infinity_polling(
                 skip_pending=True,
                 timeout=60
@@ -580,13 +594,16 @@ def telegram_engine():
 
         except Exception:
 
+
             print(
                 traceback.format_exc()
             )
 
+
             print(
                 "🔄 Restart Telegram..."
             )
+
 
             time.sleep(5)
 
@@ -609,7 +626,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v6.4 FULL ONLINE"
+    "🔥 AHAD AI v6.5 FULL ONLINE"
 )
 
 

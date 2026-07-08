@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v9.4 FINAL CLEAN
+# 🚀 AHAD AI v9.5 FINAL CLEAN
 # PART 1 - CORE + OKX DATA
 # =====================================
 
@@ -35,7 +35,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v9.4 ONLINE"
+    return "🐋 AHAD AI v9.5 ONLINE"
 
 
 def run_web():
@@ -54,7 +54,7 @@ def run_web():
 
 
 # =====================================
-# ⬛ OKX SYMBOLS
+# ⬛ OKX CRYPTO SYMBOLS ONLY
 # =====================================
 
 def get_symbols():
@@ -65,7 +65,6 @@ def get_symbols():
             "https://www.okx.com"
             "/api/v5/public/instruments"
         )
-
 
         params = {
             "instType": "SWAP"
@@ -79,25 +78,46 @@ def get_symbols():
         ).json()
 
 
+        blocked = [
+
+            "TSLA",
+            "AMZN",
+            "AAPL",
+            "NVDA",
+            "META",
+            "GOOGL",
+            "MSFT",
+            "NFLX"
+
+        ]
+
+
         result = []
 
 
         for x in data["data"]:
 
 
+            symbol = x["instId"]
+
+
             if (
                 x["settleCcy"] == "USDT"
                 and
                 x["state"] == "live"
+                and
+                not any(
+                    b in symbol
+                    for b in blocked
+                )
             ):
 
-                result.append(
-                    x["instId"]
-                )
+                result.append(symbol)
+
 
 
         print(
-            "⬛ OKX:",
+            "🐋 CRYPTO MARKETS:",
             len(result)
         )
 
@@ -110,13 +130,12 @@ def get_symbols():
 
 
         print(
-            "OKX SYMBOL ERROR:",
+            "SYMBOL ERROR:",
             e
         )
 
 
         return []
-
 
 
 # =====================================
@@ -302,7 +321,7 @@ def atr(candles):
 
 
 print(
-    "🚀 AHAD AI v9.4 CORE READY 🐋"
+    "🚀 AHAD AI v9.5 CORE READY 🐋"
 )
 
 # =====================================
@@ -380,7 +399,7 @@ def fomo_filter(candles):
     r = rsi(closes)
 
 
-    if pump > 5:
+    if pump > 3:
 
         return False, "⏳ WAIT RETEST (PUMPED)"
 
@@ -739,7 +758,7 @@ def start(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v9.4 ONLINE\n\n"
+        "🐋 AHAD AI v9.5 ONLINE\n\n"
         "🧠 AI Brain ACTIVE\n"
         "🐋 Smart Money ACTIVE\n"
         "📍 Support Resistance ACTIVE\n\n"
@@ -748,17 +767,26 @@ def start(message):
 
 
 
+# =====================================
+# 🔎 SCANNER
+# BEST 2 LONG + BEST 1 SHORT
+# =====================================
+
 @bot.message_handler(commands=["scan"])
 def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 Scanning OKX...\n"
-        "Searching early liquidity ⏳"
+        "🐋 AHAD AI v9.5 SCANNING...\n\n"
+        "🟢 Hunting LONG setups\n"
+        "🔴 Hunting SHORT setups\n"
+        "🧠 AI Brain running..."
     )
 
 
-    results = []
+    long_results = []
+
+    short_results = []
 
 
     symbols = get_symbols()
@@ -766,38 +794,80 @@ def scan(message):
 
     bot.send_message(
         message.chat.id,
-        f"⬛ Markets: {len(symbols)}"
+        f"🐋 Crypto Markets: {len(symbols)}"
     )
-
 
 
     for symbol in symbols:
 
+
         result = analyze(symbol)
 
 
-        if result and result["score"] >= 70:
+        if result:
 
-            results.append(result)
+
+            # 🔥 MAX SCORE 100
+            if result["score"] > 100:
+
+                result["score"] = 100
+
+
+
+            if result["score"] >= 70:
+
+
+                if result["direction"] == "🟢 LONG":
+
+                    long_results.append(result)
+
+
+                elif result["direction"] == "🔴 SHORT":
+
+                    short_results.append(result)
+
 
 
         time.sleep(0.03)
 
 
 
-    results = sorted(
-        results,
+    best_long = sorted(
+
+        long_results,
+
         key=lambda x: x["score"],
+
         reverse=True
-    )[:3]
+
+    )[:2]
+
+
+
+    best_short = sorted(
+
+        short_results,
+
+        key=lambda x: x["score"],
+
+        reverse=True
+
+    )[:1]
+
+
+
+    results = best_long + best_short
 
 
 
     if not results:
 
         bot.send_message(
+
             message.chat.id,
-            "👀 No clean setup now"
+
+            "👀 No clean crypto setup now\n⏳ Waiting smart money..."
+
         )
 
         return
@@ -807,29 +877,39 @@ def scan(message):
     for s in results:
 
 
-        msg = (
-f"""🚨 AHAD AI v9.4 🐋
+        msg = f"""
+🚨 AHAD AI v9.5 🐋
 
-{s['direction']} | {s['coin']}
+{s['direction']}
+🪙 {s['coin']}
 
-🔥 Score: {s['score']}
+🔥 Score: {s['score']}/100
 
 🐋 Flow: {s['liquidity']}X
 🧲 {s['money']}
 
-📍 Support: {round(s['support'],6)}
-🚧 Resistance: {round(s['resistance'],6)}
+📍 Support:
+{round(s['support'],6)}
 
-🎯 Entry: {round(s['entry'],6)}
-🛑 SL: {round(s['sl'],6)}
+🚧 Resistance:
+{round(s['resistance'],6)}
 
-🥇 TP1: {round(s['tp1'],6)}
-🥈 TP2: {round(s['tp2'],6)}
+🎯 Entry:
+{round(s['entry'],6)}
+
+🛑 SL:
+{round(s['sl'],6)}
+
+🥇 TP1:
+{round(s['tp1'],6)}
+
+🥈 TP2:
+{round(s['tp2'],6)}
 
 🧠 {s['status']}
+
 ⚠️ {s['warning']}
 """
-        )
 
 
         bot.send_message(
@@ -880,7 +960,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v9.4 FULL ONLINE 🐋"
+    "🔥 AHAD AI v9.5 FULL ONLINE 🐋"
 )
 
 

@@ -1,39 +1,28 @@
 # =====================================
-# 🚀 AHAD AI v9.0 - PART 1
-# OKX PURE DATA CORE
+# 🚀 AHAD AI v9.1 CLEAN BUILD
+# PART 1 - OKX CORE
 # =====================================
 
 import os
-import requests
 import time
-import traceback
 import threading
-
-import pandas as pd
+import traceback
+import requests
 
 from flask import Flask
 import telebot
 
-from ta.trend import EMAIndicator, MACD
-from ta.momentum import RSIIndicator
-from ta.volatility import AverageTrueRange
-
 
 # =====================================
-# 🔑 TELEGRAM TOKEN (RENDER)
+# 🔑 TELEGRAM TOKEN
 # =====================================
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-if TOKEN is None:
-
-    raise Exception(
-        "❌ BOT_TOKEN NOT FOUND"
-    )
-
+if not TOKEN:
+    raise Exception("❌ BOT_TOKEN NOT FOUND")
 
 bot = telebot.TeleBot(TOKEN)
-
 
 
 # =====================================
@@ -46,8 +35,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v9.0 OKX ONLINE"
-
+    return "🐋 AHAD AI v9.1 ONLINE"
 
 
 def run_web():
@@ -59,19 +47,14 @@ def run_web():
         )
     )
 
-
     app.run(
-
         host="0.0.0.0",
-
         port=port
-
     )
 
 
-
 # =====================================
-# ⬛ OKX FUTURES SYMBOLS
+# ⬛ OKX MARKET LIST
 # =====================================
 
 def get_symbols():
@@ -85,92 +68,60 @@ def get_symbols():
 
 
         params = {
-
             "instType": "SWAP"
-
         }
 
 
         data = requests.get(
-
             url,
-
             params=params,
-
             timeout=15
-
         ).json()
-
 
 
         symbols = []
 
 
-
         for coin in data["data"]:
 
-
-
             if (
-
                 coin.get("settleCcy") == "USDT"
-
                 and
-
                 coin.get("state") == "live"
-
             ):
 
-
-
                 symbols.append(
-
                     coin["instId"]
-
                 )
 
 
-
         print(
-
             "⬛ OKX MARKETS:",
-
             len(symbols)
-
         )
-
 
 
         return symbols
 
 
-
     except Exception as e:
 
-
         print(
-
-            "❌ OKX SYMBOL ERROR:",
-
+            "OKX SYMBOL ERROR:",
             e
-
         )
-
 
         return []
 
 
 
-
 # =====================================
-# ⬛ OKX CANDLE ENGINE
+# 🕯 OKX CANDLES
 # =====================================
 
 def get_candles(symbol, tf):
 
-
     try:
-
 
         frames = {
 
@@ -178,158 +129,193 @@ def get_candles(symbol, tf):
 
             "1h": "1H",
 
-            "4h": "4H",
-
-            "1d": "1D"
+            "4h": "4H"
 
         }
 
 
-
         url = (
-
             "https://www.okx.com"
-
             "/api/v5/market/candles"
-
         )
-
 
 
         params = {
 
-
             "instId": symbol,
-
 
             "bar": frames[tf],
 
-
-            "limit": 200
-
+            "limit": 100
 
         }
 
 
-
         data = requests.get(
-
             url,
-
             params=params,
-
             timeout=10
-
         ).json()
-
 
 
         candles = data["data"]
 
 
-
-        if len(candles) == 0:
-
-
-            return None
+        result = []
 
 
+        for c in candles[::-1]:
 
-        df = pd.DataFrame(
+            result.append({
 
-            candles
+                "open": float(c[1]),
 
-        )
+                "high": float(c[2]),
 
+                "low": float(c[3]),
 
+                "close": float(c[4]),
 
-        df = df.iloc[:,0:6]
+                "volume": float(c[5])
 
-
-
-        df.columns = [
-
-            "time",
-
-            "open",
-
-            "high",
-
-            "low",
-
-            "close",
-
-            "volume"
-
-        ]
+            })
 
 
-
-        for col in [
-
-            "open",
-
-            "high",
-
-            "low",
-
-            "close",
-
-            "volume"
-
-        ]:
-
-
-            df[col] = pd.to_numeric(
-
-                df[col]
-
-            )
-
-
-
-        # ترتيب الشموع
-
-        df = df[::-1]
-
-
-
-        return df
-
+        return result
 
 
     except Exception as e:
 
-
         print(
-
-            "❌ OKX CANDLE ERROR:",
-
+            "CANDLE ERROR:",
             symbol,
-
             e
+        )
 
+        return []
+
+
+
+# =====================================
+# 📊 INDICATORS ENGINE
+# =====================================
+
+def ema(values, period):
+
+    if len(values) < period:
+
+        return values[-1]
+
+
+    k = 2 / (period + 1)
+
+    result = values[0]
+
+
+    for price in values:
+
+        result = (
+            price * k
+            +
+            result * (1-k)
         )
 
 
-        return None
+    return result
 
 
-# =====================================
-# 🐋 START LOG
-# =====================================
+
+def rsi(values, period=14):
+
+    if len(values) < period + 1:
+
+        return 50
+
+
+    gains = 0
+
+    losses = 0
+
+
+    recent = values[-period:]
+
+
+    for i in range(1, len(recent)):
+
+        diff = (
+            recent[i]
+            -
+            recent[i-1]
+        )
+
+
+        if diff > 0:
+
+            gains += diff
+
+
+        else:
+
+            losses -= diff
+
+
+    if losses == 0:
+
+        return 100
+
+
+    rs = gains / losses
+
+
+    return (
+        100
+        -
+        (
+            100 /
+            (1 + rs)
+        )
+    )
+
+
+
+def atr(candles, period=14):
+
+    if len(candles) < period:
+
+        return 0
+
+
+    ranges = []
+
+
+    for c in candles[-period:]:
+
+        ranges.append(
+            c["high"]
+            -
+            c["low"]
+        )
+
+
+    return (
+        sum(ranges)
+        /
+        len(ranges)
+    )
+
+
 
 print(
-    "🚀 AHAD AI v9.0 STARTING"
+    "🚀 AHAD AI v9.1 STARTING"
 )
 
 print(
-    "⬛ OKX DATA CORE ACTIVE"
+    "⬛ OKX CORE ACTIVE"
 )
 
 # =====================================
-# 🧠 AHAD AI v9.0 - PART 2
-# SMART BRAIN ENGINE
+# 🧠 AHAD AI v9.1
+# PART 2 - LIQUIDITY BRAIN
 # =====================================
 
 
@@ -337,312 +323,238 @@ def analyze(symbol):
 
     try:
 
-        score = 0
-        reasons = []
-
-        frames = {}
-
-
         # =============================
-        # LOAD OKX MULTI TIMEFRAME
+        # LOAD DATA
         # =============================
 
-        for tf in [
-
-            "15m",
-            "1h",
-            "4h",
-            "1d"
-
-        ]:
+        c15 = get_candles(symbol, "15m")
+        c1h = get_candles(symbol, "1h")
+        c4h = get_candles(symbol, "4h")
 
 
-            df = get_candles(
-                symbol,
-                tf
-            )
-
-
-            # دعم العملات الجديدة
-
-            if df is not None and len(df) >= 50:
-
-
-                frames[tf] = df
-
-
-
-        if len(frames) == 0:
-
+        if (
+            len(c15) < 30
+            or
+            len(c1h) < 30
+        ):
 
             return None
 
 
 
-        # =============================
-        # TIMEFRAME WEIGHTS
-        # =============================
+        closes15 = [
+            x["close"]
+            for x in c15
+        ]
 
 
-        weights = {
-
-            "15m": 40,
-
-            "1h": 30,
-
-            "4h": 20,
-
-            "1d": 10
-
-        }
+        closes1h = [
+            x["close"]
+            for x in c1h
+        ]
 
 
-
-        last_rsi = 0
+        price = closes15[-1]
 
 
 
         # =============================
-        # INDICATOR ENGINE
+        # TREND ENGINE
         # =============================
 
+        ema20 = ema(
+            closes1h,
+            20
+        )
 
-        for tf, df in frames.items():
 
+        ema50 = ema(
+            closes1h,
+            50
+        )
 
 
-            close = df["close"]
+        trend = 0
 
 
-            price = close.iloc[-1]
+        if price > ema20:
 
+            trend += 20
 
 
-            ema20 = EMAIndicator(
+        if ema20 > ema50:
 
-                close,
-
-                window=20
-
-            ).ema_indicator().iloc[-1]
-
-
-
-            ema50 = EMAIndicator(
-
-                close,
-
-                window=50
-
-            ).ema_indicator().iloc[-1]
-
-
-
-            rsi = RSIIndicator(
-
-                close,
-
-                window=14
-
-            ).rsi().iloc[-1]
-
-
-
-            last_rsi = rsi
-
-
-
-            macd = MACD(close)
-
-
-
-            macd_power = (
-
-                macd.macd().iloc[-1]
-
-                -
-
-                macd.macd_signal().iloc[-1]
-
-            )
-
-
-
-            power = 0
-
-
-
-            if price > ema20:
-
-
-                power += 1
-
-
-
-            if ema20 > ema50:
-
-
-                power += 1
-
-
-
-            if 30 <= rsi <= 75:
-
-
-                power += 1
-
-
-
-            if macd_power > 0:
-
-
-                power += 1
-
-
-
-
-            score += (
-
-                power / 4
-
-            ) * weights[tf]
-
-
-
-
-            if power >= 3:
-
-
-                reasons.append(
-
-                    tf.upper()
-
-                    +
-
-                    " Trend 🟢"
-
-                )
-
+            trend += 20
 
 
 
         # =============================
-        # ENTRY FRAME
+        # MOMENTUM
         # =============================
 
-
-        if "15m" in frames:
-
-
-            entry_df = frames["15m"]
+        rsi_value = rsi(
+            closes15
+        )
 
 
-        else:
+        momentum = 0
 
 
-            entry_df = list(
+        if 35 <= rsi_value <= 70:
 
-                frames.values()
-
-            )[0]
+            momentum += 20
 
 
 
-        price = (
+        # =============================
+        # 🐋 LIQUIDITY FLOW
+        # =============================
 
-            entry_df["close"]
+        recent_volume = sum(
 
-            .iloc[-1]
+            [
+                x["volume"]
+                for x in c15[-5:]
+            ]
 
         )
 
 
+        old_volume = sum(
 
+            [
+                x["volume"]
+                for x in c15[-30:]
+            ]
 
-        # =============================
-        # ATR RISK
-        # =============================
-
-
-        atr = AverageTrueRange(
-
-
-            entry_df["high"],
-
-            entry_df["low"],
-
-            entry_df["close"],
-
-            window=14
-
-
-        ).average_true_range().iloc[-1]
+        ) / 6
 
 
 
+        if old_volume > 0:
 
-        # =============================
-        # 🐋 WHALE VOLUME
-        # =============================
+            liquidity = (
 
-
-        volume_now = (
-
-            entry_df["volume"]
-
-            .iloc[-1]
-
-        )
-
-
-
-        volume_avg = (
-
-            entry_df["volume"]
-
-            .tail(30)
-
-            .mean()
-
-        )
-
-
-
-        if volume_avg > 0:
-
-
-            whale = (
-
-                volume_now
-
+                recent_volume
                 /
-
-                volume_avg
+                old_volume
 
             )
-
 
         else:
 
-
-            whale = 0
-
+            liquidity = 0
 
 
 
-        if whale >= 1.2:
+        liquidity_score = 0
 
 
-            score += 20
+        if liquidity >= 1.5:
+
+            liquidity_score = 30
 
 
 
-            reasons.append(
+        # =============================
+        # 🐋 WHALE ACCUMULATION
+        # =============================
 
-                "OKX Whale Volume 🐋"
+        price_change = (
 
+            (
+                price
+                -
+                closes15[-10]
             )
 
+            /
+            closes15[-10]
+
+        ) * 100
+
+
+
+        whale = "NORMAL"
+
+
+        if (
+
+            liquidity >= 1.5
+
+            and
+
+            abs(price_change) < 3
+
+        ):
+
+
+            whale = "WHALES LOADING 🐋"
+
+
+
+        # =============================
+        # LONG / SHORT DECISION
+        # =============================
+
+        direction = "WAIT"
+
+
+        if (
+
+            trend >= 20
+
+            and
+
+            liquidity >= 1.2
+
+            and
+
+            rsi_value < 75
+
+        ):
+
+
+            direction = "🟢 LONG"
+
+
+
+        elif (
+
+            trend == 0
+
+            and
+
+            liquidity >= 1.2
+
+            and
+
+            rsi_value > 40
+
+        ):
+
+
+            direction = "🔴 SHORT"
+
+
+
+        # =============================
+        # FINAL SCORE
+        # =============================
+
+        score = (
+
+            trend
+
+            +
+
+            momentum
+
+            +
+
+            liquidity_score
+
+        )
 
 
 
@@ -650,29 +562,25 @@ def analyze(symbol):
         # TARGETS
         # =============================
 
-
-        stop_loss = (
-
-            price
-
-            -
-
-            atr * 1.5
-
-        )
+        risk = atr(c15) * 1.5
 
 
+        if direction == "🔴 SHORT":
 
-        risk = (
+            sl = price + risk
 
-            price
+            tp1 = price - risk * 2
 
-            -
+            tp2 = price - risk * 3
 
-            stop_loss
 
-        )
+        else:
 
+            sl = price - risk
+
+            tp1 = price + risk * 2
+
+            tp2 = price + risk * 3
 
 
 
@@ -682,32 +590,34 @@ def analyze(symbol):
             "coin": symbol,
 
 
-            "entry": price,
-
-
-            "sl": stop_loss,
-
-
-            "tp1": price + risk * 2,
-
-
-            "tp2": price + risk * 3,
+            "direction": direction,
 
 
             "score": round(score),
 
 
-            "rsi": last_rsi,
+            "entry": price,
 
 
-            "whale": whale,
+            "sl": sl,
 
 
-            "reasons": reasons
+            "tp1": tp1,
+
+
+            "tp2": tp2,
+
+
+            "rsi": rsi_value,
+
+
+            "liquidity": liquidity,
+
+
+            "whale": whale
 
 
         }
-
 
 
 
@@ -715,22 +625,17 @@ def analyze(symbol):
 
 
         print(
-
-            "ANALYZE ERROR:",
-
+            "AI ERROR:",
             symbol,
-
             e
-
         )
-
 
 
         return None
 
 # =====================================
-# 🤖 AHAD AI v9.0 - PART 3
-# TELEGRAM ENGINE
+# 🤖 AHAD AI v9.1
+# PART 3 - TELEGRAM SCANNER
 # =====================================
 
 
@@ -740,18 +645,17 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v9.0 ONLINE 🐋
+🚀 AHAD AI v9.1 ONLINE 🐋
 
-⬛ OKX PURE DATA CORE
+⬛ OKX DATA CORE
 
-⏱ TIMEFRAMES:
-🎯 15m Entry
-📈 1H Trend
-🐋 4H Smart Money
-👑 1D Macro
+🧠 AI Liquidity Brain
+🐋 Whale Flow Detector
+🟢 LONG Hunter
+🔴 SHORT Hunter
 
-🧠 AI Brain ACTIVE
-🐋 Whale Engine ACTIVE
+🎯 Goal:
+Catch the move BEFORE it happens
 
 Send /scan
 """
@@ -760,9 +664,8 @@ Send /scan
 
 
 # =====================================
-# 🔍 MARKET SCANNER
+# 🔍 SCAN COMMAND
 # =====================================
-
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
@@ -770,10 +673,11 @@ def scan(message):
     bot.reply_to(
         message,
 """
-🐋 AHAD AI v9.0 SCANNING...
+🐋 AHAD AI v9.1 SCANNING...
 
-⬛ Loading OKX Futures
-🧠 Running AI Brain...
+⬛ Reading OKX Liquidity
+🧠 Tracking Smart Money
+🐋 Searching Whale Flow...
 
 Please wait...
 """
@@ -788,13 +692,7 @@ Please wait...
 
     bot.send_message(
         message.chat.id,
-        f"⬛ OKX Markets Loaded: {len(symbols)}"
-    )
-
-
-    print(
-        "⬛ SCANNING:",
-        len(symbols)
+        f"⬛ OKX Markets: {len(symbols)}"
     )
 
 
@@ -803,48 +701,52 @@ Please wait...
 
         try:
 
-
             result = analyze(
                 symbol
             )
 
 
-            if result:
-
+            if (
+                result
+                and
+                result["direction"] != "WAIT"
+            ):
 
                 results.append(
                     result
                 )
 
 
-
             time.sleep(
-                0.03
+                0.02
             )
-
 
 
         except Exception as e:
 
-
             print(
-
                 "SCAN ERROR:",
-
                 symbol,
-
                 e
-
             )
 
 
 
+    # =============================
+    # SORT BEST LIQUIDITY
+    # =============================
 
     results = sorted(
 
         results,
 
-        key=lambda x: x["score"],
+        key=lambda x: (
+
+            x["score"],
+
+            x["liquidity"]
+
+        ),
 
         reverse=True
 
@@ -852,53 +754,68 @@ Please wait...
 
 
 
-    # =============================
-    # 🚀 BEST SIGNALS
-    # =============================
-
-
-    signals = [
-
-        x for x in results
-
-        if x["score"] >= 80
-
-    ][:5]
+    top = results[:3]
 
 
 
-    if signals:
+    if not top:
+
+
+        bot.send_message(
+            message.chat.id,
+            """
+👀 AHAD AI RADAR
+
+No strong move loading now 🛡
+
+Market checked successfully
+"""
+        )
+
+        return
 
 
 
-        for s in signals:
+    for s in top:
 
 
+        bot.send_message(
 
-            bot.send_message(
-
-                message.chat.id,
+            message.chat.id,
 
 f"""
-🚀 AHAD AI v9.0 SIGNAL 🐋
+🚨 AHAD AI v9.1 SIGNAL 🐋
 
-🟢 LONG SETUP
+
+{s['direction']}
 
 🪙 COIN:
 {s['coin']}
 
-🔥 SCORE:
-{s['score']}/120
+
+🔥 AI SCORE:
+{s['score']}/90
+
+
+🐋 LIQUIDITY FLOW:
+{round(s['liquidity'],2)}X
+
+
+🧲 SMART MONEY:
+{s['whale']}
 
 
 🎯 ENTRY:
 {round(s['entry'],6)}
 
-🛑 STOP LOSS:
+
+🛑 STOP:
 {round(s['sl'],6)}
+
 
 🎯 TP1:
 {round(s['tp1'],6)}
+
 
 🎯 TP2:
 {round(s['tp2'],6)}
@@ -906,89 +823,15 @@ f"""
 
 📊 RSI:
 {round(s['rsi'],2)}
-
-🐋 WHALE:
-{round(s['whale'],2)}X
-
-
-✅ CONFIRM:
-{chr(10).join(s['reasons'])}
 """
-
-            )
-
-
-
-    # =============================
-    # 👀 RADAR MODE
-    # =============================
-
-
-    else:
-
-
-        text = """
-👀 AHAD AI v9.0 RADAR
-
-No perfect LONG yet 🛡
-
-Closest OKX setups:
-"""
-
-
-
-        for r in results[:5]:
-
-
-
-            text += f"""
-
-🪙 {r['coin']}
-
-🔥 SCORE:
-{r['score']}
-
-📊 RSI:
-{round(r['rsi'],2)}
-
-🐋 WHALE:
-{round(r['whale'],2)}X
-
-📈:
-{chr(10).join(r['reasons'])}
-
-━━━━━━━━━━
-"""
-
-
-
-        if len(results) == 0:
-
-
-            text += """
-
-⚠️ No market data
-
-Check OKX connection
-"""
-
-
-
-        bot.send_message(
-
-            message.chat.id,
-
-            text
 
         )
-
 
 
 
 # =====================================
 # 🛡 AUTO RECOVERY
 # =====================================
-
 
 def telegram_engine():
 
@@ -1004,7 +847,6 @@ def telegram_engine():
             )
 
 
-
             bot.infinity_polling(
 
                 skip_pending=True,
@@ -1012,7 +854,6 @@ def telegram_engine():
                 timeout=60
 
             )
-
 
 
         except Exception:
@@ -1025,13 +866,11 @@ def telegram_engine():
             )
 
 
-
             print(
 
                 "🔄 Restart Telegram"
 
             )
-
 
 
             time.sleep(5)
@@ -1065,7 +904,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v9.0 OKX FULL ONLINE 🐋"
+    "🔥 AHAD AI v9.1 LIQUIDITY HUNTER ONLINE 🐋"
 )
 
 

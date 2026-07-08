@@ -167,7 +167,7 @@ def get_candles(symbol, tf):
 
             "bar": frames[tf],
 
-            "limit": 100
+            "limit": 150
 
         }
 
@@ -372,133 +372,256 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 FOMO KILLER
+# 🛡 ANTI FOMO ENGINE v9.6
+# Catch move BEFORE explosion
 # =====================================
 
 def fomo_filter(candles):
 
-    closes = [
-        x["close"]
-        for x in candles
-    ]
+    try:
+
+        closes = [
+            x["close"]
+            for x in candles
+        ]
+
+        highs = [
+            x["high"]
+            for x in candles
+        ]
+
+        lows = [
+            x["low"]
+            for x in candles
+        ]
 
 
-    price = closes[-1]
+        price = closes[-1]
 
 
-    old = closes[-8]
+        # آخر 24 ساعة تقريبا على 15m
+        old_price = closes[-96]
 
 
-    pump = (
-        (price - old)
-        /
-        old
-    ) * 100
+        move_24h = (
+            (price - old_price)
+            /
+            old_price
+        ) * 100
 
 
-    r = rsi(closes)
+        current_rsi = rsi(
+            closes
+        )
 
 
-    if pump > 3:
-
-        return False, "⏳ WAIT RETEST (PUMPED)"
-
-
-    if r > 72:
-
-        return False, "⏳ WAIT RSI COOL"
+        support = min(
+            lows[-80:]
+        )
 
 
-    return True, "✅ EARLY AREA"
+        distance_support = (
+            (price - support)
+            /
+            price
+        ) * 100
+
+
+        # ==========================
+        # 🚫 LONG TOO LATE
+        # ==========================
+
+        if (
+            move_24h > 12
+            and
+            distance_support > 4
+        ):
+
+            return (
+                False,
+                "🚫 PUMPED - WAIT RETEST"
+            )
+
+
+        # ==========================
+        # 🚫 RSI OVERHEAT
+        # ==========================
+
+        if current_rsi > 75:
+
+            return (
+                False,
+                "🚫 RSI HOT - WAIT COOL"
+            )
+
+
+        # ==========================
+        # 🚫 HUGE CANDLE
+        # ==========================
+
+        candle = (
+            highs[-1]
+            -
+            lows[-1]
+        )
+
+
+        avg_candle = sum(
+            [
+                highs[i] - lows[i]
+                for i in range(-30, -1)
+            ]
+        ) / 29
+
+
+        if candle > avg_candle * 2.5:
+
+            return (
+                False,
+                "🚫 BIG MOVE WAIT"
+            )
+
+
+        return (
+            True,
+            "🐋 EARLY AREA"
+        )
+
+
+    except Exception as e:
+
+        print(
+            "FOMO ERROR:",
+            e
+        )
+
+        return (
+            False,
+            "FILTER ERROR"
+        )
 
 
 
 # =====================================
-# 🐋 SMART MONEY FLOW
+# 🐋 WHALE ACCUMULATION ENGINE v9.6
+# Detect accumulation vs exit
 # =====================================
 
 def smart_money(candles):
 
-    volumes = [
-        x["volume"]
-        for x in candles
-    ]
+    try:
+
+        closes = [
+            x["close"]
+            for x in candles
+        ]
+
+        volumes = [
+            x["volume"]
+            for x in candles
+        ]
 
 
-    now = sum(
-        volumes[-5:]
-    )
+        price = closes[-1]
 
 
-    avg = (
-        sum(
-            volumes[-30:]
+        volume_now = sum(
+            volumes[-5:]
         )
-        /
-        6
-    )
 
 
-    if avg == 0:
-
-        flow = 0
-
-
-    else:
-
-        flow = now / avg
-
-
-
-    closes = [
-        x["close"]
-        for x in candles
-    ]
-
-
-    move = (
-        (
-            closes[-1]
-            -
-            closes[-10]
+        volume_avg = (
+            sum(volumes[-50:])
+            /
+            50
         )
-        /
-        closes[-10]
-    ) * 100
+
+
+        if volume_avg == 0:
+
+            flow = 0
+
+        else:
+
+            flow = volume_now / volume_avg
+
+
+        # حركة آخر 24 شمعة
+        old_price = closes[-24]
+
+
+        move = (
+            (price - old_price)
+            /
+            old_price
+        ) * 100
+
+
+        # حركة السعر آخر 5 شمعات
+        short_move = (
+            (closes[-1] - closes[-5])
+            /
+            closes[-5]
+        ) * 100
+
+
+        # =====================
+        # 🐋 TRUE ACCUMULATION
+        # =====================
+
+        if (
+            flow >= 1.5
+            and
+            abs(move) < 8
+            and
+            abs(short_move) < 4
+        ):
+
+            status = "🐋 SMART ACCUMULATION"
+
+
+        # =====================
+        # 🚨 WHALE EXIT
+        # =====================
+
+        elif (
+            flow >= 1.5
+            and
+            move > 8
+        ):
+
+            status = "🚨 WHALE DISTRIBUTION"
+
+
+        else:
+
+            status = "NORMAL"
 
 
 
-    if (
-        flow >= 1.5
-        and
-        abs(move) < 5
-    ):
+        return {
 
-        status = "🐋 WHALES LOADING"
+            "flow": round(flow,2),
 
+            "status": status
 
-    elif (
-        flow >= 1.5
-        and
-        move > 5
-    ):
-
-        status = "⚠️ POSSIBLE EXIT"
+        }
 
 
-    else:
+    except Exception as e:
 
-        status = "NORMAL"
+        print(
+            "SMART MONEY ERROR:",
+            e
+        )
 
+        return {
 
+            "flow":0,
 
-    return {
+            "status":"ERROR"
 
-        "flow": round(flow,2),
-
-        "status": status
-
-    }
+        }
 
 
 
@@ -629,11 +752,22 @@ def analyze(symbol):
 
 
 
+        # منع LONG قريب من المقاومة
+        if (
+            brain["direction"] == "🟢 LONG"
+            and
+            sr["near_resistance"] < 2
+        ):
+
+            return None
+
+
+
         score = brain["confidence"]
 
 
 
-        if money["status"] == "🐋 WHALES LOADING":
+        if money["status"] == "🐋 SMART ACCUMULATION":
 
             score += 20
 
@@ -698,7 +832,7 @@ def analyze(symbol):
             and
             money["flow"] >= 1.5
             and
-            money["status"] == "🐋 WHALES LOADING"
+            money["status"] == "🐋 SMART ACCUMULATION"
         ):
 
             status = "🚀 SNIPER"

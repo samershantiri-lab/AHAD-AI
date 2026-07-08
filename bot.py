@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v10 FINAL CLEAN
+# 🚀 AHAD AI v10.2 FINAL CLEAN
 # PART 1 - CORE + OKX DATA
 # =====================================
 
@@ -35,7 +35,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v10 ONLINE"
+    return "🐋 AHAD AI v10.2 ONLINE"
 
 
 def run_web():
@@ -150,7 +150,11 @@ def get_candles(symbol, tf):
 
             "15m": "15m",
 
-            "1h": "1H"
+            "1h": "1H",
+
+            "4h": "4H",
+
+            "1d": "1D"
 
         }
 
@@ -320,8 +324,112 @@ def atr(candles):
 
 
 
+# =====================================
+# 📊 MULTI TIMEFRAME RSI ENGINE
+# =====================================
+
+def multi_rsi_engine(c15, c1h, c4h, c1d):
+
+    try:
+
+        closes15 = [
+            x["close"]
+            for x in c15
+        ]
+
+        closes1h = [
+            x["close"]
+            for x in c1h
+        ]
+
+        closes4h = [
+            x["close"]
+            for x in c4h
+        ]
+
+        closes1d = [
+            x["close"]
+            for x in c1d
+        ]
+
+
+        rsi15 = rsi(closes15)
+        rsi1h = rsi(closes1h)
+        rsi4h = rsi(closes4h)
+        rsi1d = rsi(closes1d)
+
+
+        score = 0
+
+
+        if rsi15 > 55:
+            score += 10
+        elif rsi15 < 45:
+            score -= 10
+
+
+        if rsi1h > 55:
+            score += 10
+        elif rsi1h < 45:
+            score -= 10
+
+
+        # 4H TREND POWER
+
+        if 50 <= rsi4h <= 70:
+            score += 15
+
+        elif rsi4h > 75:
+            score -= 15
+
+        elif rsi4h < 35:
+            score += 5
+
+
+        # 1D TREND POWER
+
+        if 50 <= rsi1d <= 70:
+            score += 10
+
+        elif rsi1d > 75:
+            score -= 15
+
+        elif rsi1d < 35:
+            score += 5
+
+
+        return {
+
+            "rsi15": round(rsi15, 2),
+            "rsi1h": round(rsi1h, 2),
+            "rsi4h": round(rsi4h, 2),
+            "rsi1d": round(rsi1d, 2),
+            "score": score
+
+        }
+
+
+    except Exception as e:
+
+        print(
+            "MULTI RSI ERROR:",
+            e
+        )
+
+        return {
+
+            "rsi15": 50,
+            "rsi1h": 50,
+            "rsi4h": 50,
+            "rsi1d": 50,
+            "score": 0
+
+        }
+
+
+
 print(
-    "🚀 AHAD AI v10 CORE READY 🐋"
+    "🚀 AHAD AI v10.2 CORE READY 🐋"
 )
 
 # =====================================
@@ -842,9 +950,19 @@ def analyze(symbol):
 
         c15 = get_candles(symbol, "15m")
         c1h = get_candles(symbol, "1h")
+        c4h = get_candles(symbol, "4h")
+        c1d = get_candles(symbol, "1d")
 
 
-        if len(c15) < 60 or len(c1h) < 60:
+        if (
+            len(c15) < 60
+            or
+            len(c1h) < 60
+            or
+            len(c4h) < 60
+            or
+            len(c1d) < 60
+        ):
 
             return None
 
@@ -860,6 +978,13 @@ def analyze(symbol):
         money = smart_money(c15)
 
         trap = trap_detector(c15)
+
+        multi_rsi = multi_rsi_engine(
+            c15,
+            c1h,
+            c4h,
+            c1d
+        )
 
         brain = ai_brain(c1h)
 
@@ -906,6 +1031,8 @@ def analyze(symbol):
 
 
         score = brain["confidence"]
+
+        score += multi_rsi["score"]
 
 
         # 🪤 TRAP BONUS ENGINE
@@ -1042,6 +1169,8 @@ def analyze(symbol):
 
             "trap": trap["type"],
 
+            "multi_rsi": multi_rsi,
+
             "status": status,
 
             "warning": warning
@@ -1072,7 +1201,7 @@ def start(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v10 ONLINE\n\n"
+        "🐋 AHAD AI v10.2 ONLINE\n\n"
         "🧠 AI Brain ACTIVE\n"
         "🐋 Smart Money ACTIVE\n"
         "📍 Support Resistance ACTIVE\n"
@@ -1092,7 +1221,7 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v10 SCANNING...\n\n"
+        "🐋 AHAD AI v10.2 SCANNING...\n\n"
         "🟢 Hunting LONG setups\n"
         "🔴 Hunting SHORT setups\n"
         "🧠 AI Brain running...\n"
@@ -1204,7 +1333,7 @@ def scan(message):
 
 
         msg = f"""
-🚨 AHAD AI v10 🐋
+🚨 AHAD AI v10.2 🐋
 
 {s['direction']}
 🪙 {s['coin']}
@@ -1234,6 +1363,11 @@ def scan(message):
 
 🧠 {s['status']}
 🪤 {s['trap']}
+
+📊 RSI 15m: {s['multi_rsi']['rsi15']}
+📊 RSI 1h: {s['multi_rsi']['rsi1h']}
+📊 RSI 4h: {s['multi_rsi']['rsi4h']}
+📊 RSI 1d: {s['multi_rsi']['rsi1d']}
 
 ⚠️ {s['warning']}
 """
@@ -1287,11 +1421,4 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v10 FULL ONLINE 🐋"
-)
-
-
-
-while True:
-
-    time.sleep(60)
+    "🔥 AHAD AI v1

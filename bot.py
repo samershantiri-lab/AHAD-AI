@@ -1,6 +1,6 @@
 # =====================================
-# 🚀 AHAD AI v9.1 CLEAN BUILD
-# PART 1 - OKX CORE
+# 🚀 AHAD AI v9.4 FINAL CLEAN
+# PART 1 - CORE + OKX DATA
 # =====================================
 
 import os
@@ -14,7 +14,7 @@ import telebot
 
 
 # =====================================
-# 🔑 TELEGRAM TOKEN
+# 🔑 TELEGRAM
 # =====================================
 
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -26,7 +26,7 @@ bot = telebot.TeleBot(TOKEN)
 
 
 # =====================================
-# 🌐 RENDER KEEP ALIVE
+# 🌐 RENDER SERVER
 # =====================================
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v9.1 ONLINE"
+    return "🐋 AHAD AI v9.4 ONLINE"
 
 
 def run_web():
@@ -54,7 +54,7 @@ def run_web():
 
 
 # =====================================
-# ⬛ OKX MARKET LIST
+# ⬛ OKX SYMBOLS
 # =====================================
 
 def get_symbols():
@@ -79,37 +79,41 @@ def get_symbols():
         ).json()
 
 
-        symbols = []
+        result = []
 
 
-        for coin in data["data"]:
+        for x in data["data"]:
+
 
             if (
-                coin.get("settleCcy") == "USDT"
+                x["settleCcy"] == "USDT"
                 and
-                coin.get("state") == "live"
+                x["state"] == "live"
             ):
 
-                symbols.append(
-                    coin["instId"]
+                result.append(
+                    x["instId"]
                 )
 
 
         print(
-            "⬛ OKX MARKETS:",
-            len(symbols)
+            "⬛ OKX:",
+            len(result)
         )
 
 
-        return symbols
+        return result
+
 
 
     except Exception as e:
+
 
         print(
             "OKX SYMBOL ERROR:",
             e
         )
+
 
         return []
 
@@ -127,9 +131,7 @@ def get_candles(symbol, tf):
 
             "15m": "15m",
 
-            "1h": "1H",
-
-            "4h": "4H"
+            "1h": "1H"
 
         }
 
@@ -158,15 +160,13 @@ def get_candles(symbol, tf):
         ).json()
 
 
-        candles = data["data"]
+        candles = []
 
 
-        result = []
+        for c in data["data"][::-1]:
 
 
-        for c in candles[::-1]:
-
-            result.append({
+            candles.append({
 
                 "open": float(c[1]),
 
@@ -181,10 +181,13 @@ def get_candles(symbol, tf):
             })
 
 
-        return result
+
+        return candles
+
 
 
     except Exception as e:
+
 
         print(
             "CANDLE ERROR:",
@@ -192,12 +195,13 @@ def get_candles(symbol, tf):
             e
         )
 
+
         return []
 
 
 
 # =====================================
-# 📊 INDICATORS ENGINE
+# 📊 INDICATORS (NO LIBRARIES)
 # =====================================
 
 def ema(values, period):
@@ -209,13 +213,15 @@ def ema(values, period):
 
     k = 2 / (period + 1)
 
+
     result = values[0]
 
 
-    for price in values:
+    for v in values:
+
 
         result = (
-            price * k
+            v * k
             +
             result * (1-k)
         )
@@ -227,25 +233,21 @@ def ema(values, period):
 
 def rsi(values, period=14):
 
-    if len(values) < period + 1:
-
-        return 50
-
-
     gains = 0
 
     losses = 0
 
 
-    recent = values[-period:]
+    for i in range(
+        -period,
+        -1
+    ):
 
-
-    for i in range(1, len(recent)):
 
         diff = (
-            recent[i]
+            values[i+1]
             -
-            recent[i-1]
+            values[i]
         )
 
 
@@ -259,6 +261,7 @@ def rsi(values, period=14):
             losses -= diff
 
 
+
     if losses == 0:
 
         return 100
@@ -270,25 +273,18 @@ def rsi(values, period=14):
     return (
         100
         -
-        (
-            100 /
-            (1 + rs)
-        )
+        100/(1+rs)
     )
 
 
 
-def atr(candles, period=14):
-
-    if len(candles) < period:
-
-        return 0
-
+def atr(candles):
 
     ranges = []
 
 
-    for c in candles[-period:]:
+    for c in candles[-14:]:
+
 
         ranges.append(
             c["high"]
@@ -306,316 +302,416 @@ def atr(candles, period=14):
 
 
 print(
-    "🚀 AHAD AI v9.1 STARTING"
-)
-
-print(
-    "⬛ OKX CORE ACTIVE"
+    "🚀 AHAD AI v9.4 CORE READY 🐋"
 )
 
 # =====================================
-# 🧠 AHAD AI v9.1
-# PART 2 - LIQUIDITY BRAIN
+# 🧱 SUPPORT / RESISTANCE ENGINE
 # =====================================
 
+def support_resistance(candles):
+
+    highs = [
+        x["high"]
+        for x in candles[-80:]
+    ]
+
+    lows = [
+        x["low"]
+        for x in candles[-80:]
+    ]
+
+
+    price = candles[-1]["close"]
+
+
+    support = min(lows)
+
+    resistance = max(highs)
+
+
+    return {
+
+        "support": support,
+
+        "resistance": resistance,
+
+        "near_support": (
+            (price - support)
+            /
+            price
+        ) * 100,
+
+        "near_resistance": (
+            (resistance - price)
+            /
+            price
+        ) * 100
+
+    }
+
+
+
+# =====================================
+# 🛡 FOMO KILLER
+# =====================================
+
+def fomo_filter(candles):
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+
+    price = closes[-1]
+
+
+    old = closes[-8]
+
+
+    pump = (
+        (price - old)
+        /
+        old
+    ) * 100
+
+
+    r = rsi(closes)
+
+
+    if pump > 5:
+
+        return False, "⏳ WAIT RETEST (PUMPED)"
+
+
+    if r > 72:
+
+        return False, "⏳ WAIT RSI COOL"
+
+
+    return True, "✅ EARLY AREA"
+
+
+
+# =====================================
+# 🐋 SMART MONEY FLOW
+# =====================================
+
+def smart_money(candles):
+
+    volumes = [
+        x["volume"]
+        for x in candles
+    ]
+
+
+    now = sum(
+        volumes[-5:]
+    )
+
+
+    avg = (
+        sum(
+            volumes[-30:]
+        )
+        /
+        6
+    )
+
+
+    if avg == 0:
+
+        flow = 0
+
+
+    else:
+
+        flow = now / avg
+
+
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+
+    move = (
+        (
+            closes[-1]
+            -
+            closes[-10]
+        )
+        /
+        closes[-10]
+    ) * 100
+
+
+
+    if (
+        flow >= 1.5
+        and
+        abs(move) < 5
+    ):
+
+        status = "🐋 WHALES LOADING"
+
+
+    elif (
+        flow >= 1.5
+        and
+        move > 5
+    ):
+
+        status = "⚠️ POSSIBLE EXIT"
+
+
+    else:
+
+        status = "NORMAL"
+
+
+
+    return {
+
+        "flow": round(flow,2),
+
+        "status": status
+
+    }
+
+
+
+# =====================================
+# 🧠 LORENTZIAN STYLE AI
+# =====================================
+
+def ai_brain(candles):
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+
+    price = closes[-1]
+
+
+    ema20 = ema(
+        closes,
+        20
+    )
+
+
+    ema50 = ema(
+        closes,
+        50
+    )
+
+
+    r = rsi(
+        closes
+    )
+
+
+    score = 0
+
+
+    if price > ema20:
+
+        score += 30
+
+    else:
+
+        score -= 30
+
+
+
+    if ema20 > ema50:
+
+        score += 30
+
+    else:
+
+        score -= 30
+
+
+
+    if r > 55:
+
+        score += 20
+
+
+    elif r < 45:
+
+        score -= 20
+
+
+
+    if score >= 50:
+
+        direction = "🟢 LONG"
+
+
+    elif score <= -50:
+
+        direction = "🔴 SHORT"
+
+
+    else:
+
+        direction = "WAIT"
+
+
+
+    return {
+
+        "direction": direction,
+
+        "confidence": abs(score)
+
+    }
+
+# =====================================
+# 🧠 FINAL ANALYZE ENGINE
+# =====================================
 
 def analyze(symbol):
 
     try:
 
-        # =============================
-        # LOAD DATA
-        # =============================
-
         c15 = get_candles(symbol, "15m")
         c1h = get_candles(symbol, "1h")
-        c4h = get_candles(symbol, "4h")
 
 
-        if (
-            len(c15) < 30
-            or
-            len(c1h) < 30
-        ):
+        if len(c15) < 60 or len(c1h) < 60:
 
             return None
 
 
 
-        closes15 = [
-            x["close"]
-            for x in c15
-        ]
+        price = c15[-1]["close"]
 
 
-        closes1h = [
-            x["close"]
-            for x in c1h
-        ]
+        sr = support_resistance(c15)
 
+        safe, warning = fomo_filter(c15)
 
-        price = closes15[-1]
+        money = smart_money(c15)
+
+        brain = ai_brain(c1h)
 
 
 
-        # =============================
-        # TREND ENGINE
-        # =============================
+        if brain["direction"] == "WAIT":
 
-        ema20 = ema(
-            closes1h,
-            20
-        )
-
-
-        ema50 = ema(
-            closes1h,
-            50
-        )
-
-
-        trend = 0
-
-
-        if price > ema20:
-
-            trend += 20
-
-
-        if ema20 > ema50:
-
-            trend += 20
+            return None
 
 
 
-        # =============================
-        # MOMENTUM
-        # =============================
-
-        rsi_value = rsi(
-            closes15
-        )
-
-
-        momentum = 0
-
-
-        if 35 <= rsi_value <= 70:
-
-            momentum += 20
+        score = brain["confidence"]
 
 
 
-        # =============================
-        # 🐋 LIQUIDITY FLOW
-        # =============================
+        if money["status"] == "🐋 WHALES LOADING":
 
-        recent_volume = sum(
-
-            [
-                x["volume"]
-                for x in c15[-5:]
-            ]
-
-        )
-
-
-        old_volume = sum(
-
-            [
-                x["volume"]
-                for x in c15[-30:]
-            ]
-
-        ) / 6
+            score += 20
 
 
 
-        if old_volume > 0:
+        if safe:
 
-            liquidity = (
+            score += 20
 
-                recent_volume
-                /
-                old_volume
-
-            )
-
-        else:
-
-            liquidity = 0
-
-
-
-        liquidity_score = 0
-
-
-        if liquidity >= 1.5:
-
-            liquidity_score = 30
-
-
-
-        # =============================
-        # 🐋 WHALE ACCUMULATION
-        # =============================
-
-        price_change = (
-
-            (
-                price
-                -
-                closes15[-10]
-            )
-
-            /
-            closes15[-10]
-
-        ) * 100
-
-
-
-        whale = "NORMAL"
 
 
         if (
-
-            liquidity >= 1.5
-
+            brain["direction"] == "🟢 LONG"
             and
-
-            abs(price_change) < 3
-
+            sr["near_support"] < 3
         ):
 
+            score += 20
 
-            whale = "WHALES LOADING 🐋"
-
-
-
-        # =============================
-        # LONG / SHORT DECISION
-        # =============================
-
-        direction = "WAIT"
 
 
         if (
-
-            trend >= 20
-
+            brain["direction"] == "🔴 SHORT"
             and
-
-            liquidity >= 1.2
-
-            and
-
-            rsi_value < 75
-
+            sr["near_resistance"] < 3
         ):
 
-
-            direction = "🟢 LONG"
-
-
-
-        elif (
-
-            trend == 0
-
-            and
-
-            liquidity >= 1.2
-
-            and
-
-            rsi_value > 40
-
-        ):
-
-
-            direction = "🔴 SHORT"
+            score += 20
 
 
 
-        # =============================
-        # FINAL SCORE
-        # =============================
-
-        score = (
-
-            trend
-
-            +
-
-            momentum
-
-            +
-
-            liquidity_score
-
-        )
+        move = atr(c15)
 
 
 
-        # =============================
-        # TARGETS
-        # =============================
+        if brain["direction"] == "🟢 LONG":
 
-        risk = atr(c15) * 1.5
+            sl = sr["support"] * 0.995
 
+            tp1 = price + move * 2
 
-        if direction == "🔴 SHORT":
-
-            sl = price + risk
-
-            tp1 = price - risk * 2
-
-            tp2 = price - risk * 3
+            tp2 = price + move * 3
 
 
         else:
 
-            sl = price - risk
+            sl = sr["resistance"] * 1.005
 
-            tp1 = price + risk * 2
+            tp1 = price - move * 2
 
-            tp2 = price + risk * 3
+            tp2 = price - move * 3
+
+
+
+        if not safe:
+
+            status = "⏳ WAIT RETEST"
+
+
+        elif score >= 90:
+
+            status = "🚀 SNIPER"
+
+
+        else:
+
+            status = "👀 WATCH"
 
 
 
         return {
 
-
             "coin": symbol,
 
-
-            "direction": direction,
-
+            "direction": brain["direction"],
 
             "score": round(score),
 
-
             "entry": price,
-
 
             "sl": sl,
 
-
             "tp1": tp1,
-
 
             "tp2": tp2,
 
+            "support": sr["support"],
 
-            "rsi": rsi_value,
+            "resistance": sr["resistance"],
 
+            "liquidity": money["flow"],
 
-            "liquidity": liquidity,
+            "money": money["status"],
 
+            "status": status,
 
-            "whale": whale
-
+            "warning": warning
 
         }
 
@@ -623,19 +719,18 @@ def analyze(symbol):
 
     except Exception as e:
 
-
         print(
-            "AI ERROR:",
+            "ANALYZE ERROR:",
             symbol,
             e
         )
 
-
         return None
 
+
+
 # =====================================
-# 🤖 AHAD AI v9.2
-# PART 3 - TELEGRAM + STABILITY
+# 🤖 TELEGRAM
 # =====================================
 
 
@@ -644,125 +739,86 @@ def start(message):
 
     bot.reply_to(
         message,
-        "🚀 AHAD AI v9.2 ONLINE 🐋\n\n"
-        "⬛ OKX Futures Data\n"
+        "🐋 AHAD AI v9.4 ONLINE\n\n"
         "🧠 AI Brain ACTIVE\n"
-        "🐋 Liquidity Scanner ACTIVE\n\n"
-        "🎯 15m Entry\n"
-        "📈 1H Trend\n"
-        "🐋 4H Smart Money\n\n"
+        "🐋 Smart Money ACTIVE\n"
+        "📍 Support Resistance ACTIVE\n\n"
         "Send /scan"
     )
 
 
-# =====================================
-# 🔍 SCANNER
-# =====================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v9.2 SCANNING...\n\n"
-        "⬛ OKX Liquidity\n"
-        "🧠 AI Brain\n"
-        "🐋 Whale Tracking\n\n"
-        "Please wait..."
+        "🐋 Scanning OKX...\n"
+        "Searching early liquidity ⏳"
     )
 
 
     results = []
+
 
     symbols = get_symbols()
 
 
     bot.send_message(
         message.chat.id,
-        f"⬛ OKX Markets Loaded: {len(symbols)}"
+        f"⬛ Markets: {len(symbols)}"
     )
+
 
 
     for symbol in symbols:
 
-        try:
-
-            data = analyze(symbol)
-
-            if (
-                data
-                and
-                data["direction"] != "WAIT"
-            ):
-
-                results.append(data)
+        result = analyze(symbol)
 
 
-            time.sleep(0.03)
+        if result and result["score"] >= 70:
+
+            results.append(result)
 
 
-        except Exception as e:
+        time.sleep(0.03)
 
-            print(
-                "SCAN ERROR",
-                symbol,
-                e
-            )
 
 
     results = sorted(
-
         results,
-
-        key=lambda x: (
-            x["score"],
-            x["liquidity"]
-        ),
-
+        key=lambda x: x["score"],
         reverse=True
-
-    )
-
-
-    top = results[:3]
+    )[:3]
 
 
-    if not top:
+
+    if not results:
 
         bot.send_message(
             message.chat.id,
-            "👀 AHAD AI RADAR\n\n"
-            "No strong liquidity setup now 🛡️"
+            "👀 No clean setup now"
         )
 
         return
 
 
-    for s in top:
+
+    for s in results:
 
 
-        if s["score"] >= 85:
-
-            status = "🚀 SNIPER"
-
-        elif s["score"] >= 70:
-
-            status = "👀 WATCH"
-
-        else:
-
-            status = "⚠️ EARLY"
-
-
-
-        text = (
-f"""🚨 AHAD AI v9.2 🐋
+        msg = (
+f"""🚨 AHAD AI v9.4 🐋
 
 {s['direction']} | {s['coin']}
 
-🔥 Score: {s['score']}/90
-🐋 Liquidity: {round(s['liquidity'],2)}X
-🧲 Money: {s['whale']}
+🔥 Score: {s['score']}
+
+🐋 Flow: {s['liquidity']}X
+🧲 {s['money']}
+
+📍 Support: {round(s['support'],6)}
+🚧 Resistance: {round(s['resistance'],6)}
 
 🎯 Entry: {round(s['entry'],6)}
 🛑 SL: {round(s['sl'],6)}
@@ -770,51 +826,23 @@ f"""🚨 AHAD AI v9.2 🐋
 🥇 TP1: {round(s['tp1'],6)}
 🥈 TP2: {round(s['tp2'],6)}
 
-🧠 Status: {status}
+🧠 {s['status']}
+⚠️ {s['warning']}
 """
         )
 
 
         bot.send_message(
             message.chat.id,
-            text
+            msg
         )
 
 
-# =====================================
-# ❤️ SELF KEEP ALIVE
-# =====================================
-
-def keep_alive_ping():
-
-    while True:
-
-        try:
-
-            requests.get(
-                os.environ.get(
-                    "RENDER_EXTERNAL_URL",
-                    ""
-                ),
-                timeout=10
-            )
-
-            print(
-                "❤️ AHAD heartbeat"
-            )
-
-        except:
-
-            pass
-
-
-        time.sleep(600)
-
-
 
 # =====================================
-# 🛡 TELEGRAM RECOVERY
+# 🚀 START SYSTEM
 # =====================================
+
 
 def telegram_engine():
 
@@ -822,14 +850,10 @@ def telegram_engine():
 
         try:
 
-            print(
-                "🤖 Telegram Running"
+            bot.infinity_polling(
+                skip_pending=True
             )
 
-            bot.infinity_polling(
-                skip_pending=True,
-                timeout=60
-            )
 
         except Exception:
 
@@ -841,14 +865,11 @@ def telegram_engine():
 
 
 
-# =====================================
-# 🚀 START
-# =====================================
-
 threading.Thread(
     target=run_web,
     daemon=True
 ).start()
+
 
 
 threading.Thread(
@@ -857,15 +878,11 @@ threading.Thread(
 ).start()
 
 
-threading.Thread(
-    target=keep_alive_ping,
-    daemon=True
-).start()
-
 
 print(
-    "🐋 AHAD AI v9.2 STABLE ONLINE"
+    "🔥 AHAD AI v9.4 FULL ONLINE 🐋"
 )
+
 
 
 while True:

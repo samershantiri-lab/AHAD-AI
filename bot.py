@@ -291,8 +291,8 @@ print("⬛ OKX CONFIRM ACTIVE")
 print("📊 TRADINGVIEW ACTIVE")
 
 # =====================================
-# 🧠 AHAD AI v8.5 - PART 2
-# SMART BRAIN ENGINE
+# 🧠 AHAD AI v8.6 - PART 2
+# HUNTER SMART BRAIN ENGINE
 # =====================================
 
 
@@ -314,12 +314,16 @@ def analyze(symbol):
 
             df = get_candles(symbol, tf)
 
-            if df is None or len(df) < 100:
 
-                return None
+            if df is not None and len(df) >= 30:
+
+                frames[tf] = df
 
 
-            frames[tf] = df
+
+        if len(frames) == 0:
+
+            return None
 
 
 
@@ -335,16 +339,24 @@ def analyze(symbol):
 
 
         # =============================
-        # TECHNICAL ANALYSIS
+        # TECH ANALYSIS
         # =============================
+
+        last_rsi = 0
+
 
         for tf, df in frames.items():
 
 
             close = df["close"]
 
-
             price = close.iloc[-1]
+
+
+            ema20 = EMAIndicator(
+                close,
+                window=20
+            ).ema_indicator().iloc[-1]
 
 
             ema50 = EMAIndicator(
@@ -353,16 +365,13 @@ def analyze(symbol):
             ).ema_indicator().iloc[-1]
 
 
-            ema100 = EMAIndicator(
-                close,
-                window=100
-            ).ema_indicator().iloc[-1]
-
-
             rsi = RSIIndicator(
                 close,
                 window=14
             ).rsi().iloc[-1]
+
+
+            last_rsi = rsi
 
 
             macd = MACD(close)
@@ -383,17 +392,17 @@ def analyze(symbol):
             temp = 0
 
 
-            if price > ema50:
+            if price > ema20:
 
                 temp += 1
 
 
-            if ema50 > ema100:
+            if ema20 > ema50:
 
                 temp += 1
 
 
-            if 35 <= rsi <= 70:
+            if 30 <= rsi <= 75:
 
                 temp += 1
 
@@ -412,23 +421,32 @@ def analyze(symbol):
 
 
 
-            if temp >= 3:
+            if temp >= 2:
 
                 reasons.append(
                     tf.upper()
                     +
-                    " Bullish 🟢"
+                    " Trend 🟢"
                 )
 
 
 
         # =============================
-        # ENTRY FRAME 15M
+        # ENTRY DATA
         # =============================
 
-        entry_df = frames["15m"]
+        if "15m" in frames:
+
+            entry_df = frames["15m"]
+
+        else:
+
+            entry_df = list(frames.values())[0]
+
+
 
         price = entry_df["close"].iloc[-1]
+
 
 
         atr = AverageTrueRange(
@@ -446,55 +464,77 @@ def analyze(symbol):
 
 
         # =============================
-        # 🐋 WHALE VOLUME
+        # WHALE VOLUME
         # =============================
 
         volume_now = entry_df["volume"].iloc[-1]
 
+
         volume_avg = (
+
             entry_df["volume"]
-            .tail(30)
+
+            .tail(20)
+
             .mean()
+
         )
 
 
-        if volume_avg > 0:
+        whale = (
 
-            whale = volume_now / volume_avg
+            volume_now / volume_avg
 
-        else:
+            if volume_avg > 0
 
-            whale = 0
+            else 0
+
+        )
 
 
 
-        if whale >= 1.2:
+        if whale >= 1:
 
             score += 20
 
             reasons.append(
-                "Whale Volume 🐋"
+                "Whale Activity 🐋"
             )
 
 
 
         # =============================
-        # OUTSIDE CONFIRM
+        # EXTERNAL CONFIRM SAFE
         # =============================
 
-        score += tradingview_score(symbol)
+        try:
 
-        score += okx_confirm(symbol)
+            score += tradingview_score(symbol)
+
+        except:
+
+            pass
+
+
+        try:
+
+            score += okx_confirm(symbol)
+
+        except:
+
+            pass
 
 
 
         # =============================
-        # TARGET SYSTEM
+        # TARGETS
         # =============================
 
         stop_loss = price - atr * 1.5
 
+
         risk = price - stop_loss
+
 
 
         return {
@@ -511,7 +551,7 @@ def analyze(symbol):
 
             "score": round(score),
 
-            "rsi": rsi,
+            "rsi": last_rsi,
 
             "whale": whale,
 
@@ -520,17 +560,14 @@ def analyze(symbol):
         }
 
 
+
     except Exception as e:
 
 
         print(
-
             "ANALYZE ERROR",
-
             symbol,
-
             e
-
         )
 
 

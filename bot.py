@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v8.5 - PART 1
+# 🚀 AHAD AI v8.6 - PART 1
 # BYBIT CORE + OKX + TRADINGVIEW
 # =====================================
 
@@ -35,9 +35,12 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v8.5 ONLINE"
+
+    return "🐋 AHAD AI v8.6 ONLINE"
+
 
 
 def run_web():
@@ -49,7 +52,7 @@ def run_web():
 
 
 # =====================================
-# 🟧 BYBIT SYMBOL ENGINE FIXED
+# 🟧 BYBIT SYMBOL ENGINE
 # =====================================
 
 def get_symbols():
@@ -58,33 +61,50 @@ def get_symbols():
 
     try:
 
-        url = "https://api.bybit.com/v5/market/instruments-info"
+        url = (
+            "https://api.bybit.com/v5/market/instruments-info"
+        )
+
 
         params = {
+
             "category": "linear"
+
         }
 
-        data = requests.get(
+
+        response = requests.get(
             url,
             params=params,
             timeout=15
-        ).json()
+        )
+
+
+        data = response.json()
 
 
         markets = data["result"]["list"]
 
 
-        for m in markets:
+
+        for coin in markets:
+
 
             if (
-                m.get("quoteCoin") == "USDT"
+
+                coin.get("quoteCoin") == "USDT"
+
                 and
-                m.get("status") == "Trading"
+
+                coin.get("status") == "Trading"
+
             ):
 
+
                 symbols.append(
-                    m["symbol"]
+                    coin["symbol"]
                 )
+
 
 
         print(
@@ -96,199 +116,323 @@ def get_symbols():
         return symbols
 
 
+
     except Exception as e:
 
+
         print(
-            "❌ BYBIT SYMBOL ERROR:",
+            "❌ BYBIT ERROR:",
             e
         )
+
 
         return []
 
 
+
 # =====================================
-# 🟧 BYBIT CANDLES ENGINE
+# 🟧 BYBIT CANDLE ENGINE
 # =====================================
 
 def get_candles(symbol, tf):
 
+
     try:
 
-        frames = {
+
+        intervals = {
 
             "15m": "15",
+
             "1h": "60",
+
             "4h": "240",
+
             "1d": "D"
 
         }
 
 
-        url = "https://api.bybit.com/v5/market/kline"
+
+        url = (
+
+            "https://api.bybit.com/v5/market/kline"
+
+        )
+
 
 
         params = {
 
             "category": "linear",
+
             "symbol": symbol,
-            "interval": frames[tf],
+
+            "interval": intervals[tf],
+
             "limit": 200
 
         }
 
 
-        data = requests.get(
+
+        response = requests.get(
+
             url,
+
             params=params,
+
             timeout=10
-        ).json()
+
+        )
+
+
+        data = response.json()
+
 
 
         candles = data["result"]["list"]
 
 
+
         if len(candles) == 0:
+
+
             return None
 
 
-        df = pd.DataFrame(candles)
+
+        df = pd.DataFrame(
+            candles
+        )
+
 
 
         df = df.iloc[:,0:6]
 
 
+
         df.columns = [
 
             "time",
+
             "open",
+
             "high",
+
             "low",
+
             "close",
+
             "volume"
 
         ]
 
 
-        for c in [
+
+        for col in [
+
             "open",
+
             "high",
+
             "low",
+
             "close",
+
             "volume"
+
         ]:
 
-            df[c] = pd.to_numeric(df[c])
 
+            df[col] = pd.to_numeric(
+
+                df[col]
+
+            )
+
+
+
+        # ترتيب الشموع من القديم للجديد
 
         df = df[::-1]
+
 
 
         return df
 
 
+
     except Exception as e:
 
+
         print(
-            "❌ Candle ERROR:",
+
+            "❌ CANDLE ERROR:",
+
             symbol,
+
             e
+
         )
+
 
         return None
 
 
+
 # =====================================
-# ⬛ OKX CONFIRM
+# ⬛ OKX CONFIRM ENGINE
 # =====================================
 
 def okx_confirm(symbol):
 
+
     try:
 
-        okx = symbol.replace(
+
+        okx_symbol = symbol.replace(
+
             "USDT",
+
             "-USDT-SWAP"
+
         )
 
 
-        url = "https://www.okx.com/api/v5/market/ticker"
+
+        url = (
+
+            "https://www.okx.com/api/v5/market/ticker"
+
+        )
 
 
-        data = requests.get(
+
+        response = requests.get(
+
             url,
+
             params={
-                "instId": okx
+
+                "instId": okx_symbol
+
             },
+
             timeout=5
-        ).json()
+
+        )
+
+
+        data = response.json()
+
 
 
         if data.get("data"):
 
+
             return 10
 
 
+
         return 0
+
 
 
     except:
 
+
         return 0
 
 
+
+
 # =====================================
-# 📊 TRADINGVIEW CONFIRM
+# 📊 TRADINGVIEW ENGINE
 # =====================================
 
 def tradingview_score(symbol):
 
+
     try:
+
 
         handler = TA_Handler(
 
             symbol=symbol,
+
             screener="crypto",
+
             exchange="BYBIT",
+
             interval=Interval.INTERVAL_1_HOUR
 
         )
 
 
+
         result = handler.get_analysis()
 
 
-        signal = result.summary["RECOMMENDATION"]
+
+        signal = (
+
+            result.summary[
+                "RECOMMENDATION"
+            ]
+
+        )
+
 
 
         if signal == "STRONG_BUY":
 
+
             return 20
 
 
-        if signal == "BUY":
+
+        elif signal == "BUY":
+
 
             return 10
 
 
-        return 0
+
+        else:
+
+
+            return 0
+
 
 
     except:
 
+
         return 0
 
 
+
+
 # =====================================
-# 🐋 START LOG
+# 🐋 SYSTEM LOG
 # =====================================
 
-print("🚀 AHAD AI v8.5 STARTING")
+print(
+    "🚀 AHAD AI v8.6 STARTING"
+)
 
-print("🟧 BYBIT DATA ACTIVE")
+print(
+    "🟧 BYBIT DATA ACTIVE"
+)
 
-print("⬛ OKX CONFIRM ACTIVE")
+print(
+    "⬛ OKX CONFIRM ACTIVE"
+)
 
-print("📊 TRADINGVIEW ACTIVE")
+print(
+    "📊 TRADINGVIEW ACTIVE"
+)
 
 # =====================================
 # 🧠 AHAD AI v8.6 - PART 2

@@ -18,8 +18,6 @@ from ta.trend import EMAIndicator, MACD
 from ta.momentum import RSIIndicator
 from ta.volatility import AverageTrueRange
 
-from tradingview_ta import TA_Handler, Interval
-
 
 # =====================================
 # 🔑 TELEGRAM TOKEN (RENDER)
@@ -317,86 +315,6 @@ def get_candles(symbol, tf):
         return None
 
 
-
-
-# =====================================
-# 📊 TRADINGVIEW CONFIRM
-# =====================================
-
-def tradingview_score(symbol):
-
-
-    try:
-
-
-        tv_symbol = (
-
-            symbol
-
-            .replace(
-                "-USDT-SWAP",
-                "USDT"
-            )
-
-        )
-
-
-
-        handler = TA_Handler(
-
-
-            symbol=tv_symbol,
-
-
-            screener="crypto",
-
-
-            exchange="OKX",
-
-
-            interval=Interval.INTERVAL_1_HOUR
-
-
-        )
-
-
-
-        result = handler.get_analysis()
-
-
-
-        signal = result.summary[
-            "RECOMMENDATION"
-        ]
-
-
-
-        if signal == "STRONG_BUY":
-
-
-            return 20
-
-
-
-        if signal == "BUY":
-
-
-            return 10
-
-
-
-        return 0
-
-
-
-    except:
-
-
-        return 0
-
-
-
-
 # =====================================
 # 🐋 START LOG
 # =====================================
@@ -407,10 +325,6 @@ print(
 
 print(
     "⬛ OKX DATA CORE ACTIVE"
-)
-
-print(
-    "📊 TRADINGVIEW ACTIVE"
 )
 
 # =====================================
@@ -733,35 +647,6 @@ def analyze(symbol):
 
 
         # =============================
-        # TRADINGVIEW CONFIRM
-        # =============================
-
-
-        tv = tradingview_score(
-
-            symbol
-
-        )
-
-
-
-        score += tv
-
-
-
-        if tv > 0:
-
-
-            reasons.append(
-
-                "TradingView Confirm 📊"
-
-            )
-
-
-
-
-        # =============================
         # TARGETS
         # =============================
 
@@ -858,7 +743,6 @@ def start(message):
 🚀 AHAD AI v9.0 ONLINE 🐋
 
 ⬛ OKX PURE DATA CORE
-📊 TradingView Confirmation
 
 ⏱ TIMEFRAMES:
 🎯 15m Entry
@@ -889,7 +773,6 @@ def scan(message):
 🐋 AHAD AI v9.0 SCANNING...
 
 ⬛ Loading OKX Futures
-📊 Checking TradingView
 🧠 Running AI Brain...
 
 Please wait...

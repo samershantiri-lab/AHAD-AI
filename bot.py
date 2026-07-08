@@ -1421,4 +1421,11 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v1
+    "🔥 AHAD AI v10.2 FULL ONLINE 🐋"
+)
+
+
+
+while True:
+
+    time.sleep(60)

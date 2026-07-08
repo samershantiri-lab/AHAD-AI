@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v9.5 FINAL CLEAN
+# 🚀 AHAD AI v10 FINAL CLEAN
 # PART 1 - CORE + OKX DATA
 # =====================================
 
@@ -35,7 +35,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v9.5 ONLINE"
+    return "🐋 AHAD AI v10 ONLINE"
 
 
 def run_web():
@@ -321,7 +321,7 @@ def atr(candles):
 
 
 print(
-    "🚀 AHAD AI v9.5 CORE READY 🐋"
+    "🚀 AHAD AI v10 CORE READY 🐋"
 )
 
 # =====================================
@@ -626,6 +626,123 @@ def smart_money(candles):
 
 
 # =====================================
+# 🪤 TRAP DETECTOR ENGINE v10
+# Detect Retail Traps
+# =====================================
+
+def trap_detector(candles):
+
+    try:
+
+        closes = [
+            x["close"]
+            for x in candles
+        ]
+
+        highs = [
+            x["high"]
+            for x in candles
+        ]
+
+        lows = [
+            x["low"]
+            for x in candles
+        ]
+
+
+        price = closes[-1]
+
+        current_rsi = rsi(closes)
+
+
+        high_zone = max(
+            highs[-50:]
+        )
+
+        low_zone = min(
+            lows[-50:]
+        )
+
+
+        near_high = (
+            (high_zone - price)
+            /
+            price
+        ) * 100
+
+
+        near_low = (
+            (price - low_zone)
+            /
+            price
+        ) * 100
+
+
+
+        # 🐂 Retail FOMO Long Trap
+
+        if (
+            near_high < 2
+            and
+            current_rsi > 70
+        ):
+
+            return {
+
+                "type":"🪤 BULL TRAP",
+
+                "bias":"SHORT"
+
+            }
+
+
+
+        # 🐻 Panic Sell Trap
+
+        if (
+            near_low < 2
+            and
+            current_rsi < 35
+        ):
+
+            return {
+
+                "type":"🪤 BEAR TRAP",
+
+                "bias":"LONG"
+
+            }
+
+
+
+        return {
+
+            "type":"NO TRAP",
+
+            "bias":"NONE"
+
+        }
+
+
+    except Exception as e:
+
+        print(
+            "TRAP ERROR:",
+            e
+        )
+
+
+        return {
+
+            "type":"ERROR",
+
+            "bias":"NONE"
+
+        }
+
+
+
+# =====================================
 # 🧠 LORENTZIAN STYLE AI
 # =====================================
 
@@ -742,6 +859,8 @@ def analyze(symbol):
 
         money = smart_money(c15)
 
+        trap = trap_detector(c15)
+
         brain = ai_brain(c1h)
 
 
@@ -763,7 +882,60 @@ def analyze(symbol):
 
 
 
+        # منع الدخول في فخاخ التجزئة
+        if trap["type"] != "NO TRAP":
+
+            if (
+                brain["direction"] == "🟢 LONG"
+                and
+                trap["bias"] == "SHORT"
+            ):
+
+                return None
+
+
+
+            if (
+                brain["direction"] == "🔴 SHORT"
+                and
+                trap["bias"] == "LONG"
+            ):
+
+                return None
+
+
+
         score = brain["confidence"]
+
+
+        # 🪤 TRAP BONUS ENGINE
+
+        if (
+            trap["bias"] == "LONG"
+            and
+            brain["direction"] == "🟢 LONG"
+        ):
+
+            score += 20
+
+
+        if (
+            trap["bias"] == "SHORT"
+            and
+            brain["direction"] == "🔴 SHORT"
+        ):
+
+            score += 20
+
+
+
+        if (
+            trap["bias"] != "NONE"
+            and
+            trap["bias"] not in brain["direction"]
+        ):
+
+            return None
 
 
 
@@ -868,6 +1040,8 @@ def analyze(symbol):
 
             "money": money["status"],
 
+            "trap": trap["type"],
+
             "status": status,
 
             "warning": warning
@@ -898,10 +1072,11 @@ def start(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v9.5 ONLINE\n\n"
+        "🐋 AHAD AI v10 ONLINE\n\n"
         "🧠 AI Brain ACTIVE\n"
         "🐋 Smart Money ACTIVE\n"
-        "📍 Support Resistance ACTIVE\n\n"
+        "📍 Support Resistance ACTIVE\n"
+        "🪤 Trap Detector ACTIVE\n\n"
         "Send /scan"
     )
 
@@ -917,10 +1092,11 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v9.5 SCANNING...\n\n"
+        "🐋 AHAD AI v10 SCANNING...\n\n"
         "🟢 Hunting LONG setups\n"
         "🔴 Hunting SHORT setups\n"
-        "🧠 AI Brain running..."
+        "🧠 AI Brain running...\n"
+        "🪤 Checking traps..."
     )
 
 
@@ -980,7 +1156,10 @@ def scan(message):
 
         long_results,
 
-        key=lambda x: x["score"],
+        key=lambda x: (
+            x["score"],
+            x["liquidity"]
+        ),
 
         reverse=True
 
@@ -992,7 +1171,10 @@ def scan(message):
 
         short_results,
 
-        key=lambda x: x["score"],
+        key=lambda x: (
+            x["score"],
+            x["liquidity"]
+        ),
 
         reverse=True
 
@@ -1022,7 +1204,7 @@ def scan(message):
 
 
         msg = f"""
-🚨 AHAD AI v9.5 🐋
+🚨 AHAD AI v10 🐋
 
 {s['direction']}
 🪙 {s['coin']}
@@ -1051,6 +1233,7 @@ def scan(message):
 {round(s['tp2'],6)}
 
 🧠 {s['status']}
+🪤 {s['trap']}
 
 ⚠️ {s['warning']}
 """
@@ -1104,7 +1287,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v9.5 FULL ONLINE 🐋"
+    "🔥 AHAD AI v10 FULL ONLINE 🐋"
 )
 
 

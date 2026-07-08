@@ -693,7 +693,13 @@ def analyze(symbol):
             status = "⏳ WAIT RETEST"
 
 
-        elif score >= 90:
+        elif (
+            score >= 90
+            and
+            money["flow"] >= 1.5
+            and
+            money["status"] == "🐋 WHALES LOADING"
+        ):
 
             status = "🚀 SNIPER"
 
@@ -814,7 +820,11 @@ def scan(message):
 
 
 
-            if result["score"] >= 70:
+            if (
+                result["score"] >= 70
+                and
+                result["liquidity"] >= 1.3
+            ):
 
 
                 if result["direction"] == "🟢 LONG":

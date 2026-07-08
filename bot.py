@@ -1,7 +1,7 @@
-# ==============================
-# 🚀 AHAD AI v8.3 - PART 1
-# BYBIT + OKX DATA CORE
-# ==============================
+# =====================================
+# 🚀 AHAD AI v8.4 - PART 1
+# BYBIT CORE + OKX + TRADINGVIEW
+# =====================================
 
 import requests
 import time
@@ -21,24 +21,27 @@ from ta.volatility import AverageTrueRange
 from tradingview_ta import TA_Handler, Interval
 
 
-# ==============================
+# =====================================
 # 🔑 TELEGRAM TOKEN
-# ==============================
+# =====================================
 
 TOKEN = "8697535359:AAGlWi6GbtR1XQLlzhC_hoApLcfYiCxQWwg"
 
 bot = telebot.TeleBot(TOKEN)
 
 
-# ==============================
+
+# =====================================
 # 🌐 RENDER KEEP ALIVE
-# ==============================
+# =====================================
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v8.3 ONLINE"
+
+    return "🐋 AHAD AI v8.4 ONLINE"
 
 
 def run_web():
@@ -49,33 +52,43 @@ def run_web():
     )
 
 
-# ==============================
-# 🟧 BYBIT SYMBOLS
-# ==============================
+
+# =====================================
+# 🟧 BYBIT MARKET LIST
+# =====================================
 
 def get_symbols():
-
-    symbols = []
 
     try:
 
         url = (
-        "https://api.bybit.com/v5/market/instruments-info"
-        "?category=linear"
+            "https://api.bybit.com/v5/market/instruments-info"
         )
+
+
+        params = {
+
+            "category":"linear"
+
+        }
+
 
         data = requests.get(
             url,
+            params=params,
             timeout=10
         ).json()
 
 
-        for x in data["result"]["list"]:
+        symbols = []
 
-            if x["quoteCoin"] == "USDT":
+
+        for coin in data["result"]["list"]:
+
+            if coin["quoteCoin"] == "USDT":
 
                 symbols.append(
-                    x["symbol"]
+                    coin["symbol"]
                 )
 
 
@@ -85,46 +98,56 @@ def get_symbols():
         )
 
 
+        return symbols
+
+
     except Exception as e:
 
+
         print(
-            "❌ BYBIT ERROR",
+            "❌ BYBIT SYMBOL ERROR:",
             e
         )
 
 
-    return symbols
+        return []
 
 
 
-# ==============================
-# 🟧 BYBIT CANDLES
-# ==============================
+# =====================================
+# 🟧 BYBIT CANDLES ENGINE
+# =====================================
 
-def get_candles(symbol, tf):
+def get_candles(symbol, timeframe):
 
     try:
 
-        convert = {
+        tf = {
 
             "15m":"15",
+
             "1h":"60",
+
             "4h":"240",
+
             "1d":"D"
 
         }
 
 
         url = (
-        "https://api.bybit.com/v5/market/kline"
+            "https://api.bybit.com/v5/market/kline"
         )
 
 
         params = {
 
             "category":"linear",
+
             "symbol":symbol,
-            "interval":convert[tf],
+
+            "interval":tf[timeframe],
+
             "limit":200
 
         }
@@ -141,6 +164,7 @@ def get_candles(symbol, tf):
         candles = data["result"]["list"]
 
 
+
         df = pd.DataFrame(
             candles
         )
@@ -152,27 +176,37 @@ def get_candles(symbol, tf):
         df.columns = [
 
             "time",
+
             "open",
+
             "high",
+
             "low",
+
             "close",
+
             "volume"
 
         ]
 
 
-        for c in [
+
+        for x in [
 
             "open",
+
             "high",
+
             "low",
+
             "close",
+
             "volume"
 
         ]:
 
-            df[c] = pd.to_numeric(
-                df[c]
+            df[x] = pd.to_numeric(
+                df[x]
             )
 
 
@@ -197,22 +231,25 @@ def get_candles(symbol, tf):
 
 
 
-# ==============================
-# ⬛ OKX CHECK ENGINE
-# ==============================
+# =====================================
+# ⬛ OKX CONFIRM ENGINE
+# =====================================
 
-def okx_check(symbol):
+def okx_confirm(symbol):
 
     try:
 
+
         okx_symbol = (
-            symbol
-            .replace("USDT","-USDT-SWAP")
+            symbol.replace(
+                "USDT",
+                "-USDT-SWAP"
+            )
         )
 
 
         url = (
-        "https://www.okx.com/api/v5/market/ticker"
+            "https://www.okx.com/api/v5/market/ticker"
         )
 
 
@@ -221,7 +258,9 @@ def okx_check(symbol):
             url,
 
             params={
+
                 "instId":okx_symbol
+
             },
 
             timeout=5
@@ -230,101 +269,7 @@ def okx_check(symbol):
 
 
 
-        if data["data"]:
-
-            return True
-
-
-        return False
-
-
-
-    except:
-
-
-        return False
-
-
-
-# ==============================
-# 📊 TRADINGVIEW ENGINE
-# ==============================
-
-def tradingview_score(symbol):
-
-    try:
-
-        handler = TA_Handler(
-
-            symbol=symbol,
-            screener="crypto",
-            exchange="BYBIT",
-            interval=Interval.INTERVAL_1_HOUR
-
-        )
-
-
-        tv = handler.get_analysis()
-
-
-        if tv.summary["RECOMMENDATION"] == "BUY":
-
-            return 15
-
-
-        if tv.summary["RECOMMENDATION"] == "STRONG_BUY":
-
-            return 25
-
-
-        return 0
-
-
-
-    except:
-
-        return 0
-
-
-
-# ==============================
-# 🐋 START LOG
-# ==============================
-
-print("🚀 AHAD AI v8.3 STARTING")
-
-print("🟧 BYBIT ENGINE ACTIVE")
-
-print("⬛ OKX CONFIRM ACTIVE")
-
-print("📊 TRADINGVIEW ACTIVE")
-
-# ==============================
-# 📊 TRADINGVIEW ENGINE
-# ==============================
-
-def tradingview_score(symbol):
-
-    try:
-
-        tv = TA_Handler(
-            symbol=symbol,
-            screener="crypto",
-            exchange="BYBIT",
-            interval=Interval.INTERVAL_1_HOUR
-        )
-
-        result = tv.get_analysis()
-
-        signal = result.summary["RECOMMENDATION"]
-
-
-        if signal == "STRONG_BUY":
-
-            return 20
-
-
-        if signal == "BUY":
+        if len(data["data"]) > 0:
 
             return 10
 
@@ -332,47 +277,142 @@ def tradingview_score(symbol):
         return 0
 
 
-    except Exception:
+
+    except:
+
 
         return 0
 
 
 
-# ==============================
-# 🧠 AHAD AI BRAIN
-# ==============================
+# =====================================
+# 📊 TRADINGVIEW ENGINE
+# =====================================
+
+def tradingview_score(symbol):
+
+    try:
+
+
+        total = 0
+
+
+        frames = [
+
+            Interval.INTERVAL_15_MINUTES,
+
+            Interval.INTERVAL_1_HOUR,
+
+            Interval.INTERVAL_4_HOURS,
+
+            Interval.INTERVAL_1_DAY
+
+        ]
+
+
+        for frame in frames:
+
+
+            handler = TA_Handler(
+
+                symbol=symbol,
+
+                screener="crypto",
+
+                exchange="BYBIT",
+
+                interval=frame
+
+            )
+
+
+            result = handler.get_analysis()
+
+
+            signal = result.summary[
+                "RECOMMENDATION"
+            ]
+
+
+            if signal == "BUY":
+
+                total += 5
+
+
+            if signal == "STRONG_BUY":
+
+                total += 10
+
+
+
+        return total
+
+
+
+    except Exception as e:
+
+
+        print(
+            "TV ERROR:",
+            symbol,
+            e
+        )
+
+
+        return 0
+
+
+
+# =====================================
+# 🔗 OLD SYSTEM BRIDGE
+# =====================================
+
+def get_futures_symbols():
+
+    return get_symbols()
+
+
+
+def coinglass_score(symbol):
+
+    return 0
+
+
+
+# =====================================
+# 🐋 START LOG
+# =====================================
+
+print("🚀 AHAD AI v8.4 STARTING")
+
+print("🟧 BYBIT CORE ACTIVE")
+
+print("⬛ OKX CONFIRM ACTIVE")
+
+print("📊 TRADINGVIEW ACTIVE")
+
+# =====================================
+# 🧠 AHAD AI v8.4 BRAIN ENGINE
+# =====================================
 
 def analyze(symbol):
 
     try:
 
-        score = 0
-
-        reasons = []
-
         frames = {}
 
+        for tf in ["15m","1h","4h","1d"]:
 
-        for tf in [
-            "15m",
-            "1h",
-            "4h",
-            "1d"
-        ]:
-
-            df = get_candles(
-                symbol,
-                tf
-            )
-
+            df = get_candles(symbol, tf)
 
             if df is None or len(df) < 100:
-
                 return None
-
 
             frames[tf] = df
 
+
+        score = 0
+        reasons = []
 
 
         weights = {
@@ -385,9 +425,7 @@ def analyze(symbol):
         }
 
 
-
         for tf, df in frames.items():
-
 
             close = df["close"]
 
@@ -414,7 +452,6 @@ def analyze(symbol):
 
             macd = MACD(close)
 
-
             macd_power = (
                 macd.macd().iloc[-1]
                 -
@@ -426,63 +463,52 @@ def analyze(symbol):
 
 
             if price > ema50:
-
                 power += 1
-
 
             if ema50 > ema100:
-
                 power += 1
-
 
             if 35 <= rsi <= 70:
-
                 power += 1
-
 
             if macd_power > 0:
-
                 power += 1
-
 
 
             score += (
                 power / 4
-                *
-                weights[tf]
-            )
+            ) * weights[tf]
 
 
             if power >= 3:
 
                 reasons.append(
-                    tf + " BULLISH 🟢"
+                    tf + " Bullish 🟢"
                 )
 
 
 
-        entry = frames["15m"]
+        # 🐋 WHALE ENGINE
 
-        price = entry["close"].iloc[-1]
+        df = frames["15m"]
 
+        volume_now = df["volume"].iloc[-1]
 
-        atr = AverageTrueRange(
-            entry["high"],
-            entry["low"],
-            entry["close"],
-            window=14
-        ).average_true_range().iloc[-1]
-
-
-
-        whale = (
-            entry["volume"].iloc[-1]
-            /
-            entry["volume"].tail(30).mean()
+        volume_avg = (
+            df["volume"]
+            .tail(30)
+            .mean()
         )
 
 
-        if whale >= 1.5:
+        whale = (
+            volume_now / volume_avg
+            if volume_avg > 0
+            else 0
+        )
+
+
+        if whale >= 1.3:
 
             score += 20
 
@@ -492,29 +518,27 @@ def analyze(symbol):
 
 
 
-        # OKX
-        if okx_check(symbol):
+        # 📊 EXTERNAL CONFIRM
 
-            score += 10
+        score += tradingview_score(symbol)
 
-            reasons.append(
-                "OKX Confirm ⬛"
-            )
+        score += okx_confirm(symbol)
 
 
 
-        # TradingView
-        tv = tradingview_score(symbol)
+        # 🎯 ENTRY
 
-        score += tv
+        price = df["close"].iloc[-1]
 
 
-        if tv:
+        atr = AverageTrueRange(
 
-            reasons.append(
-                "TradingView 📊"
-            )
+            df["high"],
+            df["low"],
+            df["close"],
+            window=14
 
+        ).average_true_range().iloc[-1]
 
 
         sl = price - atr * 1.5
@@ -526,34 +550,39 @@ def analyze(symbol):
         return {
 
             "coin":symbol,
+
             "entry":price,
+
             "sl":sl,
-            "tp1":price + risk*2,
-            "tp2":price + risk*3,
+
+            "tp1":price + risk * 2,
+
+            "tp2":price + risk * 3,
+
             "score":round(score),
+
             "rsi":rsi,
+
             "whale":whale,
+
             "reasons":reasons
 
         }
 
 
-
     except Exception as e:
 
         print(
-            "ANALYZE ERROR",
+            "Analyze Error:",
             symbol,
             e
         )
 
         return None
 
-
-
-# ==============================
-# 🤖 TELEGRAM
-# ==============================
+# =====================================
+# 🤖 AHAD AI v8.4 TELEGRAM ENGINE
+# =====================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -561,50 +590,84 @@ def start(message):
     bot.reply_to(
         message,
 """
-🚀 AHAD AI v8.3 ONLINE 🐋
+🚀 AHAD AI v8.4 ONLINE 🐋
 
-🟧 Bybit DATA
-⬛ OKX Confirm
-📊 TradingView
+🟧 Bybit Core Engine
+⬛ OKX Confirmation
+📊 TradingView Multi-Timeframe
 
-⏱ 15m | 1H | 4H | 1D
+⏱ Timeframes:
+🎯 15m Entry
+📈 1H Trend
+🐋 4H Power
+👑 1D Macro
+
+🧠 Smart Brain ACTIVE
+🐋 Whale Scanner ACTIVE
 
 Send /scan
 """
     )
 
 
+# =====================================
+# 🔍 SCANNER
+# =====================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v8.3 SCANNING..."
+"""
+🐋 AHAD AI v8.4 SCANNING...
+
+🟧 Loading Bybit Data
+⬛ Checking OKX
+📊 Reading TradingView
+"""
     )
 
 
     results = []
 
 
-    for symbol in get_symbols()[:200]:
+    symbols = get_symbols()
 
 
-        x = analyze(symbol)
+    print(
+        "🔍 SCANNING:",
+        len(symbols)
+    )
 
 
-        if x:
+    for symbol in symbols[:200]:
 
-            results.append(x)
+        try:
+
+            result = analyze(symbol)
 
 
-        time.sleep(0.05)
+            if result:
 
+                results.append(result)
+
+
+            time.sleep(0.05)
+
+
+        except Exception as e:
+
+            print(
+                "SCAN ERROR:",
+                symbol,
+                e
+            )
 
 
     results = sorted(
         results,
-        key=lambda x:x["score"],
+        key=lambda x: x["score"],
         reverse=True
     )
 
@@ -620,22 +683,23 @@ def scan(message):
 
 
 
-    for s in results[:3]:
+    for s in results[:5]:
 
         bot.send_message(
             message.chat.id,
 f"""
-🚀 LONG HUNTER FOUND 🐋
+🚀 AHAD AI LONG HUNTER 🐋
 
-🪙 {s['coin']}
+🪙 Coin:
+{s['coin']}
 
-🔥 SCORE:
-{s['score']}
+🔥 Score:
+{s['score']}/150
 
-🎯 ENTRY:
+🎯 Entry:
 {round(s['entry'],5)}
 
-🛑 SL:
+🛑 Stop Loss:
 {round(s['sl'],5)}
 
 🎯 TP1:
@@ -650,15 +714,54 @@ f"""
 🐋 Whale:
 {round(s['whale'],2)}X
 
+
+✅ Confirmations:
 {chr(10).join(s['reasons'])}
 """
         )
 
 
 
-# ==============================
-# 🚀 RUN
-# ==============================
+# =====================================
+# 🛡 TELEGRAM AUTO RECOVERY
+# =====================================
+
+def telegram_engine():
+
+    while True:
+
+        try:
+
+            print(
+                "🤖 TELEGRAM ACTIVE"
+            )
+
+
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=60
+            )
+
+
+        except Exception:
+
+            print(
+                traceback.format_exc()
+            )
+
+
+            print(
+                "🔄 Restart Telegram..."
+            )
+
+
+            time.sleep(5)
+
+
+
+# =====================================
+# 🚀 START SYSTEM
+# =====================================
 
 threading.Thread(
     target=run_web,
@@ -667,12 +770,14 @@ threading.Thread(
 
 
 threading.Thread(
-    target=bot.infinity_polling,
+    target=telegram_engine,
     daemon=True
 ).start()
 
 
-print("🔥 AHAD AI v8.3 FULL ONLINE")
+print(
+    "🔥 AHAD AI v8.4 FULL ONLINE"
+)
 
 
 while True:

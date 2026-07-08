@@ -634,8 +634,8 @@ def analyze(symbol):
         return None
 
 # =====================================
-# 🤖 AHAD AI v9.1
-# PART 3 - TELEGRAM SCANNER
+# 🤖 AHAD AI v9.2
+# PART 3 - TELEGRAM + STABILITY
 # =====================================
 
 
@@ -644,27 +644,19 @@ def start(message):
 
     bot.reply_to(
         message,
-"""
-🚀 AHAD AI v9.1 ONLINE 🐋
-
-⬛ OKX DATA CORE
-
-🧠 AI Liquidity Brain
-🐋 Whale Flow Detector
-🟢 LONG Hunter
-🔴 SHORT Hunter
-
-🎯 Goal:
-Catch the move BEFORE it happens
-
-Send /scan
-"""
+        "🚀 AHAD AI v9.2 ONLINE 🐋\n\n"
+        "⬛ OKX Futures Data\n"
+        "🧠 AI Brain ACTIVE\n"
+        "🐋 Liquidity Scanner ACTIVE\n\n"
+        "🎯 15m Entry\n"
+        "📈 1H Trend\n"
+        "🐋 4H Smart Money\n\n"
+        "Send /scan"
     )
 
 
-
 # =====================================
-# 🔍 SCAN COMMAND
+# 🔍 SCANNER
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -672,80 +664,59 @@ def scan(message):
 
     bot.reply_to(
         message,
-"""
-🐋 AHAD AI v9.1 SCANNING...
-
-⬛ Reading OKX Liquidity
-🧠 Tracking Smart Money
-🐋 Searching Whale Flow...
-
-Please wait...
-"""
+        "🐋 AHAD AI v9.2 SCANNING...\n\n"
+        "⬛ OKX Liquidity\n"
+        "🧠 AI Brain\n"
+        "🐋 Whale Tracking\n\n"
+        "Please wait..."
     )
 
 
     results = []
-
 
     symbols = get_symbols()
 
 
     bot.send_message(
         message.chat.id,
-        f"⬛ OKX Markets: {len(symbols)}"
+        f"⬛ OKX Markets Loaded: {len(symbols)}"
     )
 
 
-
-    for symbol in symbols[:250]:
+    for symbol in symbols:
 
         try:
 
-            result = analyze(
-                symbol
-            )
-
+            data = analyze(symbol)
 
             if (
-                result
+                data
                 and
-                result["direction"] != "WAIT"
+                data["direction"] != "WAIT"
             ):
 
-                results.append(
-                    result
-                )
+                results.append(data)
 
 
-            time.sleep(
-                0.02
-            )
+            time.sleep(0.03)
 
 
         except Exception as e:
 
             print(
-                "SCAN ERROR:",
+                "SCAN ERROR",
                 symbol,
                 e
             )
 
-
-
-    # =============================
-    # SORT BEST LIQUIDITY
-    # =============================
 
     results = sorted(
 
         results,
 
         key=lambda x: (
-
             x["score"],
-
             x["liquidity"]
-
         ),
 
         reverse=True
@@ -753,160 +724,148 @@ Please wait...
     )
 
 
-
     top = results[:3]
-
 
 
     if not top:
 
-
         bot.send_message(
             message.chat.id,
-            """
-👀 AHAD AI RADAR
-
-No strong move loading now 🛡
-
-Market checked successfully
-"""
+            "👀 AHAD AI RADAR\n\n"
+            "No strong liquidity setup now 🛡️"
         )
 
         return
 
 
-
     for s in top:
 
 
-        bot.send_message(
+        if s["score"] >= 85:
 
-            message.chat.id,
+            status = "🚀 SNIPER"
 
-f"""
-🚨 AHAD AI v9.1 SIGNAL 🐋
+        elif s["score"] >= 70:
 
+            status = "👀 WATCH"
 
-{s['direction']}
+        else:
 
-🪙 COIN:
-{s['coin']}
-
-
-🔥 AI SCORE:
-{s['score']}/90
+            status = "⚠️ EARLY"
 
 
-🐋 LIQUIDITY FLOW:
-{round(s['liquidity'],2)}X
 
+        text = (
+f"""🚨 AHAD AI v9.2 🐋
 
-🧲 SMART MONEY:
-{s['whale']}
+{s['direction']} | {s['coin']}
 
+🔥 Score: {s['score']}/90
+🐋 Liquidity: {round(s['liquidity'],2)}X
+🧲 Money: {s['whale']}
 
-🎯 ENTRY:
-{round(s['entry'],6)}
+🎯 Entry: {round(s['entry'],6)}
+🛑 SL: {round(s['sl'],6)}
 
+🥇 TP1: {round(s['tp1'],6)}
+🥈 TP2: {round(s['tp2'],6)}
 
-🛑 STOP:
-{round(s['sl'],6)}
-
-
-🎯 TP1:
-{round(s['tp1'],6)}
-
-
-🎯 TP2:
-{round(s['tp2'],6)}
-
-
-📊 RSI:
-{round(s['rsi'],2)}
+🧠 Status: {status}
 """
-
         )
+
+
+        bot.send_message(
+            message.chat.id,
+            text
+        )
+
+
+# =====================================
+# ❤️ SELF KEEP ALIVE
+# =====================================
+
+def keep_alive_ping():
+
+    while True:
+
+        try:
+
+            requests.get(
+                os.environ.get(
+                    "RENDER_EXTERNAL_URL",
+                    ""
+                ),
+                timeout=10
+            )
+
+            print(
+                "❤️ AHAD heartbeat"
+            )
+
+        except:
+
+            pass
+
+
+        time.sleep(600)
 
 
 
 # =====================================
-# 🛡 AUTO RECOVERY
+# 🛡 TELEGRAM RECOVERY
 # =====================================
 
 def telegram_engine():
 
-
     while True:
-
 
         try:
 
-
             print(
-                "🤖 TELEGRAM ACTIVE"
+                "🤖 Telegram Running"
             )
-
 
             bot.infinity_polling(
-
                 skip_pending=True,
-
                 timeout=60
-
             )
-
 
         except Exception:
 
-
             print(
-
                 traceback.format_exc()
-
             )
-
-
-            print(
-
-                "🔄 Restart Telegram"
-
-            )
-
 
             time.sleep(5)
 
 
 
-
 # =====================================
-# 🚀 START SYSTEM
+# 🚀 START
 # =====================================
-
 
 threading.Thread(
-
     target=run_web,
-
     daemon=True
-
 ).start()
-
 
 
 threading.Thread(
-
     target=telegram_engine,
-
     daemon=True
-
 ).start()
 
+
+threading.Thread(
+    target=keep_alive_ping,
+    daemon=True
+).start()
 
 
 print(
-    "🔥 AHAD AI v9.1 LIQUIDITY HUNTER ONLINE 🐋"
+    "🐋 AHAD AI v9.2 STABLE ONLINE"
 )
-
 
 
 while True:

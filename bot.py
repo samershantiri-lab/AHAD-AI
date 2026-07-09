@@ -1,5 +1,6 @@
 # =====================================
-# 🚀 AHAD AI v10.2 FINAL CLEAN
+# 🚀 AHAD AI v11
+# LIQUIDITY HUNTER EDITION
 # PART 1 - CORE + OKX DATA
 # =====================================
 
@@ -14,28 +15,39 @@ import telebot
 
 
 # =====================================
-# 🔑 TELEGRAM
+# 🔑 TELEGRAM TOKEN
 # =====================================
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 if not TOKEN:
-    raise Exception("❌ BOT_TOKEN NOT FOUND")
 
-bot = telebot.TeleBot(TOKEN)
+    raise Exception(
+        "❌ BOT_TOKEN NOT FOUND"
+    )
+
+
+bot = telebot.TeleBot(
+    TOKEN
+)
 
 
 # =====================================
-# 🌐 RENDER SERVER
+# 🌐 RENDER KEEP ALIVE SERVER
 # =====================================
 
-app = Flask(__name__)
+app = Flask(
+    __name__
+)
 
 
 @app.route("/")
 def home():
 
-    return "🐋 AHAD AI v10.2 ONLINE"
+    return (
+        "🐋 AHAD AI v11 "
+        "LIQUIDITY HUNTER ONLINE 🚀"
+    )
 
 
 def run_web():
@@ -47,14 +59,96 @@ def run_web():
         )
     )
 
+
     app.run(
+
         host="0.0.0.0",
+
         port=port
+
     )
 
 
+
 # =====================================
-# ⬛ OKX CRYPTO SYMBOLS ONLY
+# 🏦 SECTOR DATABASE v11
+# =====================================
+
+SECTORS = {
+
+
+    "AI": [
+
+        "FET",
+        "TAO",
+        "WLD",
+        "ARKM",
+        "AI",
+        "RENDER"
+
+    ],
+
+
+    "GAMING": [
+
+        "APE",
+        "SAND",
+        "MANA",
+        "GALA",
+        "IMX",
+        "AXS"
+
+    ],
+
+
+    "DEFI": [
+
+        "UNI",
+        "AAVE",
+        "LINK",
+        "CRV",
+        "MKR",
+        "COMP"
+
+    ],
+
+
+    "MEME": [
+
+        "DOGE",
+        "SHIB",
+        "PEPE",
+        "BONK",
+        "FLOKI"
+
+    ],
+
+
+    "LAYER1": [
+
+        "SOL",
+        "AVAX",
+        "DOT",
+        "NEAR",
+        "ADA"
+
+    ],
+
+
+    "RWA": [
+
+        "ONDO",
+        "PENDLE",
+        "ENA"
+
+    ]
+
+}
+
+
+
+# =====================================
+# ⬛ OKX FUTURES CRYPTO ONLY
 # =====================================
 
 def get_symbols():
@@ -66,16 +160,24 @@ def get_symbols():
             "/api/v5/public/instruments"
         )
 
+
         params = {
+
             "instType": "SWAP"
+
         }
 
 
         data = requests.get(
+
             url,
+
             params=params,
+
             timeout=15
+
         ).json()
+
 
 
         blocked = [
@@ -92,7 +194,9 @@ def get_symbols():
         ]
 
 
+
         result = []
+
 
 
         for x in data["data"]:
@@ -102,23 +206,35 @@ def get_symbols():
 
 
             if (
+
                 x["settleCcy"] == "USDT"
+
                 and
+
                 x["state"] == "live"
+
                 and
+
                 not any(
                     b in symbol
                     for b in blocked
                 )
+
             ):
 
-                result.append(symbol)
+
+                result.append(
+                    symbol
+                )
 
 
 
         print(
-            "🐋 CRYPTO MARKETS:",
+
+            "🐋 MARKETS FOUND:",
+
             len(result)
+
         )
 
 
@@ -130,23 +246,29 @@ def get_symbols():
 
 
         print(
+
             "SYMBOL ERROR:",
+
             e
+
         )
 
 
         return []
 
 
+
 # =====================================
-# 🕯 OKX CANDLES
+# 🕯 OKX CANDLES ENGINE
 # =====================================
 
 def get_candles(symbol, tf):
 
     try:
 
+
         frames = {
+
 
             "15m": "15m",
 
@@ -159,37 +281,53 @@ def get_candles(symbol, tf):
         }
 
 
+
         url = (
+
             "https://www.okx.com"
+
             "/api/v5/market/candles"
+
         )
+
 
 
         params = {
 
+
             "instId": symbol,
 
+
             "bar": frames[tf],
+
 
             "limit": 150
 
         }
 
 
+
         data = requests.get(
+
             url,
+
             params=params,
+
             timeout=10
+
         ).json()
 
 
+
         candles = []
+
 
 
         for c in data["data"][::-1]:
 
 
             candles.append({
+
 
                 "open": float(c[1]),
 
@@ -200,6 +338,7 @@ def get_candles(symbol, tf):
                 "close": float(c[4]),
 
                 "volume": float(c[5])
+
 
             })
 
@@ -213,9 +352,13 @@ def get_candles(symbol, tf):
 
 
         print(
+
             "CANDLE ERROR:",
+
             symbol,
+
             e
+
         )
 
 
@@ -223,8 +366,12 @@ def get_candles(symbol, tf):
 
 
 
+print(
+    "🔥 AHAD AI v11 CORE READY 🐋"
+)
+
 # =====================================
-# 📊 INDICATORS (NO LIBRARIES)
+# 📊 INDICATORS ENGINE v11
 # =====================================
 
 def ema(values, period):
@@ -236,17 +383,15 @@ def ema(values, period):
 
     k = 2 / (period + 1)
 
-
     result = values[0]
 
 
     for v in values:
 
-
         result = (
             v * k
             +
-            result * (1-k)
+            result * (1 - k)
         )
 
 
@@ -257,18 +402,13 @@ def ema(values, period):
 def rsi(values, period=14):
 
     gains = 0
-
     losses = 0
 
 
-    for i in range(
-        -period,
-        -1
-    ):
-
+    for i in range(-period, -1):
 
         diff = (
-            values[i+1]
+            values[i + 1]
             -
             values[i]
         )
@@ -277,7 +417,6 @@ def rsi(values, period=14):
         if diff > 0:
 
             gains += diff
-
 
         else:
 
@@ -290,13 +429,14 @@ def rsi(values, period=14):
         return 100
 
 
+
     rs = gains / losses
 
 
     return (
         100
         -
-        100/(1+rs)
+        100 / (1 + rs)
     )
 
 
@@ -307,7 +447,6 @@ def atr(candles):
 
 
     for c in candles[-14:]:
-
 
         ranges.append(
             c["high"]
@@ -325,88 +464,283 @@ def atr(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME RSI ENGINE
+# 🏦 SECTOR FLOW ENGINE v11
+# FIND WHERE MONEY GOES
+# =====================================
+
+def sector_flow(symbols):
+
+    try:
+
+        result = {}
+
+
+        for sector, coins in SECTORS.items():
+
+            power = 0
+
+
+            for symbol in symbols:
+
+
+                if any(
+                    coin in symbol
+                    for coin in coins
+                ):
+
+                    candles = get_candles(
+                        symbol,
+                        "1h"
+                    )
+
+
+                    if len(candles) > 50:
+
+
+                        volumes = [
+                            x["volume"]
+                            for x in candles
+                        ]
+
+
+                        recent = sum(
+                            volumes[-5:]
+                        )
+
+
+                        average = (
+                            sum(
+                                volumes[-50:]
+                            )
+                            /
+                            10
+                        )
+
+
+                        if average > 0:
+
+                            power += (
+                                recent
+                                /
+                                average
+                            )
+
+
+            result[sector] = round(
+                power,
+                2
+            )
+
+
+
+        hot_sector = max(
+            result,
+            key=result.get
+        )
+
+
+        return {
+
+            "sector": hot_sector,
+
+            "power": result[hot_sector]
+
+        }
+
+
+
+    except Exception as e:
+
+        print(
+            "SECTOR ERROR:",
+            e
+        )
+
+
+        return {
+
+            "sector": "UNKNOWN",
+
+            "power": 0
+
+        }
+
+
+
+# =====================================
+# 🐋 SMART MONEY ENGINE v11
+# =====================================
+
+def smart_money(candles):
+
+    try:
+
+        closes = [
+            x["close"]
+            for x in candles
+        ]
+
+
+        volumes = [
+            x["volume"]
+            for x in candles
+        ]
+
+
+        volume_now = sum(
+            volumes[-5:]
+        )
+
+
+        volume_avg = (
+            sum(volumes[-50:])
+            /
+            50
+        )
+
+
+        if volume_avg == 0:
+
+            flow = 0
+
+        else:
+
+            flow = (
+                volume_now
+                /
+                volume_avg
+            )
+
+
+        move = (
+            (
+                closes[-1]
+                -
+                closes[-24]
+            )
+            /
+            closes[-24]
+        ) * 100
+
+
+
+        if (
+            flow >= 1.5
+            and
+            abs(move) < 8
+        ):
+
+            status = (
+                "🐋 SMART ACCUMULATION"
+            )
+
+
+        elif (
+            flow >= 1.5
+            and
+            move > 8
+        ):
+
+            status = (
+                "🚨 WHALE EXIT"
+            )
+
+
+        else:
+
+            status = "NORMAL"
+
+
+
+        return {
+
+            "flow": round(flow, 2),
+
+            "status": status
+
+        }
+
+
+
+    except Exception as e:
+
+        print(
+            "SMART MONEY ERROR:",
+            e
+        )
+
+
+        return {
+
+            "flow": 0,
+
+            "status": "ERROR"
+
+        }
+
+# =====================================
+# 📊 MULTI TIMEFRAME ENGINE v11
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
 
     try:
 
-        closes15 = [
-            x["close"]
-            for x in c15
-        ]
+        data = {}
 
-        closes1h = [
-            x["close"]
-            for x in c1h
-        ]
+        frames = {
 
-        closes4h = [
-            x["close"]
-            for x in c4h
-        ]
+            "15m": c15,
+            "1h": c1h,
+            "4h": c4h,
+            "1d": c1d
 
-        closes1d = [
-            x["close"]
-            for x in c1d
-        ]
-
-
-        rsi15 = rsi(closes15)
-        rsi1h = rsi(closes1h)
-        rsi4h = rsi(closes4h)
-        rsi1d = rsi(closes1d)
+        }
 
 
         score = 0
 
 
-        if rsi15 > 55:
-            score += 10
-        elif rsi15 < 45:
-            score -= 10
+        for name, candles in frames.items():
+
+            closes = [
+                x["close"]
+                for x in candles
+            ]
 
 
-        if rsi1h > 55:
-            score += 10
-        elif rsi1h < 45:
-            score -= 10
+            value = rsi(
+                closes
+            )
 
 
-        # 4H TREND POWER
-
-        if 50 <= rsi4h <= 70:
-            score += 15
-
-        elif rsi4h > 75:
-            score -= 15
-
-        elif rsi4h < 35:
-            score += 5
+            data[name] = round(
+                value,
+                2
+            )
 
 
-        # 1D TREND POWER
+            if 50 <= value <= 70:
 
-        if 50 <= rsi1d <= 70:
-            score += 10
-
-        elif rsi1d > 75:
-            score -= 15
-
-        elif rsi1d < 35:
-            score += 5
+                score += 10
 
 
-        return {
+            elif value > 75:
 
-            "rsi15": round(rsi15, 2),
-            "rsi1h": round(rsi1h, 2),
-            "rsi4h": round(rsi4h, 2),
-            "rsi1d": round(rsi1d, 2),
-            "score": score
+                score -= 10
 
-        }
+
+            elif value < 35:
+
+                score += 5
+
+
+
+        data["score"] = score
+
+
+        return data
+
 
 
     except Exception as e:
@@ -416,24 +750,21 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
             e
         )
 
+
         return {
 
-            "rsi15": 50,
-            "rsi1h": 50,
-            "rsi4h": 50,
-            "rsi1d": 50,
-            "score": 0
+            "15m":50,
+            "1h":50,
+            "4h":50,
+            "1d":50,
+            "score":0
 
         }
 
 
 
-print(
-    "🚀 AHAD AI v10.2 CORE READY 🐋"
-)
-
 # =====================================
-# 🧱 SUPPORT / RESISTANCE ENGINE
+# 🧱 SUPPORT RESISTANCE ENGINE
 # =====================================
 
 def support_resistance(candles):
@@ -442,6 +773,7 @@ def support_resistance(candles):
         x["high"]
         for x in candles[-80:]
     ]
+
 
     lows = [
         x["low"]
@@ -463,395 +795,138 @@ def support_resistance(candles):
 
         "resistance": resistance,
 
-        "near_support": (
-            (price - support)
-            /
-            price
-        ) * 100,
+        "near_support":
+        ((price-support)/price)*100,
 
-        "near_resistance": (
-            (resistance - price)
-            /
-            price
-        ) * 100
+        "near_resistance":
+        ((resistance-price)/price)*100
 
     }
 
 
 
 # =====================================
-# 🛡 ANTI FOMO ENGINE v9.6
-# Catch move BEFORE explosion
+# 🛡 ANTI LATE ENTRY v11
 # =====================================
 
 def fomo_filter(candles):
 
-    try:
-
-        closes = [
-            x["close"]
-            for x in candles
-        ]
-
-        highs = [
-            x["high"]
-            for x in candles
-        ]
-
-        lows = [
-            x["low"]
-            for x in candles
-        ]
+    closes = [
+        x["close"]
+        for x in candles
+    ]
 
 
-        price = closes[-1]
+    price = closes[-1]
 
 
-        # آخر 24 ساعة تقريبا على 15m
-        old_price = closes[-96]
+    move = (
+
+        (price - closes[-96])
+
+        /
+
+        closes[-96]
+
+    ) * 100
 
 
-        move_24h = (
-            (price - old_price)
-            /
-            old_price
-        ) * 100
+
+    current_rsi = rsi(
+        closes
+    )
 
 
-        current_rsi = rsi(
-            closes
-        )
 
-
-        support = min(
-            lows[-80:]
-        )
-
-
-        distance_support = (
-            (price - support)
-            /
-            price
-        ) * 100
-
-
-        # ==========================
-        # 🚫 LONG TOO LATE
-        # ==========================
-
-        if (
-            move_24h > 12
-            and
-            distance_support > 4
-        ):
-
-            return (
-                False,
-                "🚫 PUMPED - WAIT RETEST"
-            )
-
-
-        # ==========================
-        # 🚫 RSI OVERHEAT
-        # ==========================
-
-        if current_rsi > 75:
-
-            return (
-                False,
-                "🚫 RSI HOT - WAIT COOL"
-            )
-
-
-        # ==========================
-        # 🚫 HUGE CANDLE
-        # ==========================
-
-        candle = (
-            highs[-1]
-            -
-            lows[-1]
-        )
-
-
-        avg_candle = sum(
-            [
-                highs[i] - lows[i]
-                for i in range(-30, -1)
-            ]
-        ) / 29
-
-
-        if candle > avg_candle * 2.5:
-
-            return (
-                False,
-                "🚫 BIG MOVE WAIT"
-            )
-
+    if move > 8:
 
         return (
-            True,
-            "🐋 EARLY AREA"
-        )
 
-
-    except Exception as e:
-
-        print(
-            "FOMO ERROR:",
-            e
-        )
-
-        return (
             False,
-            "FILTER ERROR"
+
+            "🚫 MOVE DONE - WAIT RETEST"
+
         )
+
+
+
+    if current_rsi > 75:
+
+        return (
+
+            False,
+
+            "🚫 RSI HOT"
+
+        )
+
+
+
+    return (
+
+        True,
+
+        "🐋 EARLY ENTRY AREA"
+
+    )
 
 
 
 # =====================================
-# 🐋 WHALE ACCUMULATION ENGINE v9.6
-# Detect accumulation vs exit
-# =====================================
-
-def smart_money(candles):
-
-    try:
-
-        closes = [
-            x["close"]
-            for x in candles
-        ]
-
-        volumes = [
-            x["volume"]
-            for x in candles
-        ]
-
-
-        price = closes[-1]
-
-
-        volume_now = sum(
-            volumes[-5:]
-        )
-
-
-        volume_avg = (
-            sum(volumes[-50:])
-            /
-            50
-        )
-
-
-        if volume_avg == 0:
-
-            flow = 0
-
-        else:
-
-            flow = volume_now / volume_avg
-
-
-        # حركة آخر 24 شمعة
-        old_price = closes[-24]
-
-
-        move = (
-            (price - old_price)
-            /
-            old_price
-        ) * 100
-
-
-        # حركة السعر آخر 5 شمعات
-        short_move = (
-            (closes[-1] - closes[-5])
-            /
-            closes[-5]
-        ) * 100
-
-
-        # =====================
-        # 🐋 TRUE ACCUMULATION
-        # =====================
-
-        if (
-            flow >= 1.5
-            and
-            abs(move) < 8
-            and
-            abs(short_move) < 4
-        ):
-
-            status = "🐋 SMART ACCUMULATION"
-
-
-        # =====================
-        # 🚨 WHALE EXIT
-        # =====================
-
-        elif (
-            flow >= 1.5
-            and
-            move > 8
-        ):
-
-            status = "🚨 WHALE DISTRIBUTION"
-
-
-        else:
-
-            status = "NORMAL"
-
-
-
-        return {
-
-            "flow": round(flow,2),
-
-            "status": status
-
-        }
-
-
-    except Exception as e:
-
-        print(
-            "SMART MONEY ERROR:",
-            e
-        )
-
-        return {
-
-            "flow":0,
-
-            "status":"ERROR"
-
-        }
-
-
-
-# =====================================
-# 🪤 TRAP DETECTOR ENGINE v10
-# Detect Retail Traps
+# 🪤 TRAP DETECTOR v11
 # =====================================
 
 def trap_detector(candles):
 
-    try:
-
-        closes = [
-            x["close"]
-            for x in candles
-        ]
-
-        highs = [
-            x["high"]
-            for x in candles
-        ]
-
-        lows = [
-            x["low"]
-            for x in candles
-        ]
+    closes = [
+        x["close"]
+        for x in candles
+    ]
 
 
-        price = closes[-1]
-
-        current_rsi = rsi(closes)
-
-
-        high_zone = max(
-            highs[-50:]
-        )
-
-        low_zone = min(
-            lows[-50:]
-        )
+    highs = [
+        x["high"]
+        for x in candles
+    ]
 
 
-        near_high = (
-            (high_zone - price)
-            /
-            price
-        ) * 100
+    lows = [
+        x["low"]
+        for x in candles
+    ]
 
 
-        near_low = (
-            (price - low_zone)
-            /
-            price
-        ) * 100
+    price = closes[-1]
+
+    r = rsi(closes)
+
+
+    if (
+        price >= max(highs[-50:]) * 0.98
+        and
+        r > 70
+    ):
+
+        return "🪤 BULL TRAP"
 
 
 
-        # 🐂 Retail FOMO Long Trap
+    if (
+        price <= min(lows[-50:]) * 1.02
+        and
+        r < 35
+    ):
 
-        if (
-            near_high < 2
-            and
-            current_rsi > 70
-        ):
-
-            return {
-
-                "type":"🪤 BULL TRAP",
-
-                "bias":"SHORT"
-
-            }
+        return "🪤 BEAR TRAP"
 
 
 
-        # 🐻 Panic Sell Trap
-
-        if (
-            near_low < 2
-            and
-            current_rsi < 35
-        ):
-
-            return {
-
-                "type":"🪤 BEAR TRAP",
-
-                "bias":"LONG"
-
-            }
-
-
-
-        return {
-
-            "type":"NO TRAP",
-
-            "bias":"NONE"
-
-        }
-
-
-    except Exception as e:
-
-        print(
-            "TRAP ERROR:",
-            e
-        )
-
-
-        return {
-
-            "type":"ERROR",
-
-            "bias":"NONE"
-
-        }
+    return "✅ NO TRAP"
 
 
 
 # =====================================
-# 🧠 LORENTZIAN STYLE AI
+# 🧠 AI BRAIN ENGINE v11
 # =====================================
 
 def ai_brain(candles):
@@ -865,27 +940,23 @@ def ai_brain(candles):
     price = closes[-1]
 
 
-    ema20 = ema(
+    e20 = ema(
         closes,
         20
     )
 
 
-    ema50 = ema(
+    e50 = ema(
         closes,
         50
-    )
-
-
-    r = rsi(
-        closes
     )
 
 
     score = 0
 
 
-    if price > ema20:
+
+    if price > e20:
 
         score += 30
 
@@ -895,24 +966,13 @@ def ai_brain(candles):
 
 
 
-    if ema20 > ema50:
+    if e20 > e50:
 
         score += 30
 
     else:
 
         score -= 30
-
-
-
-    if r > 55:
-
-        score += 20
-
-
-    elif r < 45:
-
-        score -= 20
 
 
 
@@ -940,28 +1000,27 @@ def ai_brain(candles):
 
     }
 
+
+
 # =====================================
-# 🧠 FINAL ANALYZE ENGINE
+# 🚀 FINAL ANALYZE ENGINE v11
 # =====================================
 
-def analyze(symbol):
+def analyze(symbol, sector):
 
     try:
 
-        c15 = get_candles(symbol, "15m")
-        c1h = get_candles(symbol, "1h")
-        c4h = get_candles(symbol, "4h")
-        c1d = get_candles(symbol, "1d")
+        c15 = get_candles(symbol,"15m")
+        c1h = get_candles(symbol,"1h")
+        c4h = get_candles(symbol,"4h")
+        c1d = get_candles(symbol,"1d")
 
 
         if (
-            len(c15) < 60
-            or
-            len(c1h) < 60
-            or
-            len(c4h) < 60
-            or
-            len(c1d) < 60
+            len(c15)<60
+            or len(c1h)<60
+            or len(c4h)<60
+            or len(c1d)<60
         ):
 
             return None
@@ -971,30 +1030,15 @@ def analyze(symbol):
         price = c15[-1]["close"]
 
 
-        sr = support_resistance(c15)
-
         safe, warning = fomo_filter(c15)
 
-        # NO ENTRY AFTER BIG MOVE
-        # Wait pullback
 
         if not safe:
 
             return None
 
-        money = smart_money(c15)
-
-        trap = trap_detector(c15)
-
-        multi_rsi = multi_rsi_engine(
-            c15,
-            c1h,
-            c4h,
-            c1d
-        )
 
         brain = ai_brain(c1h)
-
 
 
         if brain["direction"] == "WAIT":
@@ -1002,75 +1046,25 @@ def analyze(symbol):
             return None
 
 
+        sr = support_resistance(c15)
 
-        # منع LONG قريب من المقاومة
-        if (
-            brain["direction"] == "🟢 LONG"
-            and
-            sr["near_resistance"] < 2
-        ):
+        money = smart_money(c15)
 
-            return None
+        multi = multi_rsi_engine(
+            c15,
+            c1h,
+            c4h,
+            c1d
+        )
 
-
-
-        # منع الدخول في فخاخ التجزئة
-        if trap["type"] != "NO TRAP":
-
-            if (
-                brain["direction"] == "🟢 LONG"
-                and
-                trap["bias"] == "SHORT"
-            ):
-
-                return None
+        trap = trap_detector(c15)
 
 
-
-            if (
-                brain["direction"] == "🔴 SHORT"
-                and
-                trap["bias"] == "LONG"
-            ):
-
-                return None
-
-
-
-        score = brain["confidence"]
-
-        score += multi_rsi["score"]
-
-
-        # 🪤 TRAP BONUS ENGINE
-
-        if (
-            trap["bias"] == "LONG"
-            and
-            brain["direction"] == "🟢 LONG"
-        ):
-
-            score += 20
-
-
-        if (
-            trap["bias"] == "SHORT"
-            and
-            brain["direction"] == "🔴 SHORT"
-        ):
-
-            score += 20
-
-
-
-        if (
-            trap["bias"] != "NONE"
-            and
-            trap["bias"] not in brain["direction"]
-        ):
-
-            return None
-
+        score = (
+            brain["confidence"]
+            +
+            multi["score"]
+        )
 
 
         if money["status"] == "🐋 SMART ACCUMULATION":
@@ -1078,149 +1072,88 @@ def analyze(symbol):
             score += 20
 
 
-
-        if safe:
-
-            score += 20
-
-
-
-        if (
-            brain["direction"] == "🟢 LONG"
-            and
-            sr["near_support"] < 3
-        ):
-
-            score += 20
-
-
-
-        if (
-            brain["direction"] == "🔴 SHORT"
-            and
-            sr["near_resistance"] < 3
-        ):
-
-            score += 20
-
-
-
         move = atr(c15)
 
+
+        entry_low = price * 0.995
+
+        entry_high = price * 1.005
 
 
         if brain["direction"] == "🟢 LONG":
 
             sl = sr["support"] * 0.995
-
             tp1 = price + move * 2
-
             tp2 = price + move * 3
 
 
         else:
 
             sl = sr["resistance"] * 1.005
-
             tp1 = price - move * 2
-
             tp2 = price - move * 3
-
-
-
-        if not safe:
-
-            status = "⏳ WAIT RETEST"
-
-
-        elif (
-            score >= 90
-            and
-            money["flow"] >= 1.5
-            and
-            money["status"] == "🐋 SMART ACCUMULATION"
-        ):
-
-            status = "🚀 SNIPER"
-
-
-        else:
-
-            status = "👀 WATCH"
 
 
 
         return {
 
-            "coin": symbol,
-
-            "direction": brain["direction"],
-
-            "score": round(score),
-
-            "entry": price,
-
-            "sl": sl,
-
-            "tp1": tp1,
-
-            "tp2": tp2,
-
-            "support": sr["support"],
-
-            "resistance": sr["resistance"],
-
-            "liquidity": money["flow"],
-
-            "money": money["status"],
-
-            "trap": trap["type"],
-
-            "multi_rsi": multi_rsi,
-
-            "status": status,
-
-            "warning": warning
+            "coin":symbol,
+            "sector":sector,
+            "direction":brain["direction"],
+            "score":round(score),
+            "entry_low":entry_low,
+            "entry_high":entry_high,
+            "sl":sl,
+            "tp1":tp1,
+            "tp2":tp2,
+            "money":money["status"],
+            "liquidity":money["flow"],
+            "multi":multi,
+            "trap":trap,
+            "warning":warning
 
         }
-
 
 
     except Exception as e:
 
         print(
             "ANALYZE ERROR:",
-            symbol,
             e
         )
 
         return None
-
-
-
+        
 # =====================================
-# 🤖 TELEGRAM
+# 🤖 TELEGRAM ENGINE v11
 # =====================================
-
 
 @bot.message_handler(commands=["start"])
 def start(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v10.2 ONLINE\n\n"
-        "🧠 AI Brain ACTIVE\n"
-        "🐋 Smart Money ACTIVE\n"
-        "📍 Support Resistance ACTIVE\n"
-        "🪤 Trap Detector ACTIVE\n\n"
-        "Send /scan"
+        """
+🐋 AHAD AI v11 ONLINE 🚀
+
+🧠 AI Brain ACTIVE
+🐋 Liquidity Hunter ACTIVE
+🏦 Sector Flow ACTIVE
+📊 Multi TimeFrame ACTIVE
+🪤 Trap Detector ACTIVE
+
+🎯 Goal:
+Best 2 quality setups
+
+Send /scan
+        """
     )
 
 
 
 # =====================================
-# 🔎 SCANNER
-# BEST 2 LONG + BEST 1 SHORT
+# 🔎 SMART SCANNER v11
+# Liquidity → Sector → Coin
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -1228,38 +1161,81 @@ def scan(message):
 
     bot.reply_to(
         message,
-        "🐋 AHAD AI v10.2 SCANNING...\n\n"
-        "🟢 Hunting LONG setups\n"
-        "🔴 Hunting SHORT setups\n"
-        "🧠 AI Brain running...\n"
-        "🪤 Checking traps..."
+        """
+🐋 AHAD AI v11 SCANNING...
+
+🔍 Checking Market Flow
+🏦 Finding Hot Sector
+🐋 Tracking Smart Money
+
+Please wait ⏳
+        """
     )
 
 
-    long_results = []
-
-    short_results = []
+    results = []
 
 
-    symbols = get_symbols()
+    all_symbols = get_symbols()
+
+
+    flow = sector_flow(
+        all_symbols
+    )
+
+
+    hot_sector = flow["sector"]
 
 
     bot.send_message(
         message.chat.id,
-        f"🐋 Crypto Markets: {len(symbols)}"
+        f"""
+🔥 MARKET FLOW
+
+🏦 Hot Sector:
+{hot_sector}
+
+🐋 Flow Power:
+{flow['power']}
+        """
     )
+
+
+    # FILTER ONLY HOT SECTOR COINS
+
+    symbols = []
+
+
+    for s in all_symbols:
+
+        if any(
+            coin in s
+            for coin in SECTORS[hot_sector]
+        ):
+
+            symbols.append(s)
+
+
+
+    bot.send_message(
+        message.chat.id,
+        f"🎯 AI analyzing {len(symbols)} coins..."
+    )
+
 
 
     for symbol in symbols:
 
 
-        result = analyze(symbol)
+        result = analyze(
+            symbol,
+            hot_sector
+        )
 
 
         if result:
 
 
-            # 🔥 MAX SCORE 100
             if result["score"] > 100:
 
                 result["score"] = 100
@@ -1273,24 +1249,21 @@ def scan(message):
             ):
 
 
-                if result["direction"] == "🟢 LONG":
-
-                    long_results.append(result)
-
-
-                elif result["direction"] == "🔴 SHORT":
-
-                    short_results.append(result)
+                results.append(
+                    result
+                )
 
 
 
-        time.sleep(0.03)
+        time.sleep(
+            0.03
+        )
 
 
 
-    best_long = sorted(
+    results = sorted(
 
-        long_results,
+        results,
 
         key=lambda x: (
             x["score"],
@@ -1303,34 +1276,19 @@ def scan(message):
 
 
 
-    best_short = sorted(
-
-        short_results,
-
-        key=lambda x: (
-            x["score"],
-            x["liquidity"]
-        ),
-
-        reverse=True
-
-    )[:1]
-
-
-
-    results = best_long + best_short
-
-
-
     if not results:
 
+
         bot.send_message(
-
             message.chat.id,
+            """
+👀 No sniper setup now
 
-            "👀 No clean crypto setup now\n⏳ Waiting smart money..."
-
+🐋 Smart Money not ready
+⏳ Waiting next liquidity wave
+            """
         )
+
 
         return
 
@@ -1340,26 +1298,37 @@ def scan(message):
 
 
         msg = f"""
-🚨 AHAD AI v10.2 🐋
+🚨 AHAD AI v11 🐋
+━━━━━━━━━━━━━━
 
-{s['direction']}
-🪙 {s['coin']}
+{s['direction']} SETUP
 
-🔥 Score: {s['score']}/100
+🪙 COIN:
+{s['coin']}
 
-🐋 Flow: {s['liquidity']}X
-🧲 {s['money']}
+🏦 SECTOR:
+{s['sector']}
 
-📍 Support:
-{round(s['support'],6)}
+━━━━━━━━━━━━━━
 
-🚧 Resistance:
-{round(s['resistance'],6)}
+🔥 AI SCORE:
+{s['score']}/100
 
-🎯 Entry:
-{round(s['entry'],6)}
+🐋 SMART MONEY:
+{s['money']}
 
-🛑 SL:
+💰 LIQUIDITY:
+{s['liquidity']}X
+
+━━━━━━━━━━━━━━
+
+🎯 ENTRY ZONE:
+
+{round(s['entry_low'],6)}
+-
+{round(s['entry_high'],6)}
+
+🛑 STOP LOSS:
 {round(s['sl'],6)}
 
 🥇 TP1:
@@ -1368,16 +1337,36 @@ def scan(message):
 🥈 TP2:
 {round(s['tp2'],6)}
 
-🧠 {s['status']}
-🪤 {s['trap']}
+━━━━━━━━━━━━━━
 
-📊 RSI 15m: {s['multi_rsi']['rsi15']}
-📊 RSI 1h: {s['multi_rsi']['rsi1h']}
-📊 RSI 4h: {s['multi_rsi']['rsi4h']}
-📊 RSI 1d: {s['multi_rsi']['rsi1d']}
+📊 TIMEFRAMES:
 
-⚠️ {s['warning']}
-"""
+15m RSI:
+{s['multi']['15m']}
+
+1H RSI:
+{s['multi']['1h']}
+
+4H RSI:
+{s['multi']['4h']}
+
+1D RSI:
+{s['multi']['1d']}
+
+━━━━━━━━━━━━━━
+
+🪤 TRAP:
+{s['trap']}
+
+⚠️
+{s['warning']}
+
+━━━━━━━━━━━━━━
+
+🧠 AHAD DECISION:
+
+🚀 HIGH QUALITY SETUP
+        """
 
 
         bot.send_message(
@@ -1397,31 +1386,45 @@ def telegram_engine():
 
         try:
 
-            print("🐋 TELEGRAM ENGINE STARTED")
+            print(
+                "🐋 TELEGRAM ENGINE STARTED"
+            )
+
 
             bot.infinity_polling(
+
                 skip_pending=True,
+
                 timeout=60,
+
                 long_polling_timeout=60
+
             )
 
 
         except Exception:
 
+
             print(
-                "🚨 TELEGRAM CRASH"
+                "🚨 TELEGRAM ERROR"
             )
+
 
             print(
                 traceback.format_exc()
             )
 
 
+
         print(
-            "🔄 RESTARTING TELEGRAM..."
+            "🔄 Restarting Telegram..."
         )
 
-        time.sleep(5)
+
+        time.sleep(
+            5
+        )
+
 
 
 threading.Thread(
@@ -1430,17 +1433,22 @@ threading.Thread(
 ).start()
 
 
+
 threading.Thread(
     target=telegram_engine,
     daemon=True
 ).start()
 
 
+
 print(
-    "🔥 AHAD AI v10.2 FULL ONLINE 🐋"
+    "🔥 AHAD AI v11 LIQUIDITY HUNTER ONLINE 🐋"
 )
+
 
 
 while True:
 
-    time.sleep(60)
+    time.sleep(
+        60
+    )

@@ -1143,7 +1143,7 @@ def start(message):
 🪤 Trap Detector ACTIVE
 
 🎯 Goal:
-Best 2 quality setups
+Best 3 quality LONG setups
 
 Send /scan
         """
@@ -1166,6 +1166,7 @@ def scan(message):
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
+🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 
 Please wait ⏳
@@ -1174,8 +1175,6 @@ Please wait ⏳
 
 
     long_results = []
-
-    short_results = []
 
 
     all_symbols = get_symbols()
@@ -1244,8 +1243,6 @@ Please wait ⏳
 
 
 
-            # 🟢 BEST LONG FILTER
-
             if result["direction"] == "🟢 LONG":
 
                 if (
@@ -1258,27 +1255,13 @@ Please wait ⏳
 
 
 
-            # 🔴 BEST SHORT FILTER
-
-            elif result["direction"] == "🔴 SHORT":
-
-                if (
-                    result["score"] >= 85
-                    and
-                    result["liquidity"] >= 2
-                ):
-
-                    short_results.append(result)
-
-
-
         time.sleep(
             0.03
         )
 
 
 
-    best_long = sorted(
+    results = sorted(
 
         long_results,
 
@@ -1289,24 +1272,7 @@ Please wait ⏳
 
         reverse=True
 
-    )[:2]
-
-
-    best_short = sorted(
-
-        short_results,
-
-        key=lambda x: (
-            x["score"],
-            x["liquidity"]
-        ),
-
-        reverse=True
-
-    )[:1]
-
-
-    results = best_long + best_short
+    )[:3]
 
 
 
@@ -1474,4 +1440,4 @@ while True:
 
     time.sleep(
         60
-                )
+        )

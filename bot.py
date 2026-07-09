@@ -259,6 +259,98 @@ def get_symbols():
 
 
 # =====================================
+# 🐋 TOP FLOW SCANNER v12
+# Find hot money before AI scan
+# =====================================
+
+def top_flow_scanner(symbols):
+
+    results = []
+
+    for symbol in symbols:
+
+        try:
+
+            c15 = get_candles(symbol, "15m")
+
+            if len(c15) < 50:
+                continue
+
+
+            volumes = [
+                x["volume"]
+                for x in c15
+            ]
+
+            closes = [
+                x["close"]
+                for x in c15
+            ]
+
+
+            vol_now = sum(volumes[-5:])
+
+            vol_avg = (
+                sum(volumes[-40:])
+                /
+                40
+            )
+
+
+            if vol_avg == 0:
+                continue
+
+
+            flow = vol_now / vol_avg
+
+
+            move = (
+                (closes[-1] - closes[-20])
+                /
+                closes[-20]
+            ) * 100
+
+
+            # لا نريد عملة طارت كثير
+            if move > 10:
+                continue
+
+
+            if flow >= 1.5:
+
+                results.append({
+
+                    "coin": symbol,
+
+                    "flow": flow
+
+                })
+
+
+        except:
+
+            pass
+
+
+        time.sleep(0.01)
+
+
+
+    results = sorted(
+        results,
+        key=lambda x: x["flow"],
+        reverse=True
+    )
+
+
+    return [
+        x["coin"]
+        for x in results[:50]
+    ]
+
+
+
+# =====================================
 # 🕯 OKX CANDLES ENGINE
 # =====================================
 
@@ -1179,6 +1271,8 @@ Please wait ⏳
 
     all_symbols = get_symbols()
 
+    symbols = top_flow_scanner(all_symbols)
+
 
     flow = sector_flow(
         all_symbols
@@ -1220,7 +1314,7 @@ Please wait ⏳
 
     bot.send_message(
         message.chat.id,
-        f"🎯 AI analyzing {len(symbols)} coins..."
+        f"💎 Smart Money Watchlist: {len(symbols)} coins"
     )
 
 

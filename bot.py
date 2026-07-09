@@ -334,6 +334,8 @@ def top_flow_scanner(symbols):
 
         time.sleep(0.01)
 
+        if len(results) >= 80:
+            break
 
 
     results = sorted(
@@ -345,7 +347,7 @@ def top_flow_scanner(symbols):
 
     return [
         x["coin"]
-        for x in results[:50]
+        for x in results[:30]
     ]
 
 
@@ -1534,4 +1536,4 @@ while True:
 
     time.sleep(
         60
-        )
+)

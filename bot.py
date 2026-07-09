@@ -975,6 +975,13 @@ def analyze(symbol):
 
         safe, warning = fomo_filter(c15)
 
+        # NO ENTRY AFTER BIG MOVE
+        # Wait pullback
+
+        if not safe:
+
+            return None
+
         money = smart_money(c15)
 
         trap = trap_detector(c15)
@@ -1404,27 +1411,19 @@ def telegram_engine():
 
             time.sleep(5)
 
-
-
 threading.Thread(
     target=run_web,
     daemon=True
 ).start()
-
-
 
 threading.Thread(
     target=telegram_engine,
     daemon=True
 ).start()
 
-
-
 print(
-    "🔥 AHAD AI v10.2 FULL ONLINE 🐋"
+    "👾 AHAD AI v10.2 FULL ONLINE 🎉"
 )
-
-
 
 while True:
 

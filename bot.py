@@ -1391,39 +1391,55 @@ def scan(message):
 # 🚀 START SYSTEM
 # =====================================
 
-
 def telegram_engine():
 
     while True:
 
         try:
 
+            print("🐋 TELEGRAM ENGINE STARTED")
+
             bot.infinity_polling(
-                skip_pending=True
+                skip_pending=True,
+                timeout=60,
+                long_polling_timeout=60
             )
 
 
         except Exception:
 
             print(
+                "🚨 TELEGRAM CRASH"
+            )
+
+            print(
                 traceback.format_exc()
             )
 
-            time.sleep(5)
+
+        print(
+            "🔄 RESTARTING TELEGRAM..."
+        )
+
+        time.sleep(5)
+
 
 threading.Thread(
     target=run_web,
     daemon=True
 ).start()
 
+
 threading.Thread(
     target=telegram_engine,
     daemon=True
 ).start()
 
+
 print(
-    "👾 AHAD AI v10.2 FULL ONLINE 🎉"
+    "🔥 AHAD AI v10.2 FULL ONLINE 🐋"
 )
+
 
 while True:
 

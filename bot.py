@@ -689,7 +689,7 @@ def smart_money(candles):
         volume_avg = (
             sum(volumes[-50:])
             /
-            50
+            10
         )
 
 
@@ -929,6 +929,23 @@ def fomo_filter(candles):
     current_rsi = rsi(
         closes
     )
+
+
+    # Avoid late momentum entry
+
+    if (
+        move > 5
+        and
+        current_rsi > 65
+    ):
+
+        return (
+
+            False,
+
+            "⏳ WAIT PULLBACK"
+
+        )
 
 
 
@@ -1298,20 +1315,22 @@ Please wait ⏳
     )
 
 
-    # FILTER ONLY HOT SECTOR COINS
+    # FILTER TOP FLOW + HOT SECTOR ONLY
 
-    symbols = []
+    filtered_symbols = []
 
 
-    for s in all_symbols:
+    for s in symbols:
 
         if any(
             coin in s
             for coin in SECTORS[hot_sector]
         ):
 
-            symbols.append(s)
+            filtered_symbols.append(s)
 
+
+    symbols = filtered_symbols
 
 
     bot.send_message(
@@ -1536,4 +1555,4 @@ while True:
 
     time.sleep(
         60
-)
+    )

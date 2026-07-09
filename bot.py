@@ -1,7 +1,6 @@
 # =====================================
-# 🚀 AHAD AI v11
+# 🚀 AHAD AI v11.1
 # LIQUIDITY HUNTER EDITION
-# PART 1 - CORE + OKX DATA
 # =====================================
 
 import os
@@ -45,7 +44,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11 "
+        "🐋 AHAD AI v11.1 "
         "LIQUIDITY HUNTER ONLINE 🚀"
     )
 
@@ -71,7 +70,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11
+# 🏦 SECTOR DATABASE v11.1
 # =====================================
 
 SECTORS = {
@@ -367,11 +366,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11 CORE READY 🐋"
+    "🔥 AHAD AI v11.1 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11
+# 📊 INDICATORS ENGINE v11.1
 # =====================================
 
 def ema(values, period):
@@ -464,7 +463,7 @@ def atr(candles):
 
 
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11
+# 🏦 SECTOR FLOW ENGINE v11.1
 # FIND WHERE MONEY GOES
 # =====================================
 
@@ -568,7 +567,7 @@ def sector_flow(symbols):
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11
+# 🐋 SMART MONEY ENGINE v11.1
 # =====================================
 
 def smart_money(candles):
@@ -679,7 +678,7 @@ def smart_money(candles):
         }
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11
+# 📊 MULTI TIMEFRAME ENGINE v11.1
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -806,7 +805,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11
+# 🛡 ANTI LATE ENTRY v11.1
 # =====================================
 
 def fomo_filter(candles):
@@ -873,7 +872,7 @@ def fomo_filter(candles):
 
 
 # =====================================
-# 🪤 TRAP DETECTOR v11
+# 🪤 TRAP DETECTOR v11.1
 # =====================================
 
 def trap_detector(candles):
@@ -926,7 +925,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11
+# 🧠 AI BRAIN ENGINE v11.1
 # =====================================
 
 def ai_brain(candles):
@@ -1003,7 +1002,7 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11
+# 🚀 FINAL ANALYZE ENGINE v11.1
 # =====================================
 
 def analyze(symbol, sector):
@@ -1125,7 +1124,7 @@ def analyze(symbol, sector):
         return None
         
 # =====================================
-# 🤖 TELEGRAM ENGINE v11
+# 🤖 TELEGRAM ENGINE v11.1
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1134,7 +1133,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11 ONLINE 🚀
+🐋 AHAD AI v11.1 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Liquidity Hunter ACTIVE
@@ -1152,7 +1151,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11
+# 🔎 SMART SCANNER v11.1
 # Liquidity → Sector → Coin
 # =====================================
 
@@ -1162,7 +1161,7 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11 SCANNING...
+🐋 AHAD AI v11.1 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -1173,7 +1172,9 @@ Please wait ⏳
     )
 
 
-    results = []
+    long_results = []
+
+    short_results = []
 
 
     all_symbols = get_symbols()
@@ -1242,16 +1243,31 @@ Please wait ⏳
 
 
 
-            if (
-                result["score"] >= 70
-                and
-                result["liquidity"] >= 1.3
-            ):
+            # 🟢 BEST LONG FILTER
+
+            if result["direction"] == "🟢 LONG":
+
+                if (
+                    result["score"] >= 80
+                    and
+                    result["liquidity"] >= 1.5
+                ):
+
+                    long_results.append(result)
 
 
-                results.append(
-                    result
-                )
+
+            # 🔴 BEST SHORT FILTER
+
+            elif result["direction"] == "🔴 SHORT":
+
+                if (
+                    result["score"] >= 85
+                    and
+                    result["liquidity"] >= 2
+                ):
+
+                    short_results.append(result)
 
 
 
@@ -1261,9 +1277,9 @@ Please wait ⏳
 
 
 
-    results = sorted(
+    best_long = sorted(
 
-        results,
+        long_results,
 
         key=lambda x: (
             x["score"],
@@ -1273,6 +1289,23 @@ Please wait ⏳
         reverse=True
 
     )[:2]
+
+
+    best_short = sorted(
+
+        short_results,
+
+        key=lambda x: (
+            x["score"],
+            x["liquidity"]
+        ),
+
+        reverse=True
+
+    )[:1]
+
+
+    results = best_long + best_short
 
 
 
@@ -1298,74 +1331,28 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11 🐋
-━━━━━━━━━━━━━━
+🚨 AHAD AI v11.1 🐋
 
-{s['direction']} SETUP
+{s['direction']} | 🪙 {s['coin']}
+🏦 Sector: {s['sector']}
 
-🪙 COIN:
-{s['coin']}
+🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+🐋 Money: {s['money']}
+🪤 Trap: {s['trap']}
 
-🏦 SECTOR:
-{s['sector']}
+🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
+🛑 SL: {round(s['sl'],6)}
 
-━━━━━━━━━━━━━━
+🥇 TP1: {round(s['tp1'],6)}
+🥈 TP2: {round(s['tp2'],6)}
 
-🔥 AI SCORE:
-{s['score']}/100
+📊 RSI:
+15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
+4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
 
-🐋 SMART MONEY:
-{s['money']}
+⚠️ {s['warning']}
 
-💰 LIQUIDITY:
-{s['liquidity']}X
-
-━━━━━━━━━━━━━━
-
-🎯 ENTRY ZONE:
-
-{round(s['entry_low'],6)}
--
-{round(s['entry_high'],6)}
-
-🛑 STOP LOSS:
-{round(s['sl'],6)}
-
-🥇 TP1:
-{round(s['tp1'],6)}
-
-🥈 TP2:
-{round(s['tp2'],6)}
-
-━━━━━━━━━━━━━━
-
-📊 TIMEFRAMES:
-
-15m RSI:
-{s['multi']['15m']}
-
-1H RSI:
-{s['multi']['1h']}
-
-4H RSI:
-{s['multi']['4h']}
-
-1D RSI:
-{s['multi']['1d']}
-
-━━━━━━━━━━━━━━
-
-🪤 TRAP:
-{s['trap']}
-
-⚠️
-{s['warning']}
-
-━━━━━━━━━━━━━━
-
-🧠 AHAD DECISION:
-
-🚀 HIGH QUALITY SETUP
+🧠 AHAD: HIGH QUALITY 🚀
         """
 
 
@@ -1442,7 +1429,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11 LIQUIDITY HUNTER ONLINE 🐋"
+    "🔥 AHAD AI v11.1 LIQUIDITY HUNTER ONLINE 🐋"
 )
 
 

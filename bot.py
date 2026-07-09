@@ -8,6 +8,7 @@ import time
 import threading
 import traceback
 import requests
+import urllib.request
 
 from flask import Flask
 import telebot
@@ -1364,6 +1365,37 @@ Please wait ⏳
 
 
 # =====================================
+# 🐋 KEEP ALIVE ENGINE
+# =====================================
+
+def keep_alive():
+
+    while True:
+
+        try:
+
+            url = os.environ.get("RENDER_URL")
+
+            if url:
+
+                urllib.request.urlopen(url)
+
+                print("🐋 KEEP ALIVE ACTIVE")
+
+
+        except Exception as e:
+
+            print(
+                "KEEP ALIVE ERROR:",
+                e
+            )
+
+
+        time.sleep(300)
+
+
+
+# =====================================
 # 🚀 START SYSTEM
 # =====================================
 
@@ -1420,12 +1452,16 @@ threading.Thread(
 ).start()
 
 
-
 threading.Thread(
     target=telegram_engine,
     daemon=True
 ).start()
 
+
+threading.Thread(
+    target=keep_alive,
+    daemon=True
+).start()
 
 
 print(
@@ -1438,4 +1474,4 @@ while True:
 
     time.sleep(
         60
-    )
+                )

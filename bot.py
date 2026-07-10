@@ -1315,22 +1315,11 @@ Please wait ⏳
     )
 
 
-    # FILTER TOP FLOW + HOT SECTOR ONLY
+    # TOP FLOW PRIORITY
 
-    filtered_symbols = []
+    if len(symbols) < 20:
 
-
-    for s in symbols:
-
-        if any(
-            coin in s
-            for coin in SECTORS[hot_sector]
-        ):
-
-            filtered_symbols.append(s)
-
-
-    symbols = filtered_symbols
+        symbols = all_symbols
 
 
     bot.send_message(
@@ -1361,7 +1350,7 @@ Please wait ⏳
             if result["direction"] == "🟢 LONG":
 
                 if (
-                    result["score"] >= 80
+                    result["score"] >= 75
                     and
                     result["liquidity"] >= 1.5
                 ):
@@ -1555,4 +1544,4 @@ while True:
 
     time.sleep(
         60
-    )
+)

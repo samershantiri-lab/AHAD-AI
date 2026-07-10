@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v11.2
+# 🚀 AHAD AI v11.3
 # LIQUIDITY HUNTER EDITION
 # =====================================
 
@@ -45,7 +45,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.2 "
+        "🐋 AHAD AI v11.3 "
         "LIQUIDITY HUNTER ONLINE 🚀"
     )
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.2
+# 🏦 SECTOR DATABASE v11.3
 # =====================================
 
 SECTORS = {
@@ -180,6 +180,39 @@ def get_symbols():
 
 
 
+        blocked = [
+
+            # STOCKS
+            "TSLA",
+            "AMZN",
+            "AAPL",
+            "NVDA",
+            "META",
+            "GOOGL",
+            "MSFT",
+            "NFLX",
+            "AMD",
+            "COIN",
+            "MSTR",
+            "BABA",
+            "PLTR",
+            "HOOD",
+
+            # GOLD / FOREX
+            "XAU",
+            "EUR",
+            "GBP",
+            "JPY",
+
+            # INDEX
+            "SPX",
+            "NASDAQ",
+            "DOW"
+
+        ]
+
+
+
         result = []
 
 
@@ -205,6 +238,13 @@ def get_symbols():
                 and
 
                 "USD" not in x["instId"].replace("USDT", "")
+
+                and
+
+                not any(
+                    b in symbol
+                    for b in blocked
+                )
 
             ):
 
@@ -447,11 +487,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.2 CORE READY 🐋"
+    "🔥 AHAD AI v11.3 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.2
+# 📊 INDICATORS ENGINE v11.3
 # =====================================
 
 def ema(values, period):
@@ -544,7 +584,7 @@ def atr(candles):
 
 
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.2
+# 🏦 SECTOR FLOW ENGINE v11.3
 # FIND WHERE MONEY GOES
 # =====================================
 
@@ -648,7 +688,7 @@ def sector_flow(symbols):
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.2
+# 🐋 SMART MONEY ENGINE v11.3
 # =====================================
 
 def smart_money(candles):
@@ -761,7 +801,7 @@ def smart_money(candles):
 
 
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.2
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3
 # Detect whales before breakout
 # =====================================
 
@@ -872,7 +912,7 @@ def pre_pump_engine(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.2
+# 📊 MULTI TIMEFRAME ENGINE v11.3
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -999,7 +1039,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.2
+# 🛡 ANTI LATE ENTRY v11.3
 # =====================================
 
 def fomo_filter(candles):
@@ -1083,7 +1123,7 @@ def fomo_filter(candles):
 
 
 # =====================================
-# 🪤 TRAP DETECTOR v11.2
+# 🪤 TRAP DETECTOR v11.3
 # =====================================
 
 def trap_detector(candles):
@@ -1136,7 +1176,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.2
+# 🧠 AI BRAIN ENGINE v11.3
 # =====================================
 
 def ai_brain(candles):
@@ -1213,7 +1253,7 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.2
+# 🚀 FINAL ANALYZE ENGINE v11.3
 # =====================================
 
 def analyze(symbol, sector):
@@ -1279,6 +1319,34 @@ def analyze(symbol, sector):
         )
 
 
+        # =====================================
+        # 🔥 HEAT CONTROL v11.3
+        # Avoid late entries
+        # =====================================
+
+        if multi["4h"] > 70:
+
+            score -= 15
+
+
+        if multi["1d"] > 70:
+
+            score -= 20
+
+
+        if multi["15m"] > 75:
+
+            score -= 10
+
+
+        # =====================================
+        # RESISTANCE FILTER v11.3
+        # =====================================
+
+        if sr["near_resistance"] < 3:
+            score -= 10
+
+
         if money["status"] == "🐋 SMART ACCUMULATION":
             score += 20
 
@@ -1339,7 +1407,7 @@ def analyze(symbol, sector):
         return None
         
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.2
+# 🤖 TELEGRAM ENGINE v11.3
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1348,7 +1416,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.2 ONLINE 🚀
+🐋 AHAD AI v11.3 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Liquidity Hunter ACTIVE
@@ -1356,6 +1424,7 @@ def start(message):
 📊 Multi TimeFrame ACTIVE
 🪤 Trap Detector ACTIVE
 ⚡ Pre-Pump Detection ACTIVE
+🔥 Heat Control ACTIVE
 
 🎯 Goal:
 Best 3 quality LONG setups
@@ -1367,7 +1436,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.2
+# 🔎 SMART SCANNER v11.3
 # Liquidity → Sector → Coin
 # =====================================
 
@@ -1377,13 +1446,14 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.2 SCANNING...
+🐋 AHAD AI v11.3 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
 🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
+🔥 Heat Control ACTIVE
 
 Please wait ⏳
         """
@@ -1511,7 +1581,7 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.2 🐋
+🚨 AHAD AI v11.3 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1643,7 +1713,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.2 LIQUIDITY HUNTER ONLINE 🐋"
+    "🔥 AHAD AI v11.3 LIQUIDITY HUNTER ONLINE 🐋"
 )
 
 

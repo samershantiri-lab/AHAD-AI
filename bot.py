@@ -180,21 +180,6 @@ def get_symbols():
 
 
 
-        blocked = [
-
-            "TSLA",
-            "AMZN",
-            "AAPL",
-            "NVDA",
-            "META",
-            "GOOGL",
-            "MSFT",
-            "NFLX"
-
-        ]
-
-
-
         result = []
 
 
@@ -215,10 +200,11 @@ def get_symbols():
 
                 and
 
-                not any(
-                    b in symbol
-                    for b in blocked
-                )
+                x.get("ctType") == "linear"
+
+                and
+
+                "USD" not in x["instId"].replace("USDT", "")
 
             ):
 

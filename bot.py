@@ -257,8 +257,6 @@ def get_okx_symbols():
             if (
                 x["settleCcy"] == "USDT"
                 and x["state"] == "live"
-                and x.get("ctType") == "linear"
-                and "USD" not in x["instId"].replace("USDT", "")
             ):
                 symbols.append(x["instId"])
 
@@ -275,6 +273,20 @@ def get_okx_symbols():
             return cache["okx"]["data"]
 
         return []
+
+
+# =====================================
+# 🔧 NORMALIZE SYMBOL
+# =====================================
+
+def normalize_symbol(symbol):
+    symbol = symbol.upper()
+    symbol = symbol.replace("-USDT-SWAP", "")
+    symbol = symbol.replace("-USDT", "")
+    symbol = symbol.replace("USDT", "")
+    symbol = symbol.replace("_USDT", "")
+    symbol = symbol.replace("ALPHA_", "")
+    return symbol
 
 
 # =====================================
@@ -326,26 +338,43 @@ def get_intersection_symbols():
     futures = get_binance_futures()
     okx = get_okx_symbols()
 
-    # استخراج أسماء العملات من Alpha (بدون ALPHA_ prefix)
-    alpha_names = []
-    for a in alpha:
-        # ALPHA_123USDT → 123
-        if a.startswith("ALPHA_") and a.endswith("USDT"):
-            token_id = a.replace("ALPHA_", "").replace("USDT", "")
-            alpha_names.append(token_id)
+    # Debug Print
+    print("="*60)
+    print("ALPHA:", len(alpha))
+    print("FUTURES:", len(futures))
+    print("OKX:", len(okx))
+    print()
+    print("ALPHA SAMPLE")
+    print(alpha[:10])
+    print()
+    print("FUTURES SAMPLE")
+    print(futures[:10])
+    print()
+    print("OKX SAMPLE")
+    print(okx[:10])
+    print("="*60)
 
-    # فلترة العقود الآجلة التي تظهر في Alpha و OKX
-    intersection = []
-    for f in futures:
-        base = f.replace("USDT", "")
-        # تحقق من وجود العملة في Alpha و OKX
-        in_alpha = any(base in name for name in alpha_names)
-        in_okx = f in okx
+    # Normalize sets
+    alpha_set = {normalize_symbol(x) for x in alpha}
+    future_set = {normalize_symbol(x) for x in futures}
+    okx_set = {normalize_symbol(x) for x in okx}
 
-        if in_alpha and in_okx:
-            intersection.append(f)
+    intersection = list(
+        alpha_set &
+        future_set &
+        okx_set
+    )
 
-    print(f"🎯 Intersection: {len(intersection)} symbols")
+    print("INTERSECTION:", len(intersection))
+    print(intersection[:30])
+
+    # إذا أصبح التقاطع صفراً، أرسل أول Response كامل
+    if len(intersection) == 0:
+        print("⚠️ INTERSECTION IS ZERO!")
+        print("Alpha sample (first 10):", alpha[:10])
+        print("Futures sample (first 10):", futures[:10])
+        print("OKX sample (first 10):", okx[:10])
+
     return intersection
 
 
@@ -862,8 +891,7 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
         print("MULTI RSI ERROR:", e)
 
         return {"15m": 50, "1h": 50, "4h": 50, "1d": 50, "score": 0}
-
-
+        
 # =====================================
 # 🚀 FINAL ANALYZE ENGINE v12.0
 # =====================================

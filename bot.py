@@ -1,6 +1,6 @@
 # =====================================
-# 🚀 AHAD AI v11.3
-# LIQUIDITY HUNTER EDITION
+# 🚀 AHAD AI v12.0
+# ALPHA HUNTER EDITION
 # =====================================
 
 import os
@@ -9,6 +9,7 @@ import threading
 import traceback
 import requests
 import urllib.request
+from datetime import datetime, timedelta
 
 from flask import Flask
 import telebot
@@ -45,8 +46,8 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3 "
-        "LIQUIDITY HUNTER ONLINE 🚀"
+        "🐋 AHAD AI v12.0 "
+        "ALPHA HUNTER ONLINE 🚀"
     )
 
 
@@ -71,7 +72,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.3
+# 🏦 SECTOR DATABASE v12.0
 # =====================================
 
 SECTORS = {
@@ -148,234 +149,204 @@ SECTORS = {
 
 
 # =====================================
-# ⬛ OKX FUTURES CRYPTO ONLY
+# 🐋 CACHE SYSTEM v12.0
 # =====================================
 
-def get_symbols():
+cache = {
+    "alpha": {"data": None, "timestamp": None},
+    "futures": {"data": None, "timestamp": None},
+    "okx": {"data": None, "timestamp": None}
+}
+
+
+def is_cache_valid(key):
+    if cache[key]["timestamp"] is None:
+        return False
+    age = (datetime.now() - cache[key]["timestamp"]).total_seconds()
+    return age < 120  # 120 ثانية
+
+
+def get_alpha_symbols():
+    """جلب قائمة العملات من Binance Alpha مع Cache و Fallback"""
+
+    # 1. تحقق من Cache
+    if is_cache_valid("alpha") and cache["alpha"]["data"] is not None:
+        print("✅ Alpha: Using Cache")
+        return cache["alpha"]["data"]
 
     try:
+        print("🔄 Alpha: Fetching from API...")
+        url = "https://www.binance.com/bapi/defi/v1/public/alpha-trade/tokens"
+        response = requests.get(url, timeout=10)
+        data = response.json()
 
-        url = (
-            "https://www.okx.com"
-            "/api/v5/public/instruments"
-        )
+        alpha_symbols = []
+        for token in data.get("data", []):
+            token_id = token.get("id")
+            if token_id:
+                alpha_symbol = f"ALPHA_{token_id}USDT"
+                alpha_symbols.append(alpha_symbol)
 
-
-        params = {
-
-            "instType": "SWAP"
-
-        }
-
-
-        data = requests.get(
-
-            url,
-
-            params=params,
-
-            timeout=15
-
-        ).json()
-
-
-
-        blocked = [
-
-            # STOCKS
-            "TSLA",
-            "AMZN",
-            "AAPL",
-            "NVDA",
-            "META",
-            "GOOGL",
-            "MSFT",
-            "NFLX",
-            "AMD",
-            "COIN",
-            "MSTR",
-            "BABA",
-            "PLTR",
-            "HOOD",
-
-            # GOLD / FOREX
-            "XAU",
-            "EUR",
-            "GBP",
-            "JPY",
-
-            # INDEX
-            "SPX",
-            "NASDAQ",
-            "DOW"
-
-        ]
-
-
-
-        result = []
-
-
-
-        for x in data["data"]:
-
-
-            symbol = x["instId"]
-
-
-            if (
-
-                x["settleCcy"] == "USDT"
-
-                and
-
-                x["state"] == "live"
-
-                and
-
-                x.get("ctType") == "linear"
-
-                and
-
-                "USD" not in x["instId"].replace("USDT", "")
-
-                and
-
-                not any(
-                    b in symbol
-                    for b in blocked
-                )
-
-            ):
-
-
-                result.append(
-                    symbol
-                )
-
-
-
-        print(
-
-            "🐋 MARKETS FOUND:",
-
-            len(result)
-
-        )
-
-
-        return result
-
-
+        # حفظ في Cache
+        cache["alpha"]["data"] = alpha_symbols
+        cache["alpha"]["timestamp"] = datetime.now()
+        print(f"✅ Alpha: {len(alpha_symbols)} symbols loaded")
+        return alpha_symbols
 
     except Exception as e:
+        print(f"⚠️ Alpha API Error: {e}")
+
+        # 2. Fallback: استخدم Cache القديم
+        if cache["alpha"]["data"] is not None:
+            print("🔄 Alpha: Using Fallback Cache")
+            return cache["alpha"]["data"]
+
+        # 3. Fallback: قائمة فارغة
+        print("⚠️ Alpha: No fallback available, returning empty list")
+        return []
 
 
-        print(
+def get_binance_futures():
+    """جلب قائمة العقود الآجلة من Binance Futures مع Cache"""
 
-            "SYMBOL ERROR:",
+    if is_cache_valid("futures") and cache["futures"]["data"] is not None:
+        print("✅ Futures: Using Cache")
+        return cache["futures"]["data"]
 
-            e
+    try:
+        print("🔄 Futures: Fetching from API...")
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+        response = requests.get(url, timeout=10)
+        data = response.json()
 
-        )
+        symbols = []
+        for s in data["symbols"]:
+            if s["status"] == "TRADING" and s["quoteAsset"] == "USDT":
+                symbols.append(s["symbol"])
 
+        cache["futures"]["data"] = symbols
+        cache["futures"]["timestamp"] = datetime.now()
+        print(f"✅ Futures: {len(symbols)} symbols loaded")
+        return symbols
+
+    except Exception as e:
+        print(f"⚠️ Futures API Error: {e}")
+
+        if cache["futures"]["data"] is not None:
+            print("🔄 Futures: Using Fallback Cache")
+            return cache["futures"]["data"]
 
         return []
 
 
+def get_okx_symbols():
+    """جلب قائمة العملات من OKX مع Cache"""
+
+    if is_cache_valid("okx") and cache["okx"]["data"] is not None:
+        print("✅ OKX: Using Cache")
+        return cache["okx"]["data"]
+
+    try:
+        print("🔄 OKX: Fetching from API...")
+        url = "https://www.okx.com/api/v5/public/instruments"
+        params = {"instType": "SWAP"}
+        data = requests.get(url, params=params, timeout=15).json()
+
+        symbols = []
+        for x in data["data"]:
+            if (
+                x["settleCcy"] == "USDT"
+                and x["state"] == "live"
+                and x.get("ctType") == "linear"
+                and "USD" not in x["instId"].replace("USDT", "")
+            ):
+                symbols.append(x["instId"])
+
+        cache["okx"]["data"] = symbols
+        cache["okx"]["timestamp"] = datetime.now()
+        print(f"✅ OKX: {len(symbols)} symbols loaded")
+        return symbols
+
+    except Exception as e:
+        print(f"⚠️ OKX API Error: {e}")
+
+        if cache["okx"]["data"] is not None:
+            print("🔄 OKX: Using Fallback Cache")
+            return cache["okx"]["data"]
+
+        return []
+
 
 # =====================================
-# 🐋 TOP FLOW SCANNER v12
-# Find hot money before AI scan
+# 🛡️ HEALTH CHECK v12.0
 # =====================================
 
-def top_flow_scanner(symbols):
-
-    results = []
-
-    for symbol in symbols:
-
-        try:
-
-            c15 = get_candles(symbol, "15m")
-
-            if len(c15) < 50:
-                continue
+health_status = {
+    "alpha": "UNKNOWN",
+    "futures": "UNKNOWN",
+    "okx": "UNKNOWN"
+}
 
 
-            volumes = [
-                x["volume"]
-                for x in c15
-            ]
+def health_check():
+    """فحص صحة جميع الـ APIs"""
 
-            closes = [
-                x["close"]
-                for x in c15
-            ]
+    # اختبار Alpha
+    try:
+        url = "https://www.binance.com/bapi/defi/v1/public/alpha-trade/tokens"
+        requests.get(url, timeout=5)
+        health_status["alpha"] = "ONLINE"
+    except:
+        health_status["alpha"] = "OFFLINE"
 
+    # اختبار Futures
+    try:
+        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+        requests.get(url, timeout=5)
+        health_status["futures"] = "ONLINE"
+    except:
+        health_status["futures"] = "OFFLINE"
 
-            vol_now = sum(volumes[-5:])
+    # اختبار OKX
+    try:
+        url = "https://www.okx.com/api/v5/public/instruments"
+        requests.get(url, params={"instType": "SWAP"}, timeout=5)
+        health_status["okx"] = "ONLINE"
+    except:
+        health_status["okx"] = "OFFLINE"
 
-            vol_avg = (
-                sum(volumes[-40:])
-                /
-                40
-            )
-
-
-            if vol_avg == 0:
-                continue
-
-
-            flow = vol_now / vol_avg
-
-
-            move = (
-                (closes[-1] - closes[-20])
-                /
-                closes[-20]
-            ) * 100
+    return health_status
 
 
-            # لا نريد عملة طارت كثير
-            if move > 10:
-                continue
+def get_intersection_symbols():
+    """تقاطع القوائم الثلاث: Alpha + Futures + OKX"""
 
+    # جلب القوائم
+    alpha = get_alpha_symbols()
+    futures = get_binance_futures()
+    okx = get_okx_symbols()
 
-            if flow >= 1.15:
+    # استخراج أسماء العملات من Alpha (بدون ALPHA_ prefix)
+    alpha_names = []
+    for a in alpha:
+        # ALPHA_123USDT → 123
+        if a.startswith("ALPHA_") and a.endswith("USDT"):
+            token_id = a.replace("ALPHA_", "").replace("USDT", "")
+            alpha_names.append(token_id)
 
-                results.append({
+    # فلترة العقود الآجلة التي تظهر في Alpha و OKX
+    intersection = []
+    for f in futures:
+        base = f.replace("USDT", "")
+        # تحقق من وجود العملة في Alpha و OKX
+        in_alpha = any(base in name for name in alpha_names)
+        in_okx = f in okx
 
-                    "coin": symbol,
+        if in_alpha and in_okx:
+            intersection.append(f)
 
-                    "flow": flow
-
-                })
-
-
-        except:
-
-            pass
-
-
-        time.sleep(0.01)
-
-        if len(results) >= 80:
-            break
-
-
-    results = sorted(
-        results,
-        key=lambda x: x["flow"],
-        reverse=True
-    )
-
-
-    return [
-        x["coin"]
-        for x in results[:100]
-    ]
-
+    print(f"🎯 Intersection: {len(intersection)} symbols")
+    return intersection
 
 
 # =====================================
@@ -386,9 +357,7 @@ def get_candles(symbol, tf):
 
     try:
 
-
         frames = {
-
 
             "15m": "15m",
 
@@ -399,7 +368,6 @@ def get_candles(symbol, tf):
             "1d": "1D"
 
         }
-
 
 
         url = (
@@ -426,7 +394,6 @@ def get_candles(symbol, tf):
         }
 
 
-
         data = requests.get(
 
             url,
@@ -438,9 +405,7 @@ def get_candles(symbol, tf):
         ).json()
 
 
-
         candles = []
-
 
 
         for c in data["data"][::-1]:
@@ -461,7 +426,6 @@ def get_candles(symbol, tf):
 
 
             })
-
 
 
         return candles
@@ -485,13 +449,12 @@ def get_candles(symbol, tf):
         return []
 
 
-
 print(
-    "🔥 AHAD AI v11.3 CORE READY 🐋"
+    "🔥 AHAD AI v12.0 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.3
+# 📊 INDICATORS ENGINE v12.0
 # =====================================
 
 def ema(values, period):
@@ -518,7 +481,6 @@ def ema(values, period):
     return result
 
 
-
 def rsi(values, period=14):
 
     gains = 0
@@ -543,11 +505,9 @@ def rsi(values, period=14):
             losses -= diff
 
 
-
     if losses == 0:
 
         return 100
-
 
 
     rs = gains / losses
@@ -558,7 +518,6 @@ def rsi(values, period=14):
         -
         100 / (1 + rs)
     )
-
 
 
 def atr(candles):
@@ -582,231 +541,49 @@ def atr(candles):
     )
 
 
-
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.3
-# FIND WHERE MONEY GOES
+# 📈 RELATIVE STRENGTH FILTER v12.0
 # =====================================
 
-def sector_flow(symbols):
-
+def get_btc_eth_change():
+    """جلب تغير BTC و ETH خلال 24 ساعة"""
     try:
+        btc_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT"
+        eth_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=ETHUSDT"
 
-        result = {}
-
-
-        for sector, coins in SECTORS.items():
-
-            power = 0
-
-
-            for symbol in symbols:
-
-
-                if any(
-                    coin in symbol
-                    for coin in coins
-                ):
-
-                    candles = get_candles(
-                        symbol,
-                        "1h"
-                    )
-
-
-                    if len(candles) > 50:
-
-
-                        volumes = [
-                            x["volume"]
-                            for x in candles
-                        ]
-
-
-                        recent = sum(
-                            volumes[-5:]
-                        )
-
-
-                        average = (
-                            sum(
-                                volumes[-50:]
-                            )
-                            /
-                            10
-                        )
-
-
-                        if average > 0:
-
-                            power += (
-                                recent
-                                /
-                                average
-                            )
-
-
-            result[sector] = round(
-                power,
-                2
-            )
-
-
-
-        hot_sector = max(
-            result,
-            key=result.get
-        )
-
+        btc = requests.get(btc_url, timeout=5).json()
+        eth = requests.get(eth_url, timeout=5).json()
 
         return {
-
-            "sector": hot_sector,
-
-            "power": result[hot_sector]
-
+            "btc": float(btc["priceChangePercent"]),
+            "eth": float(eth["priceChangePercent"])
         }
+    except:
+        return {"btc": 0, "eth": 0}
 
 
-
-    except Exception as e:
-
-        print(
-            "SECTOR ERROR:",
-            e
-        )
-
-
-        return {
-
-            "sector": "UNKNOWN",
-
-            "power": 0
-
-        }
-
+def relative_strength_filter(change_24h, btc_change, eth_change):
+    """
+    مقارنة أداء العملة مع BTC و ETH
+    إذا كانت العملة أقوى من BTC و ETH → +15 نقطة
+    """
+    if change_24h > btc_change + 2 and change_24h > eth_change + 2:
+        return 15
+    return 0
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.3
+# 🐋 PRE PUMP ENGINE v12.0
 # =====================================
 
-def smart_money(candles):
-
-    try:
-
-        closes = [
-            x["close"]
-            for x in candles
-        ]
-
-
-        volumes = [
-            x["volume"]
-            for x in candles
-        ]
-
-
-        volume_now = sum(
-            volumes[-5:]
-        )
-
-
-        volume_avg = (
-            sum(volumes[-50:])
-            /
-            10
-        )
-
-
-        if volume_avg == 0:
-
-            flow = 0
-
-        else:
-
-            flow = (
-                volume_now
-                /
-                volume_avg
-            )
-
-
-        move = (
-            (
-                closes[-1]
-                -
-                closes[-24]
-            )
-            /
-            closes[-24]
-        ) * 100
-
-
-
-        if (
-            flow >= 1.5
-            and
-            abs(move) < 8
-        ):
-
-            status = (
-                "🐋 SMART ACCUMULATION"
-            )
-
-
-        elif (
-            flow >= 1.5
-            and
-            move > 8
-        ):
-
-            status = (
-                "🚨 WHALE EXIT"
-            )
-
-
-        else:
-
-            status = "NORMAL"
-
-
-
-        return {
-
-            "flow": round(flow, 2),
-
-            "status": status
-
-        }
-
-
-
-    except Exception as e:
-
-        print(
-            "SMART MONEY ERROR:",
-            e
-        )
-
-
-        return {
-
-            "flow": 0,
-
-            "status": "ERROR"
-
-        }
-
-
-
-# =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3
-# Detect whales before breakout
-# =====================================
-
-def pre_pump_engine(candles):
-
+def pre_pump_engine(candles, change_24h, rsi_1h):
+    """
+    اكتشاف PRE-PUMP بناءً على:
+    - Flow
+    - Volume
+    - RSI
+    - Move < 5%
+    """
     try:
 
         closes = [
@@ -818,101 +595,230 @@ def pre_pump_engine(candles):
             x["volume"]
             for x in candles
         ]
-
 
         price = closes[-1]
 
-
-        volume_now = sum(
-            volumes[-5:]
-        )
-
-
-        volume_avg = (
-            sum(volumes[-50:])
-            /
-            50
-        )
-
+        volume_now = sum(volumes[-5:])
+        volume_avg = sum(volumes[-50:]) / 50
 
         if volume_avg == 0:
+            return {"status": "NORMAL", "score": 0}
 
-            return {
+        flow = volume_now / volume_avg
 
-                "status":"NORMAL",
+        # حساب النقاط حسب Flow
+        if flow >= 3.0:
+            flow_score = 30
+        elif flow >= 2.0:
+            flow_score = 20
+        elif flow >= 1.5:
+            flow_score = 10
+        elif flow >= 1.2:
+            flow_score = 5
+        else:
+            flow_score = 0
 
-                "score":0
-
-            }
-
-
-        flow = (
-            volume_now
-            /
-            volume_avg
-        )
-
-
-        move = (
-            (price - closes[-30])
-            /
-            closes[-30]
-        ) * 100
-
-
-        current_rsi = rsi(
-            closes
-        )
-
-
-        # 🐋 Quiet accumulation before pump
-
+        # التحقق من PRE-PUMP
         if (
-            flow >= 1.15
-            and
-            abs(move) < 5
-            and
-            35 <= current_rsi <= 65
+            flow >= 1.2
+            and abs(change_24h) < 5
+            and 35 <= rsi_1h <= 65
         ):
-
             return {
-
-                "status":"🐋 WHALE LOADING",
-
-                "score":25
-
+                "status": "🐋 PRE PUMP DETECTED",
+                "score": flow_score,
+                "flow": round(flow, 2)
             }
-
 
         return {
-
-            "status":"NORMAL",
-
-            "score":0
-
+            "status": "NORMAL",
+            "score": flow_score,
+            "flow": round(flow, 2)
         }
-
 
     except Exception as e:
-
-        print(
-            "PRE PUMP ERROR:",
-            e
-        )
-
-
-        return {
-
-            "status":"ERROR",
-
-            "score":0
-
-        }
-
+        print("PRE PUMP ERROR:", e)
+        return {"status": "ERROR", "score": 0, "flow": 0}
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.3
+# 🧱 SUPPORT RESISTANCE ENGINE
+# =====================================
+
+def support_resistance(candles):
+
+    highs = [
+        x["high"]
+        for x in candles[-80:]
+    ]
+
+    lows = [
+        x["low"]
+        for x in candles[-80:]
+    ]
+
+    price = candles[-1]["close"]
+
+    support = min(lows)
+    resistance = max(highs)
+
+    return {
+
+        "support": support,
+        "resistance": resistance,
+        "near_support": ((price - support) / price) * 100,
+        "near_resistance": ((resistance - price) / price) * 100
+
+    }
+
+
+# =====================================
+# 🛡️ ANTI LATE ENTRY v12.0
+# =====================================
+
+def fomo_filter(candles):
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+    price = closes[-1]
+
+    move = ((price - closes[-96]) / closes[-96]) * 100
+
+    current_rsi = rsi(closes)
+
+    # Early Move Filter: قبول فقط -3% إلى +5%
+    if move < -3 or move > 5:
+        return False, "⏳ OUT OF RANGE (-3% to +5%)"
+
+    if current_rsi > 75:
+        return False, "🚫 RSI HOT"
+
+    return True, "🐋 EARLY ENTRY AREA"
+
+
+# =====================================
+# 🧠 AI BRAIN ENGINE v12.0
+# =====================================
+
+def ai_brain(candles):
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+    price = closes[-1]
+
+    e20 = ema(closes, 20)
+    e50 = ema(closes, 50)
+
+    score = 0
+
+    if price > e20:
+        score += 30
+    else:
+        score -= 30
+
+    if e20 > e50:
+        score += 30
+    else:
+        score -= 30
+
+    if score >= 50:
+        direction = "🟢 LONG"
+    elif score <= -50:
+        direction = "🔴 SHORT"
+    else:
+        direction = "WAIT"
+
+    return {
+        "direction": direction,
+        "confidence": abs(score)
+    }
+
+
+# =====================================
+# 🪤 TRAP DETECTOR v12.0
+# =====================================
+
+def trap_detector(candles):
+
+    closes = [
+        x["close"]
+        for x in candles
+    ]
+
+    highs = [
+        x["high"]
+        for x in candles
+    ]
+
+    lows = [
+        x["low"]
+        for x in candles
+    ]
+
+    price = closes[-1]
+    r = rsi(closes)
+
+    if price >= max(highs[-50:]) * 0.98 and r > 70:
+        return "🪤 BULL TRAP"
+
+    if price <= min(lows[-50:]) * 1.02 and r < 35:
+        return "🪤 BEAR TRAP"
+
+    return "✅ NO TRAP"
+
+
+# =====================================
+# 🐋 SMART MONEY ENGINE v12.0
+# =====================================
+
+def smart_money(candles, rsi_1h, change_24h):
+    """
+    اكتشاف Whale Loading بناءً على:
+    - Flow >= 2.0
+    - RSI 1H < 65
+    - 24H Change < 5%
+    """
+    try:
+        closes = [x["close"] for x in candles]
+        volumes = [x["volume"] for x in candles]
+
+        volume_now = sum(volumes[-5:])
+        volume_avg = sum(volumes[-50:]) / 10
+
+        if volume_avg == 0:
+            return {"status": "NORMAL", "flow": 0}
+
+        flow = volume_now / volume_avg
+
+        # Whale Loading شروط
+        if (
+            flow >= 2.0
+            and rsi_1h < 65
+            and abs(change_24h) < 5
+        ):
+            return {
+                "status": "🐋 WHALE LOADING",
+                "flow": round(flow, 2)
+            }
+
+        return {
+            "status": "NORMAL",
+            "flow": round(flow, 2)
+        }
+
+    except Exception as e:
+        print("SMART MONEY ERROR:", e)
+        return {"status": "ERROR", "flow": 0}
+
+
+# =====================================
+# 📊 MULTI TIMEFRAME ENGINE v12.0
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -930,484 +836,255 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
 
         }
 
-
         score = 0
-
 
         for name, candles in frames.items():
 
-            closes = [
-                x["close"]
-                for x in candles
-            ]
+            closes = [x["close"] for x in candles]
 
+            value = rsi(closes)
 
-            value = rsi(
-                closes
-            )
-
-
-            data[name] = round(
-                value,
-                2
-            )
-
+            data[name] = round(value, 2)
 
             if 50 <= value <= 70:
-
                 score += 10
-
-
             elif value > 75:
-
                 score -= 10
-
-
             elif value < 35:
-
                 score += 5
-
-
 
         data["score"] = score
 
-
         return data
-
-
 
     except Exception as e:
 
-        print(
-            "MULTI RSI ERROR:",
-            e
-        )
+        print("MULTI RSI ERROR:", e)
 
-
-        return {
-
-            "15m":50,
-            "1h":50,
-            "4h":50,
-            "1d":50,
-            "score":0
-
-        }
-
+        return {"15m": 50, "1h": 50, "4h": 50, "1d": 50, "score": 0}
 
 
 # =====================================
-# 🧱 SUPPORT RESISTANCE ENGINE
-# =====================================
-
-def support_resistance(candles):
-
-    highs = [
-        x["high"]
-        for x in candles[-80:]
-    ]
-
-
-    lows = [
-        x["low"]
-        for x in candles[-80:]
-    ]
-
-
-    price = candles[-1]["close"]
-
-
-    support = min(lows)
-
-    resistance = max(highs)
-
-
-    return {
-
-        "support": support,
-
-        "resistance": resistance,
-
-        "near_support":
-        ((price-support)/price)*100,
-
-        "near_resistance":
-        ((resistance-price)/price)*100
-
-    }
-
-
-
-# =====================================
-# 🛡 ANTI LATE ENTRY v11.3
-# =====================================
-
-def fomo_filter(candles):
-
-    closes = [
-        x["close"]
-        for x in candles
-    ]
-
-
-    price = closes[-1]
-
-
-    move = (
-
-        (price - closes[-96])
-
-        /
-
-        closes[-96]
-
-    ) * 100
-
-
-
-    current_rsi = rsi(
-        closes
-    )
-
-
-    # Avoid late momentum entry
-
-    if (
-        move > 5
-        and
-        current_rsi > 65
-    ):
-
-        return (
-
-            False,
-
-            "⏳ WAIT PULLBACK"
-
-        )
-
-
-
-    if move > 8:
-
-        return (
-
-            False,
-
-            "🚫 MOVE DONE - WAIT RETEST"
-
-        )
-
-
-
-    if current_rsi > 75:
-
-        return (
-
-            False,
-
-            "🚫 RSI HOT"
-
-        )
-
-
-
-    return (
-
-        True,
-
-        "🐋 EARLY ENTRY AREA"
-
-    )
-
-
-
-# =====================================
-# 🪤 TRAP DETECTOR v11.3
-# =====================================
-
-def trap_detector(candles):
-
-    closes = [
-        x["close"]
-        for x in candles
-    ]
-
-
-    highs = [
-        x["high"]
-        for x in candles
-    ]
-
-
-    lows = [
-        x["low"]
-        for x in candles
-    ]
-
-
-    price = closes[-1]
-
-    r = rsi(closes)
-
-
-    if (
-        price >= max(highs[-50:]) * 0.98
-        and
-        r > 70
-    ):
-
-        return "🪤 BULL TRAP"
-
-
-
-    if (
-        price <= min(lows[-50:]) * 1.02
-        and
-        r < 35
-    ):
-
-        return "🪤 BEAR TRAP"
-
-
-
-    return "✅ NO TRAP"
-
-
-
-# =====================================
-# 🧠 AI BRAIN ENGINE v11.3
-# =====================================
-
-def ai_brain(candles):
-
-    closes = [
-        x["close"]
-        for x in candles
-    ]
-
-
-    price = closes[-1]
-
-
-    e20 = ema(
-        closes,
-        20
-    )
-
-
-    e50 = ema(
-        closes,
-        50
-    )
-
-
-    score = 0
-
-
-
-    if price > e20:
-
-        score += 30
-
-    else:
-
-        score -= 30
-
-
-
-    if e20 > e50:
-
-        score += 30
-
-    else:
-
-        score -= 30
-
-
-
-    if score >= 50:
-
-        direction = "🟢 LONG"
-
-
-    elif score <= -50:
-
-        direction = "🔴 SHORT"
-
-
-    else:
-
-        direction = "WAIT"
-
-
-
-    return {
-
-        "direction": direction,
-
-        "confidence": abs(score)
-
-    }
-
-
-
-# =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.3
+# 🚀 FINAL ANALYZE ENGINE v12.0
 # =====================================
 
 def analyze(symbol, sector):
 
     try:
 
-        c15 = get_candles(symbol,"15m")
-        c1h = get_candles(symbol,"1h")
-        c4h = get_candles(symbol,"4h")
-        c1d = get_candles(symbol,"1d")
-
+        c15 = get_candles(symbol, "15m")
+        c1h = get_candles(symbol, "1h")
+        c4h = get_candles(symbol, "4h")
+        c1d = get_candles(symbol, "1d")
 
         if (
-            len(c15)<60
-            or len(c1h)<60
-            or len(c4h)<60
-            or len(c1d)<60
+            len(c15) < 60
+            or len(c1h) < 60
+            or len(c4h) < 60
+            or len(c1d) < 60
         ):
-
             return None
-
-
 
         price = c15[-1]["close"]
 
+        # =====================================
+        # 📈 24H CHANGE & VOLUME
+        # =====================================
+
+        ticker = requests.get(
+            f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
+        ).json()
+
+        change_24h = float(ticker["priceChangePercent"])
+        volume_24h = float(ticker["quoteVolume"])
+
+        # Volume Filter: أقل من 1M$ → تجاهل
+        if volume_24h < 1_000_000:
+            return None
+
+        # =====================================
+        # 📈 RSI 1H & 4H
+        # =====================================
+
+        closes1h = [x["close"] for x in c1h]
+        closes4h = [x["close"] for x in c4h]
+
+        rsi_1h = rsi(closes1h)
+        rsi_4h = rsi(closes4h)
+
+        # =====================================
+        # 🛡️ FOMO FILTER
+        # =====================================
 
         safe, warning = fomo_filter(c15)
-
-
         if not safe:
-
             return None
 
+        # =====================================
+        # 🧠 AI BRAIN
+        # =====================================
 
         brain = ai_brain(c1h)
-
-
         if brain["direction"] == "WAIT":
-
             return None
 
+        # =====================================
+        # 📈 TREND FILTER (1H & 4H)
+        # =====================================
+
+        e20_1h = ema(closes1h, 20)
+        e50_1h = ema(closes1h, 50)
+        e20_4h = ema(closes4h, 20)
+        e50_4h = ema(closes4h, 50)
+
+        if not (e20_1h > e50_1h and e20_4h > e50_4h):
+            return None
+
+        # =====================================
+        # 🧱 SUPPORT / RESISTANCE
+        # =====================================
 
         sr = support_resistance(c15)
 
-        money = smart_money(c15)
+        # Resistance Filter
+        if sr["near_resistance"] < 1:
+            return None  # قريب جداً من المقاومة (<1%) → تجاهل
+        elif sr["near_resistance"] < 3:
+            resistance_penalty = 10
+        else:
+            resistance_penalty = 0
 
-        pre = pre_pump_engine(c15)
+        # =====================================
+        # 📈 RELATIVE STRENGTH FILTER
+        # =====================================
 
-        multi = multi_rsi_engine(
-            c15,
-            c1h,
-            c4h,
-            c1d
-        )
+        btc_eth = get_btc_eth_change()
+        rs_score = relative_strength_filter(change_24h, btc_eth["btc"], btc_eth["eth"])
+
+        # =====================================
+        # 🐋 SMART MONEY
+        # =====================================
+
+        money = smart_money(c15, rsi_1h, change_24h)
+
+        # =====================================
+        # ⚡ PRE PUMP ENGINE
+        # =====================================
+
+        pre = pre_pump_engine(c15, change_24h, rsi_1h)
+
+        # =====================================
+        # 📊 MULTI RSI
+        # =====================================
+
+        multi = multi_rsi_engine(c15, c1h, c4h, c1d)
+
+        # =====================================
+        # 🪤 TRAP DETECTOR
+        # =====================================
 
         trap = trap_detector(c15)
 
-
-        score = (
-            brain["confidence"]
-            +
-            multi["score"]
-        )
-
-
         # =====================================
-        # 🔥 HEAT CONTROL v11.3
-        # Avoid late entries
+        # 🔥 CONFIDENCE SCORE (100)
         # =====================================
 
-        if multi["4h"] > 70:
+        score = 0
 
-            score -= 15
+        # Alpha (10)
+        score += 10
 
+        # Flow (20)
+        if pre["flow"] >= 3.0:
+            score += 20
+        elif pre["flow"] >= 2.0:
+            score += 15
+        elif pre["flow"] >= 1.5:
+            score += 10
+        elif pre["flow"] >= 1.2:
+            score += 5
 
-        if multi["1d"] > 70:
-
-            score -= 20
-
-
-        if multi["15m"] > 75:
-
-            score -= 10
-
-
-        # =====================================
-        # RESISTANCE FILTER v11.3
-        # =====================================
-
-        if sr["near_resistance"] < 3:
-            score -= 10
-
-
-        if money["status"] == "🐋 SMART ACCUMULATION":
+        # Whale (20)
+        if money["status"] == "🐋 WHALE LOADING":
             score += 20
 
-        score += pre["score"]
+        # Trend (15)
+        if e20_1h > e50_1h and e20_4h > e50_4h:
+            score += 15
 
+        # RSI (10)
+        if 40 <= rsi_1h <= 65:
+            score += 10
+
+        # Volume (10)
+        if volume_24h > 5_000_000:
+            score += 10
+
+        # Resistance (10)
+        score += (10 - resistance_penalty)
+
+        # AI Brain (5)
+        score += brain["confidence"] // 20
+
+        # Relative Strength (+15)
+        score += rs_score
+
+        # =====================================
+        # ⭐ QUALITY LEVEL
+        # =====================================
+
+        if score >= 85 and pre["status"] == "🐋 PRE PUMP DETECTED":
+            quality = "🐋 HIDDEN ACCUMULATION"
+        elif score >= 75:
+            quality = "🚀 BREAKOUT READY"
+        elif score >= 60:
+            quality = "👀 WATCH"
+        else:
+            quality = "⏳ LATE MOVE"
+
+        # =====================================
+        # 🎯 TARGETS
+        # =====================================
 
         move = atr(c15)
 
-
         entry_low = price * 0.995
-
         entry_high = price * 1.005
 
-
-        if brain["direction"] == "🟢 LONG":
-
-            sl = sr["support"] * 0.995
-            tp1 = price + move * 2
-            tp2 = price + move * 3
-
-
-        else:
-
-            sl = sr["resistance"] * 1.005
-            tp1 = price - move * 2
-            tp2 = price - move * 3
-
-
+        sl = sr["support"] * 0.995
+        tp1 = price + move * 2
+        tp2 = price + move * 3
 
         return {
 
-            "coin":symbol,
-            "sector":sector,
-            "pre_pump":pre["status"],
-            "direction":brain["direction"],
-            "score":round(score),
-            "entry_low":entry_low,
-            "entry_high":entry_high,
-            "sl":sl,
-            "tp1":tp1,
-            "tp2":tp2,
-            "money":money["status"],
-            "liquidity":money["flow"],
-            "multi":multi,
-            "trap":trap,
-            "warning":warning
+            "coin": symbol,
+            "sector": sector,
+            "direction": brain["direction"],
+            "score": round(score),
+            "quality": quality,
+            "entry_low": entry_low,
+            "entry_high": entry_high,
+            "sl": sl,
+            "tp1": tp1,
+            "tp2": tp2,
+            "money": money["status"],
+            "liquidity": money["flow"],
+            "pre_pump": pre["status"],
+            "change_24h": round(change_24h, 2),
+            "multi": multi,
+            "trap": trap,
+            "warning": warning,
+            "volume": round(volume_24h / 1_000_000, 2)
 
         }
 
-
     except Exception as e:
 
-        print(
-            "ANALYZE ERROR:",
-            e
-        )
-
+        print("ANALYZE ERROR:", e)
         return None
         
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.3
+# 🤖 TELEGRAM ENGINE v12.0
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1416,18 +1093,16 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3 ONLINE 🚀
+🐋 AHAD AI v12.0 ONLINE 🚀
 
-🧠 AI Brain ACTIVE
-🐋 Liquidity Hunter ACTIVE
-🏦 Sector Flow ACTIVE
-📊 Multi TimeFrame ACTIVE
-🪤 Trap Detector ACTIVE
+🧠 Alpha Hunter ACTIVE
+🐋 Whale Loading ACTIVE
 ⚡ Pre-Pump Detection ACTIVE
-🔥 Heat Control ACTIVE
+🛡️ Health Check ACTIVE
+📈 Relative Strength ACTIVE
 
 🎯 Goal:
-Best 3 quality LONG setups
+Early entries before pumps
 
 Send /scan
         """
@@ -1436,8 +1111,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.3
-# Liquidity → Sector → Coin
+# 🔎 SMART SCANNER v12.0
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -1446,149 +1120,144 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3 SCANNING...
+🐋 AHAD AI v12.0 SCANNING...
 
-🔍 Checking Market Flow
-🏦 Finding Hot Sector
-🟢 Hunting TOP 3 LONG setups
-🐋 Tracking Smart Money
-⚡ Detecting Pre-Pump
-🔥 Heat Control ACTIVE
+🔍 Alpha Hunter Engine
+📊 Futures + OKX Filter
+⚡ Pre-Pump Detection
+📈 Relative Strength Analysis
 
 Please wait ⏳
         """
     )
 
 
+    # =====================================
+    # 🛡️ HEALTH CHECK
+    # =====================================
+
+    health = health_check()
+
+    health_msg = "🛡️ API STATUS:\n"
+    for api, status in health.items():
+        icon = "🟢" if status == "ONLINE" else "🔴"
+        health_msg += f"{icon} {api.upper()}: {status}\n"
+
+    bot.send_message(
+        message.chat.id,
+        health_msg
+    )
+
+
+    # =====================================
+    # 🎯 INTERSECTION SYMBOLS
+    # =====================================
+
+    symbols = get_intersection_symbols()
+
+    if not symbols:
+        bot.send_message(
+            message.chat.id,
+            "⚠️ No symbols found in intersection\n"
+            "Alpha + Futures + OKX\n"
+            "Check API status above"
+        )
+        return
+
+    bot.send_message(
+        message.chat.id,
+        f"🎯 Alpha Hunter Watchlist: {len(symbols)} coins"
+    )
+
+
+    # =====================================
+    # 🔍 ANALYZE
+    # =====================================
+
     long_results = []
-
-
-    all_symbols = get_symbols()
-
-    symbols = top_flow_scanner(all_symbols)
-
-
-    flow = sector_flow(
-        all_symbols
-    )
-
-
-    hot_sector = flow["sector"]
-
-
-    bot.send_message(
-        message.chat.id,
-        f"""
-🔥 MARKET FLOW
-
-🏦 Hot Sector:
-{hot_sector}
-
-🐋 Flow Power:
-{flow['power']}
-        """
-    )
-
-
-    # TOP FLOW PRIORITY
-
-    if len(symbols) < 20:
-
-        symbols = all_symbols
-
-
-    bot.send_message(
-        message.chat.id,
-        f"💎 Smart Money Watchlist: {len(symbols)} coins"
-    )
-
-
 
     for symbol in symbols:
 
+        # تحديد القطاع
+        sector = "OTHER"
+        for sec, coins in SECTORS.items():
+            if any(coin in symbol for coin in coins):
+                sector = sec
+                break
 
-        result = analyze(
-            symbol,
-            hot_sector
-        )
-
+        result = analyze(symbol, sector)
 
         if result:
 
-
             if result["score"] > 100:
-
                 result["score"] = 100
-
-
 
             if result["direction"] == "🟢 LONG":
 
                 if (
-                    result["score"] >= 75
-                    and
-                    (
-                        result["liquidity"] >= 1.2
-                        or
-                        result["pre_pump"] == "🐋 WHALE LOADING"
-                    )
+                    result["score"] >= 60
+                    and result["liquidity"] >= 1.2
                 ):
 
                     long_results.append(result)
 
+        time.sleep(0.03)
 
 
-        time.sleep(
-            0.03
-        )
+    # =====================================
+    # 📊 SORT: Whale Loading → Flow → Score
+    # =====================================
 
-
+    def sort_key(x):
+        whale_score = 10 if x["money"] == "🐋 WHALE LOADING" else 0
+        return (whale_score, x["liquidity"], x["score"])
 
     results = sorted(
-
         long_results,
-
-        key=lambda x: (
-            x["score"],
-            x["liquidity"]
-        ),
-
+        key=sort_key,
         reverse=True
-
-    )[:3]
-
+    )[:5]
 
 
     if not results:
 
-
         bot.send_message(
             message.chat.id,
             """
-👀 No sniper setup now
+👀 No Alpha setups now
 
-🐋 Smart Money not ready
-⏳ Waiting next liquidity wave
+🐋 Waiting for Whale Loading
+⚡ Pre-Pump not detected yet
+⏳ Try again later
             """
         )
-
 
         return
 
 
+    # =====================================
+    # 📨 SEND RESULTS
+    # =====================================
 
     for s in results:
 
-
         msg = f"""
-🚨 AHAD AI v11.3 🐋
+🚨 AHAD AI v12.0 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
-🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+{s['quality']}
+
+🏦 Alpha + Futures + OKX ✅
+
+🔥 Score: {s['score']}/100
+💧 Flow: {s['liquidity']}X
+📈 24H: {s['change_24h']}%
+💰 Volume: {s['volume']}M$
+
+⚡ Pre-Pump: {s['pre_pump']}
 🐋 Money: {s['money']}
-⚡ Mode: {s['pre_pump']}
 🪤 Trap: {s['trap']}
 
 🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
@@ -1598,14 +1267,13 @@ Please wait ⏳
 🥈 TP2: {round(s['tp2'],6)}
 
 📊 RSI:
-15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
-4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
+15m: {s['multi']['15m']} | 1H: {s['multi']['1h']}
+4H: {s['multi']['4h']} | 1D: {s['multi']['1d']}
 
 ⚠️ {s['warning']}
 
-🧠 AHAD: HIGH QUALITY 🚀
+⭐ Confidence: {s['score']}/100
         """
-
 
         bot.send_message(
             message.chat.id,
@@ -1635,10 +1303,7 @@ def keep_alive():
 
         except Exception as e:
 
-            print(
-                "KEEP ALIVE ERROR:",
-                e
-            )
+            print("KEEP ALIVE ERROR:", e)
 
 
         time.sleep(300)
@@ -1713,7 +1378,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3 LIQUIDITY HUNTER ONLINE 🐋"
+    "🔥 AHAD AI v12.0 ALPHA HUNTER ONLINE 🐋"
 )
 
 

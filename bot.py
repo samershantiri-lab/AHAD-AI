@@ -338,22 +338,6 @@ def get_intersection_symbols():
     futures = get_binance_futures()
     okx = get_okx_symbols()
 
-    # Debug Print
-    print("="*60)
-    print("ALPHA:", len(alpha))
-    print("FUTURES:", len(futures))
-    print("OKX:", len(okx))
-    print()
-    print("ALPHA SAMPLE")
-    print(alpha[:10])
-    print()
-    print("FUTURES SAMPLE")
-    print(futures[:10])
-    print()
-    print("OKX SAMPLE")
-    print(okx[:10])
-    print("="*60)
-
     # Normalize sets
     alpha_set = {normalize_symbol(x) for x in alpha}
     future_set = {normalize_symbol(x) for x in futures}
@@ -365,8 +349,16 @@ def get_intersection_symbols():
         okx_set
     )
 
+    print("=" * 60)
+    print("ALPHA:", len(alpha))
+    print(alpha[:10])
+    print("FUTURES:", len(futures))
+    print(futures[:10])
+    print("OKX:", len(okx))
+    print(okx[:10])
     print("INTERSECTION:", len(intersection))
-    print(intersection[:30])
+    print(intersection[:20])
+    print("=" * 60)
 
     # إذا أصبح التقاطع صفراً، أرسل أول Response كامل
     if len(intersection) == 0:
@@ -844,8 +836,7 @@ def smart_money(candles, rsi_1h, change_24h):
     except Exception as e:
         print("SMART MONEY ERROR:", e)
         return {"status": "ERROR", "flow": 0}
-
-
+        
 # =====================================
 # 📊 MULTI TIMEFRAME ENGINE v12.0
 # =====================================
@@ -891,7 +882,8 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
         print("MULTI RSI ERROR:", e)
 
         return {"15m": 50, "1h": 50, "4h": 50, "1d": 50, "score": 0}
-        
+
+
 # =====================================
 # 🚀 FINAL ANALYZE ENGINE v12.0
 # =====================================
@@ -1110,7 +1102,8 @@ def analyze(symbol, sector):
 
         print("ANALYZE ERROR:", e)
         return None
-        
+
+
 # =====================================
 # 🤖 TELEGRAM ENGINE v12.0
 # =====================================
@@ -1383,10 +1376,8 @@ def telegram_engine():
 
         time.sleep(
             5
-        )
-
-
-
+)
+        
 threading.Thread(
     target=run_web,
     daemon=True

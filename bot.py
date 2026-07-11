@@ -182,10 +182,9 @@ def get_alpha_symbols():
 
         alpha_symbols = []
         for token in data.get("data", []):
-            token_id = token.get("id")
-            if token_id:
-                alpha_symbol = f"ALPHA_{token_id}USDT"
-                alpha_symbols.append(alpha_symbol)
+            alpha_symbols.append(
+                token["symbol"].upper()
+            )
 
         # حفظ في Cache
         cache["alpha"]["data"] = alpha_symbols
@@ -284,8 +283,6 @@ def normalize_symbol(symbol):
     symbol = symbol.replace("-USDT-SWAP", "")
     symbol = symbol.replace("-USDT", "")
     symbol = symbol.replace("USDT", "")
-    symbol = symbol.replace("_USDT", "")
-    symbol = symbol.replace("ALPHA_", "")
     return symbol
 
 
@@ -331,7 +328,7 @@ def health_check():
 
 
 def get_intersection_symbols():
-    """تقاطع القوائم الثلاث: Alpha + Futures + OKX"""
+    """تقاطع القوائم: Alpha + Futures + OKX"""
 
     # جلب القوائم
     alpha = get_alpha_symbols()
@@ -343,10 +340,9 @@ def get_intersection_symbols():
     future_set = {normalize_symbol(x) for x in futures}
     okx_set = {normalize_symbol(x) for x in okx}
 
-    intersection = list(
+    watchlist = list(
         alpha_set &
-        future_set &
-        okx_set
+        future_set
     )
 
     print("=" * 60)
@@ -356,18 +352,74 @@ def get_intersection_symbols():
     print(futures[:10])
     print("OKX:", len(okx))
     print(okx[:10])
-    print("INTERSECTION:", len(intersection))
-    print(intersection[:20])
+    print("WATCHLIST:", len(watchlist))
+    print(watchlist[:20])
     print("=" * 60)
 
-    # إذا أصبح التقاطع صفراً، أرسل أول Response كامل
-    if len(intersection) == 0:
-        print("⚠️ INTERSECTION IS ZERO!")
+    # إذا أصبحت القائمة صفراً
+    if len(watchlist) == 0:
+        print("⚠️ WATCHLIST IS ZERO!")
         print("Alpha sample (first 10):", alpha[:10])
         print("Futures sample (first 10):", futures[:10])
         print("OKX sample (first 10):", okx[:10])
 
-    return intersection
+    return watchlist
+
+
+# =====================================
+# 📊 GET ALL TICKERS (BINANCE)
+# =====================================
+
+def get_all_tickers():
+    """جلب جميع التيكرات من Binance Futures مرة واحدة"""
+    try:
+        url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        tickers = {}
+        for item in data:
+            symbol = item["symbol"]
+            tickers[symbol] = {
+                "priceChangePercent": float(item["priceChangePercent"]),
+                "quoteVolume": float(item["quoteVolume"]),
+                "highPrice": float(item["highPrice"])
+            }
+        return tickers
+    except Exception as e:
+        print("TICKERS ERROR:", e)
+        return {}
+
+
+# =====================================
+# 📈 RELATIVE STRENGTH FILTER v12.0
+# =====================================
+
+def get_btc_eth_change():
+    """جلب تغير BTC و ETH خلال 24 ساعة"""
+    try:
+        btc_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT"
+        eth_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=ETHUSDT"
+
+        btc = requests.get(btc_url, timeout=5).json()
+        eth = requests.get(eth_url, timeout=5).json()
+
+        return {
+            "btc": float(btc["priceChangePercent"]),
+            "eth": float(eth["priceChangePercent"])
+        }
+    except:
+        return {"btc": 0, "eth": 0}
+
+
+def relative_strength_filter(change_24h, btc_change, eth_change):
+    """
+    مقارنة أداء العملة مع BTC و ETH
+    إذا كانت العملة أقوى من BTC و ETH → +15 نقطة
+    """
+    if change_24h > btc_change + 2 and change_24h > eth_change + 2:
+        return 15
+    return 0
 
 
 # =====================================
@@ -560,39 +612,7 @@ def atr(candles):
         /
         len(ranges)
     )
-
-
-# =====================================
-# 📈 RELATIVE STRENGTH FILTER v12.0
-# =====================================
-
-def get_btc_eth_change():
-    """جلب تغير BTC و ETH خلال 24 ساعة"""
-    try:
-        btc_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT"
-        eth_url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=ETHUSDT"
-
-        btc = requests.get(btc_url, timeout=5).json()
-        eth = requests.get(eth_url, timeout=5).json()
-
-        return {
-            "btc": float(btc["priceChangePercent"]),
-            "eth": float(eth["priceChangePercent"])
-        }
-    except:
-        return {"btc": 0, "eth": 0}
-
-
-def relative_strength_filter(change_24h, btc_change, eth_change):
-    """
-    مقارنة أداء العملة مع BTC و ETH
-    إذا كانت العملة أقوى من BTC و ETH → +15 نقطة
-    """
-    if change_24h > btc_change + 2 and change_24h > eth_change + 2:
-        return 15
-    return 0
-
-
+    
 # =====================================
 # 🐋 PRE PUMP ENGINE v12.0
 # =====================================
@@ -836,7 +856,8 @@ def smart_money(candles, rsi_1h, change_24h):
     except Exception as e:
         print("SMART MONEY ERROR:", e)
         return {"status": "ERROR", "flow": 0}
-        
+
+
 # =====================================
 # 📊 MULTI TIMEFRAME ENGINE v12.0
 # =====================================
@@ -888,14 +909,26 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
 # 🚀 FINAL ANALYZE ENGINE v12.0
 # =====================================
 
-def analyze(symbol, sector):
-
+def analyze(symbol, sector, tickers, btc_eth):
+    """
+    تحليل عملة واحدة مع تمرير التيكرات وبيانات BTC/ETH
+    """
     try:
 
-        c15 = get_candles(symbol, "15m")
-        c1h = get_candles(symbol, "1h")
-        c4h = get_candles(symbol, "4h")
-        c1d = get_candles(symbol, "1d")
+        # تحديد المصدر (OKX أو Binance)
+        okx_symbol = f"{symbol}-USDT-SWAP"
+        okx_candles = get_candles(okx_symbol, "15m")
+
+        if len(okx_candles) >= 60:
+            # استخدم OKX
+            c15 = okx_candles
+            c1h = get_candles(okx_symbol, "1h")
+            c4h = get_candles(okx_symbol, "4h")
+            c1d = get_candles(okx_symbol, "1d")
+            symbol_okx = okx_symbol
+        else:
+            # استخدم Binance (OKX غير متوفر)
+            return None
 
         if (
             len(c15) < 60
@@ -908,15 +941,15 @@ def analyze(symbol, sector):
         price = c15[-1]["close"]
 
         # =====================================
-        # 📈 24H CHANGE & VOLUME
+        # 📈 24H CHANGE & VOLUME (من التيكرات)
         # =====================================
 
-        ticker = requests.get(
-            f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
-        ).json()
+        ticker = tickers.get(symbol)
+        if not ticker:
+            return None
 
-        change_24h = float(ticker["priceChangePercent"])
-        volume_24h = float(ticker["quoteVolume"])
+        change_24h = ticker["priceChangePercent"]
+        volume_24h = ticker["quoteVolume"]
 
         # Volume Filter: أقل من 1M$ → تجاهل
         if volume_24h < 1_000_000:
@@ -968,7 +1001,7 @@ def analyze(symbol, sector):
 
         # Resistance Filter
         if sr["near_resistance"] < 1:
-            return None  # قريب جداً من المقاومة (<1%) → تجاهل
+            return None
         elif sr["near_resistance"] < 3:
             resistance_penalty = 10
         else:
@@ -978,7 +1011,6 @@ def analyze(symbol, sector):
         # 📈 RELATIVE STRENGTH FILTER
         # =====================================
 
-        btc_eth = get_btc_eth_change()
         rs_score = relative_strength_filter(change_24h, btc_eth["btc"], btc_eth["eth"])
 
         # =====================================
@@ -1102,8 +1134,7 @@ def analyze(symbol, sector):
 
         print("ANALYZE ERROR:", e)
         return None
-
-
+        
 # =====================================
 # 🤖 TELEGRAM ENGINE v12.0
 # =====================================
@@ -1180,7 +1211,7 @@ Please wait ⏳
         bot.send_message(
             message.chat.id,
             "⚠️ No symbols found in intersection\n"
-            "Alpha + Futures + OKX\n"
+            "Alpha + Futures\n"
             "Check API status above"
         )
         return
@@ -1189,6 +1220,14 @@ Please wait ⏳
         message.chat.id,
         f"🎯 Alpha Hunter Watchlist: {len(symbols)} coins"
     )
+
+
+    # =====================================
+    # 📊 LOAD TICKERS & BTC/ETH ONCE
+    # =====================================
+
+    tickers = get_all_tickers()
+    btc_eth = get_btc_eth_change()
 
 
     # =====================================
@@ -1206,7 +1245,7 @@ Please wait ⏳
                 sector = sec
                 break
 
-        result = analyze(symbol, sector)
+        result = analyze(symbol, sector, tickers, btc_eth)
 
         if result:
 
@@ -1270,7 +1309,7 @@ Please wait ⏳
 
 {s['quality']}
 
-🏦 Alpha + Futures + OKX ✅
+🏦 Alpha + Futures ✅
 
 🔥 Score: {s['score']}/100
 💧 Flow: {s['liquidity']}X
@@ -1376,8 +1415,10 @@ def telegram_engine():
 
         time.sleep(
             5
-)
-        
+        )
+
+
+
 threading.Thread(
     target=run_web,
     daemon=True

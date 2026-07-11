@@ -221,11 +221,20 @@ def get_binance_futures():
         print("🔄 Futures: Fetching from API...")
         url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
         response = requests.get(url, timeout=10)
+
+        print("=" * 60)
+        print("STATUS:", response.status_code)
+        print(response.text[:1000])
+        print("=" * 60)
+
         data = response.json()
 
+        print("Keys:", data.keys())
+        print("First symbols:", data.get("symbols", [])[:5])
+
         symbols = []
-        for s in data["symbols"]:
-            if s["status"] == "TRADING" and s["quoteAsset"] == "USDT":
+        for s in data.get("symbols", []):
+            if s.get("status") == "TRADING" and s.get("quoteAsset") == "USDT":
                 symbols.append(s["symbol"])
 
         cache["futures"]["data"] = symbols

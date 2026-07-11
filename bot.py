@@ -213,6 +213,8 @@ def get_alpha_symbols():
 def get_binance_futures():
     """جلب قائمة العقود الآجلة من Binance Futures مع Cache"""
 
+    print("🪙 ENTERED get_binance_futures()")
+
     if is_cache_valid("futures") and cache["futures"]["data"] is not None:
         print("✅ Futures: Using Cache")
         return cache["futures"]["data"]
@@ -325,9 +327,21 @@ def health_check():
     # اختبار Futures
     try:
         url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
-        requests.get(url, timeout=5)
-        health_status["futures"] = "ONLINE"
-    except:
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if (
+            response.status_code == 200
+            and
+            "symbols" in data
+            and
+            len(data["symbols"]) > 0
+        ):
+            health_status["futures"] = "ONLINE"
+        else:
+            print("FUTURES HEALTH:", data)
+            health_status["futures"] = "OFFLINE"
+    except Exception as e:
+        print("FUTURES HEALTH ERROR:", e)
         health_status["futures"] = "OFFLINE"
 
     # اختبار OKX
@@ -609,7 +623,7 @@ def atr(candles):
         sum(ranges)
         /
         len(ranges)
-        )
+    )
     
 # =====================================
 # 🐋 PRE PUMP ENGINE v12.0

@@ -180,6 +180,11 @@ def get_alpha_symbols():
         response = requests.get(url, timeout=10)
         data = response.json()
 
+        print("=" * 60)
+        print("ALPHA RAW RESPONSE")
+        print(data.get("data", [])[:5])
+        print("=" * 60)
+
         alpha_symbols = []
         for token in data.get("data", []):
             alpha_symbols.append(
@@ -328,41 +333,25 @@ def health_check():
 
 
 def get_intersection_symbols():
-    """تقاطع القوائم: Alpha + Futures + OKX"""
-
-    # جلب القوائم
+    """تقاطع القوائم: Alpha + Futures (للتحقق فقط)"""
+    
     alpha = get_alpha_symbols()
     futures = get_binance_futures()
-    okx = get_okx_symbols()
-
-    # Normalize sets
+    
     alpha_set = {normalize_symbol(x) for x in alpha}
     future_set = {normalize_symbol(x) for x in futures}
-    okx_set = {normalize_symbol(x) for x in okx}
-
-    watchlist = list(
-        alpha_set &
-        future_set
-    )
-
+    
+    watchlist = list(alpha_set & future_set)
+    
     print("=" * 60)
     print("ALPHA:", len(alpha))
     print(alpha[:10])
     print("FUTURES:", len(futures))
     print(futures[:10])
-    print("OKX:", len(okx))
-    print(okx[:10])
     print("WATCHLIST:", len(watchlist))
     print(watchlist[:20])
     print("=" * 60)
-
-    # إذا أصبحت القائمة صفراً
-    if len(watchlist) == 0:
-        print("⚠️ WATCHLIST IS ZERO!")
-        print("Alpha sample (first 10):", alpha[:10])
-        print("Futures sample (first 10):", futures[:10])
-        print("OKX sample (first 10):", okx[:10])
-
+    
     return watchlist
 
 
@@ -611,7 +600,7 @@ def atr(candles):
         sum(ranges)
         /
         len(ranges)
-    )
+        )
     
 # =====================================
 # 🐋 PRE PUMP ENGINE v12.0
@@ -909,9 +898,9 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
 # 🚀 FINAL ANALYZE ENGINE v12.0
 # =====================================
 
-def analyze(symbol, sector, tickers, btc_eth):
+def analyze(symbol, sector, tickers, btc_eth, alpha_symbols):
     """
-    تحليل عملة واحدة مع تمرير التيكرات وبيانات BTC/ETH
+    تحليل عملة واحدة مع تمرير التيكرات وبيانات BTC/ETH و Alpha
     """
     try:
 
@@ -1043,8 +1032,13 @@ def analyze(symbol, sector, tickers, btc_eth):
 
         score = 0
 
-        # Alpha (10)
-        score += 10
+        # التحقق من Alpha
+        base = normalize_symbol(symbol)
+        is_alpha = base in alpha_symbols
+
+        # Alpha Bonus (10)
+        if is_alpha:
+            score += 10
 
         # Flow (20)
         if pre["flow"] >= 3.0:
@@ -1107,6 +1101,15 @@ def analyze(symbol, sector, tickers, btc_eth):
         tp1 = price + move * 2
         tp2 = price + move * 3
 
+        # =====================================
+        # 🏷️ SOURCE STATUS
+        # =====================================
+
+        if is_alpha:
+            alpha_status = "✅ ALPHA"
+        else:
+            alpha_status = "➖ FUTURES ONLY"
+
         return {
 
             "coin": symbol,
@@ -1126,7 +1129,8 @@ def analyze(symbol, sector, tickers, btc_eth):
             "multi": multi,
             "trap": trap,
             "warning": warning,
-            "volume": round(volume_24h / 1_000_000, 2)
+            "volume": round(volume_24h / 1_000_000, 2),
+            "alpha_status": alpha_status
 
         }
 
@@ -1175,7 +1179,7 @@ def scan(message):
 🐋 AHAD AI v12.0 SCANNING...
 
 🔍 Alpha Hunter Engine
-📊 Futures + OKX Filter
+📊 Futures Filter
 ⚡ Pre-Pump Detection
 📈 Relative Strength Analysis
 
@@ -1202,32 +1206,31 @@ Please wait ⏳
 
 
     # =====================================
-    # 🎯 INTERSECTION SYMBOLS
+    # 🎯 GET FUTURES SYMBOLS (Base List)
     # =====================================
 
-    symbols = get_intersection_symbols()
+    symbols = get_binance_futures()
 
     if not symbols:
         bot.send_message(
             message.chat.id,
-            "⚠️ No symbols found in intersection\n"
-            "Alpha + Futures\n"
-            "Check API status above"
+            "⚠️ No futures symbols found"
         )
         return
 
     bot.send_message(
         message.chat.id,
-        f"🎯 Alpha Hunter Watchlist: {len(symbols)} coins"
+        f"📊 Futures Watchlist: {len(symbols)} coins"
     )
 
 
     # =====================================
-    # 📊 LOAD TICKERS & BTC/ETH ONCE
+    # 📊 LOAD TICKERS, BTC/ETH & ALPHA ONCE
     # =====================================
 
     tickers = get_all_tickers()
     btc_eth = get_btc_eth_change()
+    alpha_symbols = get_alpha_symbols()
 
 
     # =====================================
@@ -1245,7 +1248,7 @@ Please wait ⏳
                 sector = sec
                 break
 
-        result = analyze(symbol, sector, tickers, btc_eth)
+        result = analyze(symbol, sector, tickers, btc_eth, alpha_symbols)
 
         if result:
 
@@ -1309,7 +1312,7 @@ Please wait ⏳
 
 {s['quality']}
 
-🏦 Alpha + Futures ✅
+🏷 Source: {s['alpha_status']}
 
 🔥 Score: {s['score']}/100
 💧 Flow: {s['liquidity']}X

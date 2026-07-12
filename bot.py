@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v11.4
+# 🚀 AHAD AI v11.5
 # SMART ENTRY EDITION
 # =====================================
 
@@ -45,7 +45,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.4 "
+        "🐋 AHAD AI v11.5 "
         "SMART ENTRY ONLINE 🚀"
     )
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.4
+# 🏦 SECTOR DATABASE v11.5
 # =====================================
 
 SECTORS = {
@@ -483,11 +483,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.4 CORE READY 🐋"
+    "🔥 AHAD AI v11.5 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.4
+# 📊 INDICATORS ENGINE v11.5
 # =====================================
 
 def ema(values, period):
@@ -579,7 +579,7 @@ def atr(candles):
 
 
 # =====================================
-# 📊 ADX INDICATOR v11.4
+# 📊 ADX INDICATOR v11.5
 # =====================================
 
 def adx(candles, period=14):
@@ -646,7 +646,7 @@ def adx(candles, period=14):
 
 
 # =====================================
-# 📊 CCI INDICATOR v11.4
+# 📊 CCI INDICATOR v11.5
 # =====================================
 
 def cci(candles, period=20):
@@ -675,7 +675,7 @@ def cci(candles, period=20):
         return 0
         
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.4
+# 🐋 SMART MONEY ENGINE v11.5
 # =====================================
 
 def smart_money(candles):
@@ -788,7 +788,7 @@ def smart_money(candles):
 
 
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.4
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.5
 # Detect whales before breakout
 # =====================================
 
@@ -899,7 +899,7 @@ def pre_pump_engine(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.4
+# 📊 MULTI TIMEFRAME ENGINE v11.5
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -1026,7 +1026,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.4
+# 🛡 ANTI LATE ENTRY v11.5
 # =====================================
 
 def fomo_filter(candles):
@@ -1110,7 +1110,7 @@ def fomo_filter(candles):
 
 
 # =====================================
-# 🪤 TRAP DETECTOR v11.4
+# 🪤 TRAP DETECTOR v11.5
 # =====================================
 
 def trap_detector(candles):
@@ -1163,7 +1163,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.4
+# 🧠 AI BRAIN ENGINE v11.5
 # =====================================
 
 def ai_brain(candles):
@@ -1240,7 +1240,7 @@ def ai_brain(candles):
 
 
 # =====================================
-# 📊 BREAKOUT DETECTOR v11.4
+# 📊 BREAKOUT DETECTOR v11.5
 # =====================================
 
 def breakout_detector(candles, volume_avg):
@@ -1253,7 +1253,7 @@ def breakout_detector(candles, volume_avg):
             return {"breakout": False, "type": "NONE"}
         
         price = candles[-1]["close"]
-        resistance = max([x["high"] for x in candles[-20:]])
+        resistance = max([x["high"] for x in candles[-21:-1]])
         volume_now = candles[-1]["volume"]
         
         # اختراق مقاومة مع حجم أعلى من المتوسط
@@ -1271,7 +1271,7 @@ def breakout_detector(candles, volume_avg):
 
 
 # =====================================
-# 📊 REVERSAL DETECTOR v11.4
+# 📊 REVERSAL DETECTOR v11.5
 # =====================================
 
 def reversal_detector(candles):
@@ -1325,7 +1325,7 @@ def reversal_detector(candles):
         return {"reversal": False, "type": "NONE"}
         
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.4
+# 🚀 FINAL ANALYZE ENGINE v11.5
 # =====================================
 
 def analyze(symbol, sector):
@@ -1373,7 +1373,7 @@ def analyze(symbol, sector):
         trap = trap_detector(c15)
 
         # =====================================
-        # 📊 NEW INDICATORS v11.4
+        # 📊 NEW INDICATORS v11.5
         # =====================================
 
         adx_value = adx(c1h)
@@ -1388,7 +1388,7 @@ def analyze(symbol, sector):
         reversal = reversal_detector(c15)
 
         # =====================================
-        # 🔥 SMART SCORE v11.4 (Weighted)
+        # 🔥 SMART SCORE v11.5 (Weighted)
         # =====================================
 
         score = 0
@@ -1550,7 +1550,7 @@ def analyze(symbol, sector):
         return None
         
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.4
+# 🤖 TELEGRAM ENGINE v11.5
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1559,7 +1559,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.4 ONLINE 🚀
+🐋 AHAD AI v11.5 ONLINE 🚀
 
 🧠 Smart Entry Engine ACTIVE
 📊 ADX + CCI Indicators ACTIVE
@@ -1578,7 +1578,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.4
+# 🔎 SMART SCANNER v11.5
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -1587,7 +1587,7 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.4 SCANNING...
+🐋 AHAD AI v11.5 SCANNING...
 
 📊 ADX + CCI Analysis
 🚀 Hunting Breakouts
@@ -1727,7 +1727,7 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.4 🐋
+🚨 AHAD AI v11.5 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1864,7 +1864,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.4 SMART ENTRY ONLINE 🐋"
+    "🔥 AHAD AI v11.5 SMART ENTRY ONLINE 🐋"
 )
 
 
@@ -1874,3 +1874,4 @@ while True:
     time.sleep(
         60
     )
+        

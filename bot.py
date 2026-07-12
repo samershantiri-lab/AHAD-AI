@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v11.3.2
+# 🚀 AHAD AI v11.3.4
 # SMART ENTRY EDITION
 # =====================================
 
@@ -45,7 +45,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3.2 "
+        "🐋 AHAD AI v11.3.4 "
         "SMART ENTRY ONLINE 🚀"
     )
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.3.2
+# 🏦 SECTOR DATABASE v11.3.4
 # =====================================
 
 SECTORS = {
@@ -483,11 +483,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.3.2 CORE READY 🐋"
+    "🔥 AHAD AI v11.3.4 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.3.2
+# 📊 INDICATORS ENGINE v11.3.4
 # =====================================
 
 def ema(values, period):
@@ -580,7 +580,7 @@ def atr(candles):
 
 
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.3.2
+# 🏦 SECTOR FLOW ENGINE v11.3.4
 # FIND WHERE MONEY GOES
 # =====================================
 
@@ -684,7 +684,7 @@ def sector_flow(symbols):
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.3.2
+# 🐋 SMART MONEY ENGINE v11.3.4
 # =====================================
 
 def smart_money(candles):
@@ -792,10 +792,12 @@ def smart_money(candles):
 
             "status": "ERROR"
 
-                            }
-        
+        }
+
+
+
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.2
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.4
 # Detect whales before breakout
 # =====================================
 
@@ -906,7 +908,7 @@ def pre_pump_engine(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.3.2
+# 📊 MULTI TIMEFRAME ENGINE v11.3.4
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -987,9 +989,7 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
             "score":0
 
         }
-
-
-
+        
 # =====================================
 # 🧱 SUPPORT RESISTANCE ENGINE
 # =====================================
@@ -1033,7 +1033,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.3.2
+# 🛡 ANTI LATE ENTRY v11.3.4
 # =====================================
 
 def fomo_filter(candles):
@@ -1117,7 +1117,7 @@ def fomo_filter(candles):
 
 
 # =====================================
-# 🪤 TRAP DETECTOR v11.3.2
+# 🪤 TRAP DETECTOR v11.3.4
 # =====================================
 
 def trap_detector(candles):
@@ -1170,7 +1170,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.3.2
+# 🧠 AI BRAIN ENGINE v11.3.4
 # =====================================
 
 def ai_brain(candles):
@@ -1247,7 +1247,7 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.3.2
+# 🚀 FINAL ANALYZE ENGINE v11.3.4
 # =====================================
 
 def analyze(symbol, sector):
@@ -1307,39 +1307,171 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 SCORE SYSTEM v11.3.2
+        # 📊 CLOSES FOR INDICATORS
+        # =====================================
+
+        closes15 = [x["close"] for x in c15]
+        closes1h = [x["close"] for x in c1h]
+        closes4h = [x["close"] for x in c4h]
+        closes1d = [x["close"] for x in c1d]
+
+        rsi_15m = rsi(closes15)
+        rsi_1h = rsi(closes1h)
+        rsi_4h = rsi(closes4h)
+        rsi_1d = rsi(closes1d)
+
+        flow = money["flow"]
+
+
+        # =====================================
+        # 🔥 SMART RSI v11.3.4
+        # =====================================
+
+        rsi_score = 0
+        if 45 <= rsi_15m <= 62:
+            rsi_score = 10
+        elif 62 < rsi_15m <= 70:
+            rsi_score = 5
+            warning = "⚠️ RSI WARNING"
+        elif rsi_15m > 70 or rsi_15m < 35:
+            return None
+
+
+        # =====================================
+        # 💧 DYNAMIC FLOW v11.3.4
+        # =====================================
+
+        flow_score = 0
+        if flow < 0.8:
+            return None
+        elif flow >= 1.8:
+            flow_score = 10
+            flow_status = "🚀 WHALE FLOW"
+        elif flow >= 1.2:
+            flow_score = 5
+            flow_status = "💧 HEALTHY FLOW"
+        else:
+            flow_status = "NORMAL"
+
+
+        # =====================================
+        # 📈 MACD MOMENTUM CHECK v11.3.4
+        # =====================================
+
+        # حساب MACD بسيط
+        def macd_simple(closes, fast=12, slow=26, signal=9):
+            if len(closes) < slow:
+                return 0
+            ema_fast = ema(closes, fast)
+            ema_slow = ema(closes, slow)
+            macd_line = ema_fast - ema_slow
+            return macd_line
+
+        macd_value = macd_simple(closes15)
+
+        if macd_value > 0:
+            macd_score = 5
+        else:
+            macd_score = 0
+
+
+        # =====================================
+        # 🔥 MULTI TIMEFRAME VALIDATOR v11.3.4
+        # =====================================
+
+        tf_score = 0
+        tf_alignment = True
+
+        # 15m اتجاه صاعد
+        ema20_15 = ema(closes15, 20)
+        if price > ema20_15:
+            tf_score += 5
+        else:
+            tf_alignment = False
+
+        # 1H اتجاه صاعد
+        ema20_1h = ema(closes1h, 20)
+        if closes1h[-1] > ema20_1h:
+            tf_score += 5
+        else:
+            tf_alignment = False
+
+        # 4H ليس هابطاً بقوة
+        ema20_4h = ema(closes4h, 20)
+        if closes4h[-1] < ema20_4h * 0.97:
+            tf_score -= 15
+
+
+        # =====================================
+        # 🔥 STRONG CANDLE CHECK v11.3.4
+        # =====================================
+
+        candle_score = 0
+        last_candle = c15[-1]
+        body = abs(last_candle["close"] - last_candle["open"])
+        avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
+
+        # Bullish candle
+        if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
+            candle_score += 5
+        # Doji
+        elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
+            candle_score -= 5
+
+
+        # =====================================
+        # 📊 BETTER ENTRY v11.3.4
+        # =====================================
+
+        move = atr(c15)
+        ema50_15 = ema(closes15, 50)
+
+        if price > ema50_15 + (move * 0.5):
+            early_text = "⏳ WAIT RETEST"
+            return None
+        else:
+            early_text = "🐋 EARLY ENTRY AREA"
+
+
+        # =====================================
+        # 🔥 SCORE SYSTEM v11.3.4 (Weighted)
         # =====================================
 
         score = 0
 
         # 🧠 AI Brain
-        score += brain["confidence"]
+        score += brain["confidence"] * 0.35
 
         # 📊 Multi Timeframe
-        score += multi["score"]
+        score += multi["score"] * 0.8
 
         # 🐋 Smart Money
         if money["status"] == "🐋 SMART ACCUMULATION":
-            score += 20
+            score += 15
 
         # ⚡ Pre Pump
-        score += pre["score"]
+        score += pre["score"] * 0.7
 
-        # 💧 Liquidity
-        if money["flow"] >= 2:
-            score += 15
-        elif money["flow"] >= 1.5:
-            score += 10
-        elif money["flow"] >= 1.2:
-            score += 5
+        # 📊 RSI
+        score += rsi_score
 
+        # 💧 Flow
+        score += flow_score
 
+        # 📈 MACD
+        score += macd_score
+
+        # 📊 TimeFrame
+        score += tf_score
+
+        # 🔥 Candle
+        score += candle_score
+
+        score = round(score)
+        
         # =====================================
-        # 🔥 LATE ENTRY FILTER v11.3.2
+        # 🔥 LATE ENTRY FILTER v11.3.4
         # =====================================
-
-        closes15 = [x["close"] for x in c15]
-        rsi_15m = rsi(closes15)
 
         late_penalty = 0
         if rsi_15m >= 68:
@@ -1349,7 +1481,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 MOMENTUM FILTER v11.3.2
+        # 🔥 MOMENTUM FILTER v11.3.4
         # =====================================
 
         if len(c15) >= 6:
@@ -1359,7 +1491,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 BULL TRAP PENALTY v11.3.2
+        # 🔥 BULL TRAP PENALTY v11.3.4
         # =====================================
 
         if trap == "🪤 BULL TRAP":
@@ -1367,7 +1499,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 HEAT CONTROL v11.3.2
+        # 🔥 HEAT CONTROL v11.3.4
         # =====================================
 
         if multi["4h"] > 70:
@@ -1381,7 +1513,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 RESISTANCE FILTER v11.3.2
+        # 🔥 RESISTANCE FILTER v11.3.4
         # =====================================
 
         if sr["near_resistance"] < 3:
@@ -1389,7 +1521,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # ⭐ QUALITY LEVEL v11.3.2
+        # ⭐ QUALITY LEVEL v11.3.4
         # =====================================
 
         if trap == "🪤 BULL TRAP":
@@ -1407,7 +1539,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🐋 MONEY STATUS v11.3.2
+        # 🐋 MONEY STATUS v11.3.4
         # =====================================
 
         flow = money["flow"]
@@ -1422,7 +1554,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🎯 EARLY ENTRY CHECK v11.3.2
+        # 🎯 EARLY ENTRY CHECK v11.3.4
         # =====================================
 
         if (
@@ -1491,9 +1623,11 @@ def analyze(symbol, sector):
         )
 
         return None
-        
+
+
+
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.3.2
+# 🤖 TELEGRAM ENGINE v11.3.4
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1502,7 +1636,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.2 ONLINE 🚀
+🐋 AHAD AI v11.3.4 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -1511,6 +1645,7 @@ def start(message):
 ⚡ Pre-Pump Detection ACTIVE
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
+📊 Weighted Score System ACTIVE
 
 🎯 Goal:
 Best 3 quality LONG setups
@@ -1522,7 +1657,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.3.2
+# 🔎 SMART SCANNER v11.3.4
 # Liquidity → Sector → Coin
 # =====================================
 
@@ -1532,7 +1667,7 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.2 SCANNING...
+🐋 AHAD AI v11.3.4 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -1540,6 +1675,7 @@ def scan(message):
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE
+📊 Weighted Score System ACTIVE
 
 Please wait ⏳
         """
@@ -1667,7 +1803,7 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.3.2 🐋
+🚨 AHAD AI v11.3.4 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1697,9 +1833,7 @@ Please wait ⏳
             message.chat.id,
             msg
         )
-
-
-
+        
 # =====================================
 # 🐋 KEEP ALIVE ENGINE
 # =====================================
@@ -1728,7 +1862,9 @@ def keep_alive():
 
 
         time.sleep(300)
-        
+
+
+
 # =====================================
 # 🚀 START SYSTEM
 # =====================================
@@ -1799,7 +1935,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3.2 SMART ENTRY ONLINE 🐋"
+    "🔥 AHAD AI v11.3.4 SMART ENTRY ONLINE 🐋"
 )
 
 

@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v11.3.2
+# 🚀 AHAD AI v11.3.3
 # SMART ENTRY EDITION
 # =====================================
 
@@ -45,7 +45,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3.2 "
+        "🐋 AHAD AI v11.3.3 "
         "SMART ENTRY ONLINE 🚀"
     )
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.3.2
+# 🏦 SECTOR DATABASE v11.3.3
 # =====================================
 
 SECTORS = {
@@ -483,11 +483,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.3.2 CORE READY 🐋"
+    "🔥 AHAD AI v11.3.3 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.3.2
+# 📊 INDICATORS ENGINE v11.3.3
 # =====================================
 
 def ema(values, period):
@@ -580,8 +580,7 @@ def atr(candles):
 
 
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.3.2
-# FIND WHERE MONEY GOES
+# 🏦 SECTOR FLOW ENGINE v11.3.3
 # =====================================
 
 def sector_flow(symbols):
@@ -684,7 +683,7 @@ def sector_flow(symbols):
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.3.2
+# 🐋 SMART MONEY ENGINE v11.3.3
 # =====================================
 
 def smart_money(candles):
@@ -792,13 +791,10 @@ def smart_money(candles):
 
             "status": "ERROR"
 
-        }
-
-
-
+                        }
+        
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.2
-# Detect whales before breakout
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.3
 # =====================================
 
 def pre_pump_engine(candles):
@@ -908,7 +904,7 @@ def pre_pump_engine(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.3.2
+# 📊 MULTI TIMEFRAME ENGINE v11.3.3
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -1035,7 +1031,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.3.2
+# 🛡 ANTI LATE ENTRY v11.3.3
 # =====================================
 
 def fomo_filter(candles):
@@ -1114,10 +1110,12 @@ def fomo_filter(candles):
 
         "🐋 EARLY ENTRY AREA"
 
-            )
-    
+    )
+
+
+
 # =====================================
-# 🪤 TRAP DETECTOR v11.3.2
+# 🪤 TRAP DETECTOR v11.3.3
 # =====================================
 
 def trap_detector(candles):
@@ -1170,7 +1168,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.3.2
+# 🧠 AI BRAIN ENGINE v11.3.3
 # =====================================
 
 def ai_brain(candles):
@@ -1247,7 +1245,78 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.3.2
+# 📊 MACD INDICATOR v11.3.3
+# =====================================
+
+def macd(closes, fast=12, slow=26, signal=9):
+    """
+    حساب MACD و Histogram
+    """
+    try:
+        if len(closes) < slow:
+            return {"macd": 0, "signal": 0, "histogram": 0}
+        
+        # EMA Fast
+        ema_fast = ema(closes, fast)
+        ema_slow = ema(closes, slow)
+        
+        macd_line = ema_fast - ema_slow
+        
+        # MACD Signal
+        macd_signal = ema([macd_line], signal)
+        
+        histogram = macd_line - macd_signal
+        
+        return {
+            "macd": macd_line,
+            "signal": macd_signal,
+            "histogram": histogram
+        }
+    except:
+        return {"macd": 0, "signal": 0, "histogram": 0}
+
+
+# =====================================
+# 🔍 FAKE PUMP DETECTOR v11.3.3
+# =====================================
+
+def fake_pump_detector(candles):
+    """
+    اكتشاف الفخاخ السعرية:
+    - شمعة كبيرة
+    - حجم تداول ضخم
+    - الشمعة التالية أغلقت أسفل منتصف الأولى
+    """
+    try:
+        if len(candles) < 3:
+            return {"is_fake": False, "trap": False}
+        
+        c1 = candles[-3]  # شمعة كبيرة محتملة
+        c2 = candles[-2]  # الشمعة التالية
+        c3 = candles[-1]  # الشمعة الحالية
+        
+        # حجم الشمعة الأولى
+        body1 = abs(c1["close"] - c1["open"])
+        avg_body = sum([abs(c["close"] - c["open"]) for c in candles[-20:]]) / 20
+        
+        # متوسط الحجم
+        avg_volume = sum([c["volume"] for c in candles[-20:]]) / 20
+        
+        # شمعة كبيرة + حجم ضخم
+        if body1 > avg_body * 2 and c1["volume"] > avg_volume * 2:
+            mid = (c1["high"] + c1["low"]) / 2
+            # الشمعة التالية أغلقت أسفل المنتصف
+            if c2["close"] < mid:
+                return {"is_fake": True, "trap": True}
+        
+        return {"is_fake": False, "trap": False}
+        
+    except:
+        return {"is_fake": False, "trap": False}
+
+
+# =====================================
+# 🚀 FINAL ANALYZE ENGINE v11.3.3
 # =====================================
 
 def analyze(symbol, sector):
@@ -1305,195 +1374,371 @@ def analyze(symbol, sector):
 
         trap = trap_detector(c15)
 
+        fake = fake_pump_detector(c15)
 
         # =====================================
-        # 🔥 SCORE SYSTEM v11.3.2
-        # =====================================
-
-        score = 0
-
-        # 🧠 AI Brain
-        score += brain["confidence"]
-
-        # 📊 Multi Timeframe
-        score += multi["score"]
-
-        # 🐋 Smart Money
-        if money["status"] == "🐋 SMART ACCUMULATION":
-            score += 20
-
-        # ⚡ Pre Pump
-        score += pre["score"]
-
-        # 💧 Liquidity
-        if money["flow"] >= 2:
-            score += 15
-        elif money["flow"] >= 1.5:
-            score += 10
-        elif money["flow"] >= 1.2:
-            score += 5
-
-
-        # =====================================
-        # 🔥 LATE ENTRY FILTER v11.3.2
+        # 📊 CLOSES FOR INDICATORS
         # =====================================
 
         closes15 = [x["close"] for x in c15]
+        closes1h = [x["close"] for x in c1h]
+        closes4h = [x["close"] for x in c4h]
+        closes1d = [x["close"] for x in c1d]
+
         rsi_15m = rsi(closes15)
+        rsi_1h = rsi(closes1h)
+        rsi_4h = rsi(closes4h)
+        rsi_1d = rsi(closes1d)
 
-        late_penalty = 0
-        if rsi_15m >= 68:
-            late_penalty += 20
-        score -= late_penalty
-        score = max(score, 0)
-
-
-        # =====================================
-        # 🔥 MOMENTUM FILTER v11.3.2
-        # =====================================
-
-        if len(c15) >= 6:
-            pump = c15[-1]["close"] / c15[-6]["close"]
-            if pump > 1.05:
-                score -= 15
-
-
-        # =====================================
-        # 🔥 BULL TRAP PENALTY v11.3.2
-        # =====================================
-
-        if trap == "🪤 BULL TRAP":
-            score -= 15
-
-
-        # =====================================
-        # 🔥 HEAT CONTROL v11.3.2
-        # =====================================
-
-        if multi["4h"] > 70:
-            score -= 15
-
-        if multi["1d"] > 70:
-            score -= 20
-
-        if multi["15m"] > 75:
-            score -= 10
-
-
-        # =====================================
-        # 🔥 RESISTANCE FILTER v11.3.2
-        # =====================================
-
-        if sr["near_resistance"] < 3:
-            score -= 10
-
-
-        # =====================================
-        # ⭐ QUALITY LEVEL v11.3.2
-        # =====================================
-
-        if trap == "🪤 BULL TRAP":
-            quality = "MEDIUM QUALITY ⚠️"
-        elif score >= 95:
-            quality = "ELITE SIGNAL ✅"
-        elif score >= 88:
-            quality = "HIGH QUALITY ✅"
-        elif score >= 78:
-            quality = "GOOD QUALITY ✅"
-        elif score >= 65:
-            quality = "WATCHLIST 👀"
-        else:
-            quality = "LOW QUALITY ❌"
-
-
-        # =====================================
-        # 🐋 MONEY STATUS v11.3.2
-        # =====================================
+        macd_data = macd(closes15)
 
         flow = money["flow"]
-        if flow >= 3:
-            money_status = "🚀 WHALE BUYING"
-        elif flow >= 2:
-            money_status = "🐋 SMART ACCUMULATION"
+
+
+        # =====================================
+        # 🔥 SMART RSI v11.3.3
+        # =====================================
+
+        rsi_score = 0
+        if 45 <= rsi_15m <= 62:
+            rsi_score = 10
+        elif 62 < rsi_15m <= 70:
+            rsi_score = 5
+            warning = "⚠️ RSI WARNING"
+        elif rsi_15m > 70 or rsi_15m < 35:
+            return None
+
+
+        # =====================================
+        # 💧 DYNAMIC FLOW v11.3.3
+        # =====================================
+
+        flow_score = 0
+        if flow < 0.8:
+            return None
+        elif flow >= 1.8:
+            flow_score = 10
+            flow_status = "🚀 WHALE FLOW"
         elif flow >= 1.2:
-            money_status = "💧 HEALTHY FLOW"
+            flow_score = 5
+            flow_status = "💧 HEALTHY FLOW"
         else:
-            money_status = "NORMAL"
+            flow_status = "NORMAL"
 
 
         # =====================================
-        # 🎯 EARLY ENTRY CHECK v11.3.2
+        # 📈 MACD MOMENTUM CHECK v11.3.3
         # =====================================
 
-        if (
-            rsi_15m < 60
-            and flow > 1
-            and trap != "🪤 BULL TRAP"
-        ):
-            early_entry = True
-            early_text = "🐋 EARLY ENTRY AREA"
+        if macd_data["histogram"] > 0:
+            macd_score = 5
         else:
-            early_entry = False
-            early_text = "⏳ WAIT FOR ENTRY"
+            macd_score = 0
+
+        # التحقق من الزخم (آخر 3 أعمدة)
+        hist_list = []
+        for i in range(1, 4):
+            if len(closes15) > i:
+                temp_macd = macd(closes15[:-i])
+                hist_list.append(temp_macd["histogram"])
+
+        if len(hist_list) >= 3:
+            if not (hist_list[0] > hist_list[1] > hist_list[2]):
+                return None
 
 
         # =====================================
-        # 🎯 ENTRY ZONE & TARGETS
+        # 🔥 MULTI TIMEFRAME VALIDATOR v11.3.3
+        # =====================================
+
+        tf_score = 0
+        tf_alignment = True
+
+        # 15m اتجاه صاعد
+        ema20_15 = ema(closes15, 20)
+        if price > ema20_15:
+            tf_score += 5
+        else:
+            tf_alignment = False
+
+        # 1H اتجاه صاعد
+        ema20_1h = ema(closes1h, 20)
+        if closes1h[-1] > ema20_1h:
+            tf_score += 5
+        else:
+            tf_alignment = False
+
+        # 4H ليس هابطاً بقوة
+        ema20_4h = ema(closes4h, 20)
+        if closes4h[-1] < ema20_4h * 0.97:
+            tf_score -= 15
+
+
+        # =====================================
+        # 🔥 STRONG CANDLE CHECK v11.3.3
+        # =====================================
+
+        candle_score = 0
+        last_candle = c15[-1]
+        body = abs(last_candle["close"] - last_candle["open"])
+        avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
+
+        # Bullish candle
+        if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
+            candle_score += 5
+        # Doji
+        elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
+            candle_score -= 5
+
+
+        # =====================================
+        # 📊 BETTER ENTRY v11.3.3
         # =====================================
 
         move = atr(c15)
+        ema50_15 = ema(closes15, 50)
 
-        entry_low = price * 0.995
-        entry_high = price * 1.005
-
-        if brain["direction"] == "🟢 LONG":
-            sl = sr["support"] * 0.995
-            tp1 = price + move * 2
-            tp2 = price + move * 3
+        if price > ema50_15 + (move * 0.5):
+            early_text = "⏳ WAIT RETEST"
+            return None
         else:
-            sl = sr["resistance"] * 1.005
-            tp1 = price - move * 2
-            tp2 = price - move * 3
+            early_text = "🐋 EARLY ENTRY AREA"
+            
+    # =====================================
+    # 🔥 SCORE SYSTEM v11.3.3
+    # =====================================
 
-        # التأكد من أن TP1 أكبر من أعلى نقطة دخول
-        if tp1 <= entry_high:
-            tp1 = entry_high + move * 0.8
+    score = 0
+
+    # 🧠 AI Brain
+    score += brain["confidence"]
+
+    # 📊 Multi Timeframe
+    score += multi["score"]
+
+    # 🐋 Smart Money
+    if money["status"] == "🐋 SMART ACCUMULATION":
+        score += 20
+
+    # ⚡ Pre Pump
+    score += pre["score"]
+
+    # 📊 RSI Score
+    score += rsi_score
+
+    # 💧 Flow Score
+    score += flow_score
+
+    # 📈 MACD Score
+    score += macd_score
+
+    # 📊 Multi Timeframe Score
+    score += tf_score
+
+    # 🔥 Candle Score
+    score += candle_score
 
 
-        return {
+    # =====================================
+    # 🔥 LATE ENTRY FILTER v11.3.3
+    # =====================================
 
-            "coin": symbol,
-            "sector": sector,
-            "direction": brain["direction"],
-            "score": round(score),
-            "quality": quality,
-            "money_status": money_status,
-            "early_text": early_text,
-            "entry_low": round(entry_low, 6),
-            "entry_high": round(entry_high, 6),
-            "sl": round(sl, 6),
-            "tp1": round(tp1, 6),
-            "tp2": round(tp2, 6),
-            "liquidity": money["flow"],
-            "pre_pump": pre["status"],
-            "multi": multi,
-            "trap": trap,
-            "warning": warning
-
-        }
+    late_penalty = 0
+    if rsi_15m >= 68:
+        late_penalty += 20
+    score -= late_penalty
+    score = max(score, 0)
 
 
-    except Exception as e:
+    # =====================================
+    # 🔥 MOMENTUM FILTER v11.3.3
+    # =====================================
 
-        print(
-            "ANALYZE ERROR:",
-            e
-        )
+    if len(c15) >= 6:
+        pump = c15[-1]["close"] / c15[-6]["close"]
+        if pump > 1.05:
+            score -= 15
 
+
+    # =====================================
+    # 🔥 BULL TRAP PENALTY v11.3.3
+    # =====================================
+
+    if trap == "🪤 BULL TRAP":
+        score -= 15
+
+
+    # =====================================
+    # 🔥 FAKE PUMP DETECTOR v11.3.3
+    # =====================================
+
+    if fake["trap"]:
         return None
-        
+
+
+    # =====================================
+    # 🔥 HEAT CONTROL v11.3.3
+    # =====================================
+
+    if multi["4h"] > 70:
+        score -= 15
+
+    if multi["1d"] > 70:
+        score -= 20
+
+    if multi["15m"] > 75:
+        score -= 10
+
+
+    # =====================================
+    # 🔥 RESISTANCE FILTER v11.3.3
+    # =====================================
+
+    if sr["near_resistance"] < 3:
+        score -= 10
+
+
+    # =====================================
+    # ⭐ CONFIDENCE ENGINE v11.3.3
+    # =====================================
+
+    confidence = 50
+
+    # توافق الفريمات
+    if tf_alignment:
+        confidence += 15
+
+    # Flow
+    if flow >= 1.2:
+        confidence += 10
+
+    # RSI صحي
+    if 45 <= rsi_15m <= 62:
+        confidence += 10
+
+    # MACD إيجابي
+    if macd_data["histogram"] > 0:
+        confidence += 10
+
+    # Trend صاعد
+    if price > ema(closes15, 50):
+        confidence += 5
+
+    confidence = min(confidence, 100)
+
+    # إذا كانت الثقة أقل من 80% → لا ترسل الإشارة
+    if confidence < 80:
+        return None
+
+
+    # =====================================
+    # ⭐ QUALITY LEVEL v11.3.3
+    # =====================================
+
+    if trap == "🪤 BULL TRAP":
+        quality = "⭐⭐ WATCHLIST"
+    elif score >= 95:
+        quality = "⭐⭐⭐⭐⭐ ELITE"
+    elif score >= 85:
+        quality = "⭐⭐⭐⭐ STRONG"
+    elif score >= 75:
+        quality = "⭐⭐⭐ GOOD"
+    elif score >= 65:
+        quality = "⭐⭐ WATCHLIST"
+    else:
+        quality = "⭐ LOW"
+
+
+    # =====================================
+    # 🐋 MONEY STATUS v11.3.3
+    # =====================================
+
+    if flow >= 3:
+        money_status = "🚀 WHALE BUYING"
+    elif flow >= 2:
+        money_status = "🐋 SMART ACCUMULATION"
+    elif flow >= 1.2:
+        money_status = "💧 HEALTHY FLOW"
+    else:
+        money_status = "NORMAL"
+
+
+    # =====================================
+    # 🎯 FINAL VALIDATOR v11.3.3
+    # =====================================
+
+    # جميع الشروط يجب أن تتحقق قبل إرسال الإشارة
+    if not (
+        brain["direction"] == "🟢 LONG"
+        and flow >= 0.8
+        and 35 <= rsi_15m <= 70
+        and macd_data["histogram"] > 0
+        and confidence >= 80
+        and trap != "🪤 BULL TRAP"
+        and not fake["trap"]
+    ):
+        return None
+
+
+    # =====================================
+    # 🎯 ENTRY ZONE & TARGETS
+    # =====================================
+
+    move = atr(c15)
+
+    entry_low = price * 0.995
+    entry_high = price * 1.005
+
+    if brain["direction"] == "🟢 LONG":
+        sl = sr["support"] * 0.995
+        tp1 = price + move * 2
+        tp2 = price + move * 3
+    else:
+        sl = sr["resistance"] * 1.005
+        tp1 = price - move * 2
+        tp2 = price - move * 3
+
+    # التأكد من أن TP1 أكبر من أعلى نقطة دخول
+    if tp1 <= entry_high:
+        tp1 = entry_high + move * 0.8
+
+
+    return {
+
+        "coin": symbol,
+        "sector": sector,
+        "direction": brain["direction"],
+        "score": round(score),
+        "quality": quality,
+        "confidence": confidence,
+        "money_status": money_status,
+        "early_text": early_text,
+        "entry_low": round(entry_low, 6),
+        "entry_high": round(entry_high, 6),
+        "sl": round(sl, 6),
+        "tp1": round(tp1, 6),
+        "tp2": round(tp2, 6),
+        "liquidity": flow,
+        "pre_pump": pre["status"],
+        "multi": multi,
+        "trap": trap,
+        "warning": warning,
+        "rsi_15m": round(rsi_15m, 2),
+        "macd_hist": round(macd_data["histogram"], 6)
+
+    }
+
+
+except Exception as e:
+
+    print(
+        "ANALYZE ERROR:",
+        e
+    )
+
+    return None
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.3.2
+# 🤖 TELEGRAM ENGINE v11.3.3
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1502,7 +1747,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.2 ONLINE 🚀
+🐋 AHAD AI v11.3.3 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -1511,6 +1756,8 @@ def start(message):
 ⚡ Pre-Pump Detection ACTIVE
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
+📈 MACD Validator ACTIVE
+🔍 Fake Pump Detector ACTIVE
 
 🎯 Goal:
 Best 3 quality LONG setups
@@ -1522,8 +1769,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.3.2
-# Liquidity → Sector → Coin
+# 🔎 SMART SCANNER v11.3.3
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -1532,7 +1778,7 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.2 SCANNING...
+🐋 AHAD AI v11.3.3 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -1540,6 +1786,7 @@ def scan(message):
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE
+📈 MACD Validator ACTIVE
 
 Please wait ⏳
         """
@@ -1636,7 +1883,8 @@ Please wait ⏳
 
         key=lambda x: (
             x["score"],
-            x["liquidity"]
+            x["liquidity"],
+            x["confidence"]
         ),
 
         reverse=True
@@ -1655,6 +1903,7 @@ Please wait ⏳
 
 🐋 Smart Money not ready
 ⏳ Waiting next liquidity wave
+💡 Confidence < 80% signals ignored
             """
         )
 
@@ -1667,16 +1916,19 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.3.2 🐋
+🚨 AHAD AI v11.3.3 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
 {s['quality']}
+⭐ Confidence: {s['confidence']}%
 
 🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
 🐋 Money: {s['money_status']}
 🪤 Trap: {s['trap']}
+📊 RSI 15m: {s['rsi_15m']}
+📈 MACD Hist: {s['macd_hist']}
 
 🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
 🛑 SL: {round(s['sl'],6)}
@@ -1728,7 +1980,9 @@ def keep_alive():
 
 
         time.sleep(300)
-        
+
+
+
 # =====================================
 # 🚀 START SYSTEM
 # =====================================
@@ -1799,7 +2053,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3.2 SMART ENTRY ONLINE 🐋"
+    "🔥 AHAD AI v11.3.3 SMART ENTRY ONLINE 🐋"
 )
 
 
@@ -1808,4 +2062,4 @@ while True:
 
     time.sleep(
         60
-    )
+        )

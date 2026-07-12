@@ -1,5 +1,5 @@
 # =====================================
-# 🚀 AHAD AI v11.3.4
+# 🚀 AHAD AI v11.3.5
 # SMART ENTRY EDITION
 # =====================================
 
@@ -45,7 +45,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3.4 "
+        "🐋 AHAD AI v11.3.5 "
         "SMART ENTRY ONLINE 🚀"
     )
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.3.4
+# 🏦 SECTOR DATABASE v11.3.5
 # =====================================
 
 SECTORS = {
@@ -483,11 +483,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.3.4 CORE READY 🐋"
+    "🔥 AHAD AI v11.3.5 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.3.4
+# 📊 INDICATORS ENGINE v11.3.5
 # =====================================
 
 def ema(values, period):
@@ -580,7 +580,7 @@ def atr(candles):
 
 
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.3.4
+# 🏦 SECTOR FLOW ENGINE v11.3.5
 # FIND WHERE MONEY GOES
 # =====================================
 
@@ -684,7 +684,7 @@ def sector_flow(symbols):
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.3.4
+# 🐋 SMART MONEY ENGINE v11.3.5
 # =====================================
 
 def smart_money(candles):
@@ -797,7 +797,7 @@ def smart_money(candles):
 
 
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.4
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.5
 # Detect whales before breakout
 # =====================================
 
@@ -903,12 +903,10 @@ def pre_pump_engine(candles):
 
             "score":0
 
-        }
-
-
-
+                }
+        
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.3.4
+# 📊 MULTI TIMEFRAME ENGINE v11.3.5
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -989,7 +987,9 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
             "score":0
 
         }
-        
+
+
+
 # =====================================
 # 🧱 SUPPORT RESISTANCE ENGINE
 # =====================================
@@ -1033,7 +1033,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.3.4
+# 🛡 ANTI LATE ENTRY v11.3.5
 # =====================================
 
 def fomo_filter(candles):
@@ -1117,7 +1117,7 @@ def fomo_filter(candles):
 
 
 # =====================================
-# 🪤 TRAP DETECTOR v11.3.4
+# 🪤 TRAP DETECTOR v11.3.5
 # =====================================
 
 def trap_detector(candles):
@@ -1170,7 +1170,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.3.4
+# 🧠 AI BRAIN ENGINE v11.3.5
 # =====================================
 
 def ai_brain(candles):
@@ -1247,7 +1247,7 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.3.4
+# 🚀 FINAL ANALYZE ENGINE v11.3.5
 # =====================================
 
 def analyze(symbol, sector):
@@ -1324,7 +1324,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 SMART RSI v11.3.4
+        # 🔥 SMART RSI v11.3.5
         # =====================================
 
         rsi_score = 0
@@ -1338,7 +1338,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 💧 DYNAMIC FLOW v11.3.4
+        # 💧 DYNAMIC FLOW v11.3.5
         # =====================================
 
         flow_score = 0
@@ -1355,7 +1355,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 📈 MACD MOMENTUM CHECK v11.3.4
+        # 📈 MACD MOMENTUM CHECK v11.3.5
         # =====================================
 
         # حساب MACD بسيط
@@ -1376,7 +1376,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 MULTI TIMEFRAME VALIDATOR v11.3.4
+        # 🔥 MULTI TIMEFRAME VALIDATOR v11.3.5
         # =====================================
 
         tf_score = 0
@@ -1403,7 +1403,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 STRONG CANDLE CHECK v11.3.4
+        # 🔥 STRONG CANDLE CHECK v11.3.5
         # =====================================
 
         candle_score = 0
@@ -1420,7 +1420,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 📊 BETTER ENTRY v11.3.4
+        # 📊 BETTER ENTRY v11.3.5
         # =====================================
 
         move = atr(c15)
@@ -1434,7 +1434,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 SCORE SYSTEM v11.3.4 (Weighted)
+        # 🔥 SCORE SYSTEM v11.3.5 (Weighted)
         # =====================================
 
         score = 0
@@ -1470,7 +1470,7 @@ def analyze(symbol, sector):
         score = round(score)
         
         # =====================================
-        # 🔥 LATE ENTRY FILTER v11.3.4
+        # 🔥 LATE ENTRY FILTER v11.3.5
         # =====================================
 
         late_penalty = 0
@@ -1481,7 +1481,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 MOMENTUM FILTER v11.3.4
+        # 🔥 MOMENTUM FILTER v11.3.5
         # =====================================
 
         if len(c15) >= 6:
@@ -1491,7 +1491,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 BULL TRAP PENALTY v11.3.4
+        # 🔥 BULL TRAP PENALTY v11.3.5
         # =====================================
 
         if trap == "🪤 BULL TRAP":
@@ -1499,7 +1499,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 HEAT CONTROL v11.3.4
+        # 🔥 HEAT CONTROL v11.3.5
         # =====================================
 
         if multi["4h"] > 70:
@@ -1513,7 +1513,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🔥 RESISTANCE FILTER v11.3.4
+        # 🔥 RESISTANCE FILTER v11.3.5
         # =====================================
 
         if sr["near_resistance"] < 3:
@@ -1521,7 +1521,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # ⭐ QUALITY LEVEL v11.3.4
+        # ⭐ QUALITY LEVEL v11.3.5
         # =====================================
 
         if trap == "🪤 BULL TRAP":
@@ -1539,7 +1539,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🐋 MONEY STATUS v11.3.4
+        # 🐋 MONEY STATUS v11.3.5
         # =====================================
 
         flow = money["flow"]
@@ -1554,7 +1554,7 @@ def analyze(symbol, sector):
 
 
         # =====================================
-        # 🎯 EARLY ENTRY CHECK v11.3.4
+        # 🎯 EARLY ENTRY CHECK v11.3.5
         # =====================================
 
         if (
@@ -1627,7 +1627,7 @@ def analyze(symbol, sector):
 
 
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.3.4
+# 🤖 TELEGRAM ENGINE v11.3.5
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1636,7 +1636,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.4 ONLINE 🚀
+🐋 AHAD AI v11.3.5 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -1657,7 +1657,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.3.4
+# 🔎 SMART SCANNER v11.3.5
 # Liquidity → Sector → Coin
 # =====================================
 
@@ -1667,7 +1667,7 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.4 SCANNING...
+🐋 AHAD AI v11.3.5 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -1747,7 +1747,7 @@ Please wait ⏳
             if result["direction"] == "🟢 LONG":
 
                 if (
-                    result["score"] >= 65
+                    result["score"] >= 55
                     and
                     (
                         result["liquidity"] >= 1.2
@@ -1803,7 +1803,7 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.3.4 🐋
+🚨 AHAD AI v11.3.5 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1832,7 +1832,7 @@ Please wait ⏳
         bot.send_message(
             message.chat.id,
             msg
-        )
+            )
         
 # =====================================
 # 🐋 KEEP ALIVE ENGINE
@@ -1935,7 +1935,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3.4 SMART ENTRY ONLINE 🐋"
+    "🔥 AHAD AI v11.3.5 SMART ENTRY ONLINE 🐋"
 )
 
 

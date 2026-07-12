@@ -1,6 +1,6 @@
 # =====================================
-# 🚀 AHAD AI v11.3
-# LIQUIDITY HUNTER EDITION
+# 🚀 AHAD AI v11.4
+# SMART ENTRY EDITION
 # =====================================
 
 import os
@@ -45,8 +45,8 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3 "
-        "LIQUIDITY HUNTER ONLINE 🚀"
+        "🐋 AHAD AI v11.4 "
+        "SMART ENTRY ONLINE 🚀"
     )
 
 
@@ -71,7 +71,7 @@ def run_web():
 
 
 # =====================================
-# 🏦 SECTOR DATABASE v11.3
+# 🏦 SECTOR DATABASE v11.4
 # =====================================
 
 SECTORS = {
@@ -483,11 +483,11 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.3 CORE READY 🐋"
+    "🔥 AHAD AI v11.4 CORE READY 🐋"
 )
 
 # =====================================
-# 📊 INDICATORS ENGINE v11.3
+# 📊 INDICATORS ENGINE v11.4
 # =====================================
 
 def ema(values, period):
@@ -578,113 +578,104 @@ def atr(candles):
     )
 
 
-
 # =====================================
-# 🏦 SECTOR FLOW ENGINE v11.3
-# FIND WHERE MONEY GOES
+# 📊 ADX INDICATOR v11.4
 # =====================================
 
-def sector_flow(symbols):
-
+def adx(candles, period=14):
+    """
+    حساب مؤشر ADX لقياس قوة الاتجاه
+    """
     try:
-
-        result = {}
-
-
-        for sector, coins in SECTORS.items():
-
-            power = 0
-
-
-            for symbol in symbols:
-
-
-                if any(
-                    coin in symbol
-                    for coin in coins
-                ):
-
-                    candles = get_candles(
-                        symbol,
-                        "1h"
-                    )
-
-
-                    if len(candles) > 50:
-
-
-                        volumes = [
-                            x["volume"]
-                            for x in candles
-                        ]
-
-
-                        recent = sum(
-                            volumes[-5:]
-                        )
-
-
-                        average = (
-                            sum(
-                                volumes[-50:]
-                            )
-                            /
-                            10
-                        )
-
-
-                        if average > 0:
-
-                            power += (
-                                recent
-                                /
-                                average
-                            )
-
-
-            result[sector] = round(
-                power,
-                2
-            )
-
-
-
-        hot_sector = max(
-            result,
-            key=result.get
-        )
-
-
-        return {
-
-            "sector": hot_sector,
-
-            "power": result[hot_sector]
-
-        }
-
-
-
-    except Exception as e:
-
-        print(
-            "SECTOR ERROR:",
-            e
-        )
-
-
-        return {
-
-            "sector": "UNKNOWN",
-
-            "power": 0
-
-        }
-
+        highs = [x["high"] for x in candles]
+        lows = [x["low"] for x in candles]
+        closes = [x["close"] for x in candles]
+        
+        if len(closes) < period + 1:
+            return 20
+        
+        # True Range
+        tr = []
+        for i in range(1, len(closes)):
+            high = highs[i]
+            low = lows[i]
+            prev_close = closes[i-1]
+            
+            tr.append(max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            ))
+        
+        # Directional Movement
+        plus_dm = []
+        minus_dm = []
+        
+        for i in range(1, len(closes)):
+            up_move = highs[i] - highs[i-1]
+            down_move = lows[i-1] - lows[i]
+            
+            if up_move > down_move and up_move > 0:
+                plus_dm.append(up_move)
+            else:
+                plus_dm.append(0)
+                
+            if down_move > up_move and down_move > 0:
+                minus_dm.append(down_move)
+            else:
+                minus_dm.append(0)
+        
+        # Smooth
+        tr_smooth = sum(tr[-period:]) / period
+        plus_smooth = sum(plus_dm[-period:]) / period
+        minus_smooth = sum(minus_dm[-period:]) / period
+        
+        if tr_smooth == 0:
+            return 20
+        
+        plus_di = (plus_smooth / tr_smooth) * 100
+        minus_di = (minus_smooth / tr_smooth) * 100
+        
+        dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100
+        
+        # ADX = متوسط DX لآخر period
+        return round(dx, 2)
+        
+    except:
+        return 20
 
 
 # =====================================
-# 🐋 SMART MONEY ENGINE v11.3
+# 📊 CCI INDICATOR v11.4
+# =====================================
+
+def cci(candles, period=20):
+    """
+    حساب مؤشر CCI لقياس التشبع
+    """
+    try:
+        typical_prices = [(x["high"] + x["low"] + x["close"]) / 3 for x in candles[-period-1:]]
+        
+        if len(typical_prices) < period:
+            return 0
+        
+        current_tp = typical_prices[-1]
+        mean_tp = sum(typical_prices) / len(typical_prices)
+        
+        # Mean deviation
+        deviation = sum([abs(tp - mean_tp) for tp in typical_prices]) / len(typical_prices)
+        
+        if deviation == 0:
+            return 0
+        
+        cci_value = (current_tp - mean_tp) / (0.015 * deviation)
+        return round(cci_value, 2)
+        
+    except:
+        return 0
+        
+# =====================================
+# 🐋 SMART MONEY ENGINE v11.4
 # =====================================
 
 def smart_money(candles):
@@ -797,7 +788,7 @@ def smart_money(candles):
 
 
 # =====================================
-# 🐋 PRE PUMP ACCUMULATION ENGINE v11.3
+# 🐋 PRE PUMP ACCUMULATION ENGINE v11.4
 # Detect whales before breakout
 # =====================================
 
@@ -908,7 +899,7 @@ def pre_pump_engine(candles):
 
 
 # =====================================
-# 📊 MULTI TIMEFRAME ENGINE v11.3
+# 📊 MULTI TIMEFRAME ENGINE v11.4
 # =====================================
 
 def multi_rsi_engine(c15, c1h, c4h, c1d):
@@ -1035,7 +1026,7 @@ def support_resistance(candles):
 
 
 # =====================================
-# 🛡 ANTI LATE ENTRY v11.3
+# 🛡 ANTI LATE ENTRY v11.4
 # =====================================
 
 def fomo_filter(candles):
@@ -1114,10 +1105,12 @@ def fomo_filter(candles):
 
         "🐋 EARLY ENTRY AREA"
 
-        )
-    
+    )
+
+
+
 # =====================================
-# 🪤 TRAP DETECTOR v11.3
+# 🪤 TRAP DETECTOR v11.4
 # =====================================
 
 def trap_detector(candles):
@@ -1170,7 +1163,7 @@ def trap_detector(candles):
 
 
 # =====================================
-# 🧠 AI BRAIN ENGINE v11.3
+# 🧠 AI BRAIN ENGINE v11.4
 # =====================================
 
 def ai_brain(candles):
@@ -1247,7 +1240,92 @@ def ai_brain(candles):
 
 
 # =====================================
-# 🚀 FINAL ANALYZE ENGINE v11.3
+# 📊 BREAKOUT DETECTOR v11.4
+# =====================================
+
+def breakout_detector(candles, volume_avg):
+    """
+    اكتشاف الاختراقات الحقيقية
+    - اختراق مقاومة سابقة مع حجم تداول مرتفع
+    """
+    try:
+        if len(candles) < 30:
+            return {"breakout": False, "type": "NONE"}
+        
+        price = candles[-1]["close"]
+        resistance = max([x["high"] for x in candles[-20:]])
+        volume_now = candles[-1]["volume"]
+        
+        # اختراق مقاومة مع حجم أعلى من المتوسط
+        if price > resistance and volume_now > volume_avg * 1.5:
+            return {
+                "breakout": True,
+                "type": "🚀 BREAKOUT",
+                "level": round(resistance, 6)
+            }
+        
+        return {"breakout": False, "type": "NONE"}
+        
+    except:
+        return {"breakout": False, "type": "NONE"}
+
+
+# =====================================
+# 📊 REVERSAL DETECTOR v11.4
+# =====================================
+
+def reversal_detector(candles):
+    """
+    اكتشاف الانعكاسات من الدعم مع أنماط الشموع
+    """
+    try:
+        if len(candles) < 5:
+            return {"reversal": False, "type": "NONE"}
+        
+        price = candles[-1]["close"]
+        support = min([x["low"] for x in candles[-20:]])
+        patterns = []
+        
+        # Hammer
+        last = candles[-1]
+        body = abs(last["close"] - last["open"])
+        lower_shadow = min(last["open"], last["close"]) - last["low"]
+        upper_shadow = last["high"] - max(last["open"], last["close"])
+        
+        if lower_shadow > body * 2 and upper_shadow < body * 0.5:
+            patterns.append("HAMMER")
+        
+        # Bullish Engulfing
+        if len(candles) >= 2:
+            c1 = candles[-2]
+            c2 = candles[-1]
+            if (c1["close"] < c1["open"] and 
+                c2["close"] > c2["open"] and 
+                c2["open"] < c1["close"] and 
+                c2["close"] > c1["open"]):
+                patterns.append("BULLISH ENGULFING")
+        
+        # Doji at support
+        if body < (last["high"] - last["low"]) * 0.1:
+            patterns.append("DOJI")
+        
+        near_support = ((price - support) / price) * 100
+        
+        if near_support < 3 and patterns:
+            return {
+                "reversal": True,
+                "type": "🔄 REVERSAL",
+                "pattern": ", ".join(patterns),
+                "support": round(support, 6)
+            }
+        
+        return {"reversal": False, "type": "NONE"}
+        
+    except:
+        return {"reversal": False, "type": "NONE"}
+        
+# =====================================
+# 🚀 FINAL ANALYZE ENGINE v11.4
 # =====================================
 
 def analyze(symbol, sector):
@@ -1274,119 +1352,190 @@ def analyze(symbol, sector):
         price = c15[-1]["close"]
 
 
+        # =====================================
+        # 📊 CALCULATE INDICATORS
+        # =====================================
+
         safe, warning = fomo_filter(c15)
 
-
         if not safe:
-
             return None
-
 
         brain = ai_brain(c1h)
 
-
         if brain["direction"] == "WAIT":
-
             return None
 
-
         sr = support_resistance(c15)
-
         money = smart_money(c15)
-
         pre = pre_pump_engine(c15)
-
-        multi = multi_rsi_engine(
-            c15,
-            c1h,
-            c4h,
-            c1d
-        )
-
+        multi = multi_rsi_engine(c15, c1h, c4h, c1d)
         trap = trap_detector(c15)
 
-
-        score = (
-            brain["confidence"]
-            +
-            multi["score"]
-        )
-
-
         # =====================================
-        # 🔥 HEAT CONTROL v11.3
-        # Avoid late entries
+        # 📊 NEW INDICATORS v11.4
         # =====================================
 
-        if multi["4h"] > 70:
+        adx_value = adx(c1h)
+        cci_value = cci(c15)
 
-            score -= 15
+        # =====================================
+        # 📊 BREAKOUT & REVERSAL DETECTION
+        # =====================================
 
+        volume_avg = sum([x["volume"] for x in c15[-50:]]) / 50 if len(c15) >= 50 else 0
+        breakout = breakout_detector(c15, volume_avg)
+        reversal = reversal_detector(c15)
 
-        if multi["1d"] > 70:
+        # =====================================
+        # 🔥 SMART SCORE v11.4 (Weighted)
+        # =====================================
 
+        score = 0
+
+        # 1. ADX + TREND (25)
+        if adx_value > 25:
+            score += 15
+        if adx_value > 40:
+            score += 10
+
+        # 2. MOMENTUM (RSI + CCI) (20)
+        closes1h = [x["close"] for x in c1h]
+        rsi_1h = rsi(closes1h)
+        if 45 <= rsi_1h <= 65:
+            score += 10
+        if -100 < cci_value < 100:
+            score += 5
+        if cci_value > 0:
+            score += 5
+
+        # 3. SMART MONEY (20)
+        if money["status"] == "🐋 SMART ACCUMULATION":
+            score += 15
+        if pre["status"] == "🐋 WHALE LOADING":
+            score += 5
+
+        # 4. VOLUME (15)
+        flow = money["flow"]
+        if flow >= 2.0:
+            score += 15
+        elif flow >= 1.5:
+            score += 10
+        elif flow >= 1.2:
+            score += 5
+
+        # 5. SUPPORT / RESISTANCE (10)
+        if sr["near_support"] < 3:
+            score += 10
+        elif sr["near_support"] < 5:
+            score += 5
+
+        # 6. BREAKOUT / REVERSAL BONUS (10)
+        if breakout["breakout"]:
+            score += 10
+        if reversal["reversal"]:
+            score += 10
+
+        # 7. MULTI RSI (10)
+        score += multi["score"] // 2
+
+        # 8. TRAP PENALTY
+        if trap != "✅ NO TRAP":
             score -= 20
 
+        # 9. RSI DAILY PENALTY
+        closes1d = [x["close"] for x in c1d]
+        rsi_1d = rsi(closes1d)
+        if rsi_1d > 70:
+            score -= 15
+        elif rsi_1d > 65:
+            score -= 5
 
-        if multi["15m"] > 75:
-
-            score -= 10
-
-
-        # =====================================
-        # RESISTANCE FILTER v11.3
-        # =====================================
-
+        # 10. RESISTANCE PENALTY
         if sr["near_resistance"] < 3:
             score -= 10
 
+        # =====================================
+        # ⭐ QUALITY LEVEL
+        # =====================================
 
-        if money["status"] == "🐋 SMART ACCUMULATION":
-            score += 20
+        if score >= 85 and breakout["breakout"]:
+            quality = "🚀 BREAKOUT"
+        elif score >= 80 and money["status"] == "🐋 SMART ACCUMULATION":
+            quality = "🐋 SMART MONEY"
+        elif score >= 75 and reversal["reversal"]:
+            quality = "🔄 REVERSAL"
+        elif score >= 70:
+            quality = "👀 WATCH"
+        else:
+            quality = "⏳ LATE MOVE"
 
-        score += pre["score"]
-
+        # =====================================
+        # 🎯 ENTRY ZONE
+        # =====================================
 
         move = atr(c15)
 
+        if breakout["breakout"]:
+            # Breakout Entry: فوق المقاومة مباشرة
+            entry_low = breakout["level"] * 0.998
+            entry_high = breakout["level"] * 1.002
+        elif reversal["reversal"]:
+            # Reversal Entry: عند الدعم مع أنماط
+            entry_low = reversal["support"] * 0.998
+            entry_high = reversal["support"] * 1.002
+        else:
+            # Normal Entry
+            entry_low = price * 0.995
+            entry_high = price * 1.005
 
-        entry_low = price * 0.995
-
-        entry_high = price * 1.005
-
+        # =====================================
+        # 🎯 TARGETS
+        # =====================================
 
         if brain["direction"] == "🟢 LONG":
-
             sl = sr["support"] * 0.995
             tp1 = price + move * 2
             tp2 = price + move * 3
-
-
         else:
-
             sl = sr["resistance"] * 1.005
             tp1 = price - move * 2
             tp2 = price - move * 3
 
+        # =====================================
+        # 📊 QUALITY TYPE FOR DISPLAY
+        # =====================================
 
+        if breakout["breakout"]:
+            signal_type = "🚀 BREAKOUT"
+        elif reversal["reversal"]:
+            signal_type = f"🔄 REVERSAL ({reversal['pattern']})"
+        elif money["status"] == "🐋 SMART ACCUMULATION":
+            signal_type = "🐋 SMART MONEY"
+        else:
+            signal_type = "📈 MOMENTUM"
 
         return {
 
-            "coin":symbol,
-            "sector":sector,
-            "direction":brain["direction"],
-            "score":round(score),
-            "entry_low":entry_low,
-            "entry_high":entry_high,
-            "sl":sl,
-            "tp1":tp1,
-            "tp2":tp2,
-            "money":money["status"],
-            "liquidity":money["flow"],
-            "pre_pump":pre["status"],
-            "multi":multi,
-            "trap":trap,
-            "warning":warning
+            "coin": symbol,
+            "sector": sector,
+            "direction": brain["direction"],
+            "score": round(score),
+            "quality": quality,
+            "signal_type": signal_type,
+            "entry_low": round(entry_low, 6),
+            "entry_high": round(entry_high, 6),
+            "sl": round(sl, 6),
+            "tp1": round(tp1, 6),
+            "tp2": round(tp2, 6),
+            "money": money["status"],
+            "liquidity": money["flow"],
+            "pre_pump": pre["status"],
+            "multi": multi,
+            "trap": trap,
+            "warning": warning,
+            "adx": adx_value,
+            "cci": cci_value
 
         }
 
@@ -1399,11 +1548,9 @@ def analyze(symbol, sector):
         )
 
         return None
-
-
-
+        
 # =====================================
-# 🤖 TELEGRAM ENGINE v11.3
+# 🤖 TELEGRAM ENGINE v11.4
 # =====================================
 
 @bot.message_handler(commands=["start"])
@@ -1412,18 +1559,17 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3 ONLINE 🚀
+🐋 AHAD AI v11.4 ONLINE 🚀
 
-🧠 AI Brain ACTIVE
-🐋 Liquidity Hunter ACTIVE
-🏦 Sector Flow ACTIVE
-📊 Multi TimeFrame ACTIVE
+🧠 Smart Entry Engine ACTIVE
+📊 ADX + CCI Indicators ACTIVE
+🚀 Breakout Detector ACTIVE
+🔄 Reversal Detector ACTIVE
+🐋 Smart Money ACTIVE
 🪤 Trap Detector ACTIVE
-⚡ Pre-Pump Detection ACTIVE
-🔥 Heat Control ACTIVE
 
 🎯 Goal:
-Best 3 quality LONG setups
+High quality entries (Breakout / Reversal / Smart Money)
 
 Send /scan
         """
@@ -1432,8 +1578,7 @@ Send /scan
 
 
 # =====================================
-# 🔎 SMART SCANNER v11.3
-# Liquidity → Sector → Coin
+# 🔎 SMART SCANNER v11.4
 # =====================================
 
 @bot.message_handler(commands=["scan"])
@@ -1442,14 +1587,12 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3 SCANNING...
+🐋 AHAD AI v11.4 SCANNING...
 
-🔍 Checking Market Flow
-🏦 Finding Hot Sector
-🟢 Hunting TOP 3 LONG setups
+📊 ADX + CCI Analysis
+🚀 Hunting Breakouts
+🔄 Finding Reversals
 🐋 Tracking Smart Money
-⚡ Detecting Pre-Pump
-🔥 Heat Control ACTIVE
 
 Please wait ⏳
         """
@@ -1520,13 +1663,13 @@ Please wait ⏳
 
             if result["direction"] == "🟢 LONG":
 
+                # تصفية أقوى: فقط Breakout أو Reversal أو Smart Money مع سكور عالي
                 if (
-                    result["score"] >= 75
-                    and
-                    (
-                        result["liquidity"] >= 1.2
-                        or
-                        result["pre_pump"] == "🐋 WHALE LOADING"
+                    result["score"] >= 70
+                    and (
+                        "BREAKOUT" in result["signal_type"]
+                        or "REVERSAL" in result["signal_type"]
+                        or result["money"] == "🐋 SMART ACCUMULATION"
                     )
                 ):
 
@@ -1539,20 +1682,25 @@ Please wait ⏳
         )
 
 
+    # =====================================
+    # 📊 SORT: Breakout → Reversal → Smart Money → Score
+    # =====================================
+
+    def sort_key(x):
+        priority = 0
+        if "BREAKOUT" in x["signal_type"]:
+            priority = 100
+        elif "REVERSAL" in x["signal_type"]:
+            priority = 80
+        elif x["money"] == "🐋 SMART ACCUMULATION":
+            priority = 60
+        return (priority, x["score"], x["liquidity"])
 
     results = sorted(
-
         long_results,
-
-        key=lambda x: (
-            x["score"],
-            x["liquidity"]
-        ),
-
+        key=sort_key,
         reverse=True
-
     )[:3]
-
 
 
     if not results:
@@ -1561,10 +1709,12 @@ Please wait ⏳
         bot.send_message(
             message.chat.id,
             """
-👀 No sniper setup now
+👀 No strong setups now
 
+🚀 No Breakouts detected
+🔄 No Reversals found
 🐋 Smart Money not ready
-⏳ Waiting next liquidity wave
+⏳ Try again later
             """
         )
 
@@ -1577,12 +1727,16 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.3 🐋
+🚨 AHAD AI v11.4 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
+{s['quality']}
+📊 Type: {s['signal_type']}
+
 🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+📊 ADX: {s['adx']} | CCI: {s['cci']}
 🐋 Money: {s['money']}
 🪤 Trap: {s['trap']}
 
@@ -1605,8 +1759,10 @@ Please wait ⏳
         bot.send_message(
             message.chat.id,
             msg
-    )
-        
+        )
+
+
+
 # =====================================
 # 🐋 KEEP ALIVE ENGINE
 # =====================================
@@ -1708,7 +1864,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3 LIQUIDITY HUNTER ONLINE 🐋"
+    "🔥 AHAD AI v11.4 SMART ENTRY ONLINE 🐋"
 )
 
 
@@ -1718,4 +1874,3 @@ while True:
     time.sleep(
         60
     )
-    

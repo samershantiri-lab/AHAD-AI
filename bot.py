@@ -791,7 +791,7 @@ def smart_money(candles):
 
             "status": "ERROR"
 
-        }
+    }
         
 # =====================================
 # 🐋 PRE PUMP ACCUMULATION ENGINE v11.3.3
@@ -1758,6 +1758,7 @@ def start(message):
 🎯 Early Entry Filter ACTIVE
 📈 MACD Validator ACTIVE
 🔍 Fake Pump Detector ACTIVE
+⭐ Confidence Engine ACTIVE
 
 🎯 Goal:
 Best 3 quality LONG setups
@@ -1787,6 +1788,7 @@ def scan(message):
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE
 📈 MACD Validator ACTIVE
+⭐ Confidence Engine ACTIVE
 
 Please wait ⏳
         """

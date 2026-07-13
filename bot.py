@@ -483,24 +483,34 @@ def ai_brain(candles):
 # Penalties: late entry, momentum spike, bull trap, resistance proximity
 # =====================================
 
-def analyze(symbol, sector):
+def _bump(debug_stats, key):
+    if debug_stats is not None:
+        debug_stats[key] = debug_stats.get(key, 0) + 1
+
+
+def analyze(symbol, sector, debug_stats=None):
     try:
+        _bump(debug_stats, "0_total_checked")
+
         c15 = get_candles(symbol, "15m")
         c1h = get_candles(symbol, "1h")
         c4h = get_candles(symbol, "4h")
         c1d = get_candles(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
+            _bump(debug_stats, "1_rejected_not_enough_candles")
             return None
 
         price = c15[-1]["close"]
 
         safe, warning = fomo_filter(c15)
         if not safe:
+            _bump(debug_stats, "2_rejected_fomo_filter")
             return None
 
         brain = ai_brain(c1h)
         if brain["direction"] != "🟢 LONG":
+            _bump(debug_stats, "3_rejected_not_long_trend")
             return None  # this bot only hunts LONG setups, by design
 
         sr = support_resistance(c15)
@@ -518,8 +528,10 @@ def analyze(symbol, sector):
 
         # Hard rejects (not scored, just excluded)
         if rsi_15m > 70 or rsi_15m < 35:
+            _bump(debug_stats, "4_rejected_rsi_out_of_range")
             return None
         if flow < 0.8:
+            _bump(debug_stats, "5_rejected_flow_too_low")
             return None
 
         # ---------------------------------
@@ -581,6 +593,7 @@ def analyze(symbol, sector):
         move_atr = atr(c15)
         ema50_15 = ema(closes15, 50)
         if price > ema50_15 + (move_atr * 0.5):
+            _bump(debug_stats, "6_rejected_chasing_price_too_far")
             return None
 
         # =====================================
@@ -617,6 +630,11 @@ def analyze(symbol, sector):
         score = max(0, round(score))
         score = min(100, score)
 
+        if debug_stats is not None:
+            debug_stats.setdefault("7_scores_reaching_final_calc", []).append(
+                (symbol, score, trap)
+            )
+
         # =====================================
         # ⭐ QUALITY LEVEL — unified with send-filter, no mismatch
         # =====================================
@@ -635,10 +653,14 @@ def analyze(symbol, sector):
                              # below this is ever sent, unlike v11.3.7
 
         if score < MIN_SEND_SCORE:
+            _bump(debug_stats, "8_rejected_score_below_min")
             return None
 
         if trap == "🪤 BULL TRAP":
+            _bump(debug_stats, "9_rejected_bull_trap_final")
             return None  # never send trap setups, regardless of score
+
+        _bump(debug_stats, "A_passed_all_filters")
 
         # =====================================
         # 🐋 MONEY STATUS (display label)
@@ -718,6 +740,96 @@ Send /scan
 
 
 scan_lock = threading.Lock()
+
+
+@bot.message_handler(commands=["debug"])
+def debug_scan(message):
+    if not scan_lock.acquire(blocking=False):
+        bot.reply_to(message, "⏳ Scan already running, please wait...")
+        return
+
+    try:
+        bot.reply_to(message, "🔬 Running diagnostic scan... this checks every coin and reports exactly where it drops out of the funnel.")
+
+        stats = {}
+
+        all_symbols = get_symbols()
+        if not all_symbols:
+            bot.send_message(message.chat.id, "🚨 Could not fetch symbols from OKX.")
+            return
+
+        flow_symbols = top_flow_scanner(all_symbols)
+        flow = sector_flow(all_symbols)
+        hot_sector = flow["sector"]
+
+        sector_pool = [s for s in flow_symbols if s in flow["symbols"]]
+        if len(sector_pool) >= 8:
+            symbols = sector_pool + [s for s in flow_symbols if s not in sector_pool]
+        else:
+            symbols = flow_symbols
+
+        if len(symbols) < 20:
+            symbols = all_symbols
+
+        for symbol in symbols:
+            analyze(symbol, hot_sector, debug_stats=stats)
+            time.sleep(0.03)
+
+        # Build the funnel report
+        labels = {
+            "0_total_checked": "🔎 Total coins checked",
+            "1_rejected_not_enough_candles": "❌ Not enough candle history",
+            "2_rejected_fomo_filter": "❌ FOMO filter (late/hot move)",
+            "3_rejected_not_long_trend": "❌ Trend not LONG (AI Brain)",
+            "4_rejected_rsi_out_of_range": "❌ RSI outside 35-70",
+            "5_rejected_flow_too_low": "❌ Flow below 0.8x",
+            "6_rejected_chasing_price_too_far": "❌ Price too far above EMA50 (chasing)",
+            "8_rejected_score_below_min": f"❌ Score below MIN_SEND_SCORE",
+            "9_rejected_bull_trap_final": "❌ Bull trap (final reject)",
+            "A_passed_all_filters": "✅ Passed everything (would be sent)",
+        }
+
+        lines = ["📊 FUNNEL — where coins drop out:\n"]
+        for key in [
+            "0_total_checked", "1_rejected_not_enough_candles",
+            "2_rejected_fomo_filter", "3_rejected_not_long_trend",
+            "4_rejected_rsi_out_of_range", "5_rejected_flow_too_low",
+            "6_rejected_chasing_price_too_far", "8_rejected_score_below_min",
+            "9_rejected_bull_trap_final", "A_passed_all_filters",
+        ]:
+            count = stats.get(key, 0)
+            lines.append(f"{labels[key]}: {count}")
+
+        bot.send_message(message.chat.id, "\n".join(lines))
+
+        # Score distribution for coins that made it to final scoring
+        scored = stats.get("7_scores_reaching_final_calc", [])
+        if scored:
+            scored_sorted = sorted(scored, key=lambda x: x[1], reverse=True)
+            top10 = scored_sorted[:10]
+            lines2 = [
+                "🏁 Coins that reached final scoring (top 10 by score):",
+                "(score, trap status)",
+            ]
+            for sym, sc, trp in top10:
+                lines2.append(f"{sym}: {sc} | {trp}")
+
+            below_min = sum(1 for _, sc, _ in scored if sc < 70)
+            lines2.append(f"\n📉 {below_min}/{len(scored)} reached scoring but fell below MIN_SEND_SCORE=70")
+
+            bot.send_message(message.chat.id, "\n".join(lines2))
+        else:
+            bot.send_message(
+                message.chat.id,
+                "⚠️ No coin even reached the final scoring stage — the bottleneck is one of the hard filters above (fomo/trend/rsi/flow/chasing), not the score threshold.",
+            )
+
+    except Exception:
+        print("DEBUG SCAN ERROR:", traceback.format_exc())
+        bot.send_message(message.chat.id, "🚨 Debug scan failed, check logs.")
+
+    finally:
+        scan_lock.release()
 
 
 @bot.message_handler(commands=["scan"])

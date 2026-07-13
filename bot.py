@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v11.3.5
+# 🚀 AHAD AI v15.1
 # SMART ENTRY EDITION
 # ================================================
 
@@ -49,7 +49,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3.5 "
+        "🐋 AHAD AI v15.1 "
         "SMART ENTRY ONLINE 🚀"
     )
 
@@ -483,7 +483,7 @@ def get_candles(symbol, tf):
 
 
 print(
-    "🔥 AHAD AI v11.3.5 CORE READY 🐋"
+    "🔥 AHAD AI v15.1 CORE READY 🐋"
 )
 
 
@@ -591,12 +591,14 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
     ema_slow = ema(closes, slow)
     macd_line = ema_fast - ema_slow
     return macd_line
-    # ================================================
+
+
+# ================================================
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
 # ================================================
-# 🏦 SECTOR FLOW ENGINE
+# 🏦 SECTOR FLOW ENGINE (FIXED)
 # ================================================
 
 def sector_flow(symbols):
@@ -644,7 +646,7 @@ def sector_flow(symbols):
                                 volumes[-50:]
                             )
                             /
-                            10
+                            50
                         )
 
 
@@ -1258,8 +1260,9 @@ def ai_brain(candles):
 
         "confidence": abs(score)
 
-            }
-    # ================================================
+                }
+    
+# ================================================
 # 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
@@ -1628,7 +1631,9 @@ def analyze(symbol, sector):
         )
 
         return None
-        # ================================================
+
+
+# ================================================
 # 🤖 SECTION 4: TELEGRAM SCANNER
 # ================================================
 
@@ -1638,7 +1643,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.5 ONLINE 🚀
+🐋 AHAD AI v15.1 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -1648,6 +1653,7 @@ def start(message):
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
 📊 Weighted Score System ACTIVE
+🏦 Sector Flow FIXED
 
 🎯 Goal:
 Best 3 quality LONG setups
@@ -1668,10 +1674,10 @@ def scan(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v11.3.5 SCANNING...
+🐋 AHAD AI v15.1 SCANNING...
 
 🔍 Checking Market Flow
-🏦 Finding Hot Sector
+🏦 Finding Hot Sector (FIXED)
 🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
@@ -1804,7 +1810,7 @@ Please wait ⏳
 
 
         msg = f"""
-🚨 AHAD AI v11.3.5 🐋
+🚨 AHAD AI v15.1 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1834,7 +1840,8 @@ Please wait ⏳
             message.chat.id,
             msg
         )
-        # ================================================
+        
+# ================================================
 # 🚀 SECTION 5: SYSTEM
 # ================================================
 
@@ -1939,7 +1946,7 @@ threading.Thread(
 
 
 print(
-    "🔥 AHAD AI v11.3.5 SMART ENTRY ONLINE 🐋"
+    "🔥 AHAD AI v15.1 SMART ENTRY ONLINE 🐋"
 )
 
 

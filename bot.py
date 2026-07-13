@@ -1,15 +1,33 @@
 # =====================================
-# 🚀 AHAD AI v12.0 – REBUILT EDITION
-# Fixes applied vs v11.3.7:
+# 🚀 AHAD AI v12.1.1 – REBUILT EDITION
+#
+# Fixes applied in v12.0 vs v11.3.7:
 #   1) smart_money() division bug fixed (/50 instead of /10)
 #   2) RSI no longer scored redundantly in 4 separate layers
-#   3) Quality thresholds unified with the final send-filter (no more
-#      sending "LOW QUALITY" signals because of a looser filter number)
+#   3) Quality thresholds unified with the final send-filter
 #   4) Added real compression/accumulation check (Bollinger Band width
-#      percentile) so "pre-pump" actually requires price to be coiling,
-#      not just "volume up a bit + price flattish"
-#   5) Sector detection is now actually used to bias which coins get
-#      analyzed (previously it was cosmetic-only)
+#      percentile) so "pre-pump" actually requires price to be coiling
+#   5) Sector detection actually biases which coins get analyzed
+#
+# Fixes applied in v12.1.1, based on live signal review (APR, 2Z):
+#   6) Hard reject if RSI(4H) or RSI(1D) > 75 — previously only 15m RSI
+#      was checked, so a coin could be "early entry" on 15m while being
+#      massively overbought on the daily chart after a 2x pump.
+#   7) New whipsaw_detector() — hard reject if price pumped >=15% and
+#      then dumped >=8% from that peak within the recent lookback
+#      window. High flow during a liquidation cascade was previously
+#      being read as "accumulation".
+#   8) Hard reject if RSI(15m) and RSI(1H) disagree by more than 20
+#      points — this conflict was previously just summed blindly.
+#   9) Hard Risk:Reward filter — reject any setup where the distance
+#      to TP1 is less than 1.2x the distance to the stop loss. This is
+#      what let through signals that risked more than they targeted.
+#  10) Resistance proximity now checked against the real 4H swing high,
+#      not just the noisy 15m local high.
+#  11) Sector label on a signal is now verified against the coin's
+#      actual SECTORS membership; unlisted coins show "UNSECTORED"
+#      instead of inheriting whatever sector the scan happened to be
+#      biased toward.
 # =====================================
 
 import os
@@ -44,7 +62,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v12.0 REBUILT ONLINE 🚀"
+    return "🐋 AHAD AI v12.1.1 REBUILT ONLINE 🚀"
 
 
 def run_web():
@@ -130,7 +148,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v12.0 CORE READY 🐋")
+print("🔥 AHAD AI v12.1.1 CORE READY 🐋")
 
 
 # =====================================
@@ -446,6 +464,56 @@ def trap_detector(candles):
 
 
 # =====================================
+# 🌪 WHIPSAW DETECTOR (NEW in v12.1.1)
+# Detects a sharp pump followed by a sharp dump in a short window —
+# this is very different from genuine quiet accumulation, even though
+# both can superficially show "flow up, price near current level".
+# =====================================
+
+def whipsaw_detector(candles, lookback=40):
+    try:
+        recent = candles[-lookback:]
+        if len(recent) < 10:
+            return {"whipsaw": False, "pump_pct": 0, "dump_pct": 0}
+
+        highs = [c["high"] for c in recent]
+        closes = [c["close"] for c in recent]
+
+        peak_idx = highs.index(max(highs))
+        peak_price = highs[peak_idx]
+
+        # price before the pump started (lowest close before the peak)
+        pre_pump_segment = closes[:peak_idx + 1] if peak_idx > 0 else [closes[0]]
+        pre_pump_low = min(pre_pump_segment)
+
+        pump_pct = (
+            ((peak_price - pre_pump_low) / pre_pump_low) * 100
+            if pre_pump_low > 0 else 0
+        )
+
+        # how far price fell from the peak afterward
+        post_peak_segment = closes[peak_idx:]
+        post_peak_low = min(post_peak_segment) if post_peak_segment else peak_price
+
+        dump_pct = (
+            ((peak_price - post_peak_low) / peak_price) * 100
+            if peak_price > 0 else 0
+        )
+
+        is_whipsaw = pump_pct >= 15 and dump_pct >= 8
+
+        return {
+            "whipsaw": is_whipsaw,
+            "pump_pct": round(pump_pct, 1),
+            "dump_pct": round(dump_pct, 1),
+        }
+
+    except Exception as e:
+        print("WHIPSAW ERROR:", e)
+        return {"whipsaw": False, "pump_pct": 0, "dump_pct": 0}
+
+
+# =====================================
 # 🧠 AI BRAIN (trend direction)
 # =====================================
 
@@ -514,16 +582,21 @@ def analyze(symbol, sector, debug_stats=None):
             return None  # this bot only hunts LONG setups, by design
 
         sr = support_resistance(c15)
+        sr4h = support_resistance(c4h)  # real higher-timeframe resistance
         money = smart_money(c15)
         pre = pre_pump_engine(c15)
         multi = multi_rsi_engine(c15, c1h, c4h, c1d)
         trap = trap_detector(c15)
+        whip = whipsaw_detector(c15)
 
         closes15 = [x["close"] for x in c15]
         closes1h = [x["close"] for x in c1h]
         closes4h = [x["close"] for x in c4h]
 
         rsi_15m = multi["15m"]
+        rsi_1h = multi["1h"]
+        rsi_4h = multi["4h"]
+        rsi_1d = multi["1d"]
         flow = money["flow"]
 
         # Hard rejects (not scored, just excluded)
@@ -532,6 +605,28 @@ def analyze(symbol, sector, debug_stats=None):
             return None
         if flow < 0.8:
             _bump(debug_stats, "5_rejected_flow_too_low")
+            return None
+
+        # NEW v12.1.1: reject if the bigger timeframes are overheated,
+        # regardless of what 15m/1h look like — a 1D RSI of 80 after a
+        # 2x pump is not an "early entry" no matter how the short-term
+        # candles are behaving.
+        if rsi_4h > 75 or rsi_1d > 75:
+            _bump(debug_stats, "B_rejected_htf_rsi_overheated")
+            return None
+
+        # NEW v12.1.1: reject genuine whipsaws (sharp pump then sharp
+        # dump) — high flow here usually means position liquidation,
+        # not quiet accumulation.
+        if whip["whipsaw"]:
+            _bump(debug_stats, "C_rejected_whipsaw")
+            return None
+
+        # NEW v12.1.1: reject if 15m and 1h RSI disagree too strongly —
+        # this signals the short-term and medium-term pictures are in
+        # conflict, which the old version just summed blindly.
+        if abs(rsi_15m - rsi_1h) > 20:
+            _bump(debug_stats, "D_rejected_rsi_timeframe_conflict")
             return None
 
         # ---------------------------------
@@ -624,7 +719,12 @@ def analyze(symbol, sector, debug_stats=None):
         if trap == "🪤 BULL TRAP":
             score -= 20
 
-        if sr["near_resistance"] < 3:
+        # NEW v12.1.1: check proximity to REAL higher-timeframe resistance
+        # (4H swing high), not just the noisy 15m local high.
+        near_resistance_4h = ((sr4h["resistance"] - price) / price) * 100
+        if near_resistance_4h < 3:
+            score -= 15
+        elif sr["near_resistance"] < 3:
             score -= 10
 
         score = max(0, round(score))
@@ -660,6 +760,31 @@ def analyze(symbol, sector, debug_stats=None):
             _bump(debug_stats, "9_rejected_bull_trap_final")
             return None  # never send trap setups, regardless of score
 
+        # =====================================
+        # 🎯 ENTRY ZONE & TARGETS
+        # =====================================
+        entry_low = price * 0.995
+        entry_high = price * 1.005
+
+        sl = sr["support"] * 0.995
+        tp1 = price + move_atr * 2
+        tp2 = price + move_atr * 3
+
+        if tp1 <= entry_high:
+            tp1 = entry_high + move_atr * 0.8
+
+        # NEW v12.1.1: hard Risk:Reward filter. Reject any setup where
+        # the distance to TP1 is less than 1.2x the distance to SL —
+        # this is what let through the bad-R:R signals (APR, 2Z) that
+        # risked more than they targeted.
+        risk = entry_high - sl
+        reward = tp1 - entry_high
+        MIN_RR = 1.2
+
+        if risk <= 0 or reward / risk < MIN_RR:
+            _bump(debug_stats, "E_rejected_bad_risk_reward")
+            return None
+
         _bump(debug_stats, "A_passed_all_filters")
 
         # =====================================
@@ -674,22 +799,20 @@ def analyze(symbol, sector, debug_stats=None):
         else:
             money_status = "NORMAL"
 
-        # =====================================
-        # 🎯 ENTRY ZONE & TARGETS
-        # =====================================
-        entry_low = price * 0.995
-        entry_high = price * 1.005
-
-        sl = sr["support"] * 0.995
-        tp1 = price + move_atr * 2
-        tp2 = price + move_atr * 3
-
-        if tp1 <= entry_high:
-            tp1 = entry_high + move_atr * 0.8
+        # NEW v12.1.1: only label a coin with a sector name if it
+        # genuinely belongs to that sector's coin list — otherwise the
+        # "Hot Sector: AI" label was cosmetic/misleading (e.g. "2Z"
+        # isn't in any SECTORS list at all).
+        coin_sector = "UNSECTORED"
+        for sec_name, coins in SECTORS.items():
+            if any(c in symbol for c in coins):
+                coin_sector = sec_name
+                break
 
         return {
             "coin": symbol,
-            "sector": sector,
+            "sector": coin_sector,
+            "scanned_hot_sector": sector,
             "direction": brain["direction"],
             "score": score,
             "quality": quality,
@@ -700,6 +823,7 @@ def analyze(symbol, sector, debug_stats=None):
             "sl": round(sl, 6),
             "tp1": round(tp1, 6),
             "tp2": round(tp2, 6),
+            "rr_ratio": round(reward / risk, 2),
             "liquidity": flow,
             "pre_pump": pre["status"],
             "bb_percentile": pre.get("bb_percentile", 100),
@@ -720,7 +844,7 @@ def analyze(symbol, sector, debug_stats=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v12.0 REBUILT ONLINE 🚀
+🐋 AHAD AI v12.1.1 REBUILT ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE (bug fixed)
@@ -781,11 +905,15 @@ def debug_scan(message):
             "1_rejected_not_enough_candles": "❌ Not enough candle history",
             "2_rejected_fomo_filter": "❌ FOMO filter (late/hot move)",
             "3_rejected_not_long_trend": "❌ Trend not LONG (AI Brain)",
-            "4_rejected_rsi_out_of_range": "❌ RSI outside 35-70",
+            "4_rejected_rsi_out_of_range": "❌ RSI(15m) outside 35-70",
             "5_rejected_flow_too_low": "❌ Flow below 0.8x",
+            "B_rejected_htf_rsi_overheated": "❌ RSI(4H/1D) > 75 (NEW)",
+            "C_rejected_whipsaw": "❌ Whipsaw pump+dump (NEW)",
+            "D_rejected_rsi_timeframe_conflict": "❌ RSI(15m) vs RSI(1H) conflict (NEW)",
             "6_rejected_chasing_price_too_far": "❌ Price too far above EMA50 (chasing)",
-            "8_rejected_score_below_min": f"❌ Score below MIN_SEND_SCORE",
+            "8_rejected_score_below_min": "❌ Score below MIN_SEND_SCORE",
             "9_rejected_bull_trap_final": "❌ Bull trap (final reject)",
+            "E_rejected_bad_risk_reward": "❌ Bad Risk:Reward < 1.2 (NEW)",
             "A_passed_all_filters": "✅ Passed everything (would be sent)",
         }
 
@@ -794,8 +922,11 @@ def debug_scan(message):
             "0_total_checked", "1_rejected_not_enough_candles",
             "2_rejected_fomo_filter", "3_rejected_not_long_trend",
             "4_rejected_rsi_out_of_range", "5_rejected_flow_too_low",
+            "B_rejected_htf_rsi_overheated", "C_rejected_whipsaw",
+            "D_rejected_rsi_timeframe_conflict",
             "6_rejected_chasing_price_too_far", "8_rejected_score_below_min",
-            "9_rejected_bull_trap_final", "A_passed_all_filters",
+            "9_rejected_bull_trap_final", "E_rejected_bad_risk_reward",
+            "A_passed_all_filters",
         ]:
             count = stats.get(key, 0)
             lines.append(f"{labels[key]}: {count}")
@@ -840,7 +971,7 @@ def scan(message):
 
     try:
         bot.reply_to(message, """
-🐋 AHAD AI v12.0 SCANNING...
+🐋 AHAD AI v12.1.1 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -918,7 +1049,7 @@ Please wait ⏳
 
         for s in results:
             msg = f"""
-🚨 AHAD AI v12.0 🐋
+🚨 AHAD AI v12.1.1 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -929,6 +1060,7 @@ Please wait ⏳
 🐋 Money: {s['money_status']}
 🧱 BB Compression %ile: {s['bb_percentile']}
 🪤 Trap: {s['trap']}
+⚖️ R:R (to TP1): 1:{s['rr_ratio']}
 
 🎯 Entry: {s['entry_low']} - {s['entry_high']}
 🛑 SL: {s['sl']}
@@ -989,7 +1121,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v12.0 REBUILT ONLINE 🐋")
+print("🔥 AHAD AI v12.1.1 REBUILT ONLINE 🐋")
 
 while True:
     time.sleep(60)

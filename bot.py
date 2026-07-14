@@ -1,12 +1,17 @@
 # ================================================
-# 🚀 AHAD AI v16 – PHASE 1 FIXES
+# 🚀 AHAD AI v16.1 – PHASE 1 FIXES + DIAGNOSTICS
 # SMART ENTRY EDITION
 # ================================================
-# التعديلات في هذه النسخة (v16):
+# التعديلات في v16:
 # 1) تصحيح خطأ متوسط الفوليوم: القسمة على 50 بدل 10
 #    في smart_money() و sector_flow()
 # 2) رفع حد القبول النهائي من 55 إلى 70
 # 3) فلتر Risk:Reward (R:R) — رفض أي صفقة نسبتها أقل من 1.5
+#
+# إضافة v16.1:
+# 4) نظام تشخيص (SCAN_STATS / SCAN_CANDIDATES) يطلع أسباب
+#    الرفض الفعلية + أقرب 5 مرشحين بكل /scan، عشان نضبط
+#    العتبات بناءً على أرقام حقيقية بدل التخمين.
 # ================================================
 
 # ================================================
@@ -502,6 +507,18 @@ def ai_brain(candles):
 # 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
+# ================================================
+# 📐 DIAGNOSTICS (v16.1) — لتشخيص سبب الرفض الحقيقي
+# ================================================
+
+SCAN_STATS = {}
+SCAN_CANDIDATES = []
+
+
+def _bump(key):
+    SCAN_STATS[key] = SCAN_STATS.get(key, 0) + 1
+
+
 def analyze(symbol, sector):
     try:
         c15 = get_candles(symbol, "15m")
@@ -510,6 +527,7 @@ def analyze(symbol, sector):
         c1d = get_candles(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
+            _bump("no_candles")
             return None
 
         price = c15[-1]["close"]
@@ -517,11 +535,13 @@ def analyze(symbol, sector):
         safe, warning = fomo_filter(c15)
 
         if not safe:
+            _bump("fomo_reject")
             return None
 
         brain = ai_brain(c1h)
 
         if brain["direction"] == "WAIT":
+            _bump("brain_wait")
             return None
 
         sr = support_resistance(c15)
@@ -553,6 +573,7 @@ def analyze(symbol, sector):
             rsi_score = 5
             warning = "⚠️ RSI WARNING"
         elif rsi_15m > 70 or rsi_15m < 35:
+            _bump("rsi_reject")
             return None
 
         # =====================================
@@ -561,6 +582,11 @@ def analyze(symbol, sector):
 
         flow_score = 0
         if flow < 0.8:
+            _bump("flow_reject")
+            SCAN_CANDIDATES.append({
+                "coin": symbol, "stage": "flow", "flow": flow,
+                "score": None, "rr": None
+            })
             return None
         elif flow >= 1.8:
             flow_score = 10
@@ -622,6 +648,7 @@ def analyze(symbol, sector):
         ema50_15 = ema(closes15, 50)
 
         if price > ema50_15 + (move * 0.5):
+            _bump("late_entry_reject")
             return None
         else:
             early_text = "🐋 EARLY ENTRY AREA"
@@ -765,12 +792,24 @@ def analyze(symbol, sector):
             reward = price - tp1
 
         if risk <= 0:
+            _bump("risk_zero_reject")
             return None
 
         rr_ratio = reward / risk
 
         if rr_ratio < 1.5:
+            _bump("rr_reject")
+            SCAN_CANDIDATES.append({
+                "coin": symbol, "stage": "rr", "flow": flow,
+                "score": score, "rr": round(rr_ratio, 2)
+            })
             return None
+
+        _bump("passed_analyze")
+        SCAN_CANDIDATES.append({
+            "coin": symbol, "stage": "passed", "flow": flow,
+            "score": score, "rr": round(rr_ratio, 2)
+        })
 
         return {
             "coin": symbol,
@@ -849,6 +888,9 @@ Please wait ⏳
 
     long_results = []
 
+    SCAN_STATS.clear()
+    SCAN_CANDIDATES.clear()
+
     all_symbols = get_symbols()
 
     symbols = top_flow_scanner(all_symbols)
@@ -896,6 +938,10 @@ Please wait ⏳
                     )
                 ):
                     long_results.append(result)
+                else:
+                    _bump("gate_reject_score_or_liquidity")
+            else:
+                _bump("not_long_direction")
 
         time.sleep(0.03)
 
@@ -904,6 +950,39 @@ Please wait ⏳
         key=lambda x: (x["score"], x["liquidity"]),
         reverse=True
     )[:3]
+
+    # ================================================
+    # 📐 DIAGNOSTICS REPORT (v16.1)
+    # ================================================
+
+    stats_lines = "\n".join(
+        f"- {k}: {v}" for k, v in sorted(SCAN_STATS.items(), key=lambda i: -i[1])
+    )
+
+    near_misses = sorted(
+        [c for c in SCAN_CANDIDATES if c["score"] is not None],
+        key=lambda c: c["score"],
+        reverse=True
+    )[:5]
+
+    near_lines = "\n".join(
+        f"- {c['coin']} | stage:{c['stage']} | score:{c['score']} | "
+        f"flow:{round(c['flow'],2)} | rr:{c['rr']}"
+        for c in near_misses
+    ) or "(لا يوجد مرشحين وصلوا لمرحلة السكور)"
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+📐 DIAGNOSTICS
+
+أسباب الرفض (عدد العملات):
+{stats_lines or '(لا بيانات)'}
+
+أقرب 5 مرشحين (حتى لو رُفضوا):
+{near_lines}
+        """
+    )
 
     if not results:
         bot.send_message(

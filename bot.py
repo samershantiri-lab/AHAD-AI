@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v11.3.5
+# 🚀 AHAD AI v19.0
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v11.3.5 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.0 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v11.3.5 CORE READY 🐋")
+print("🔥 AHAD AI v19.0 CORE READY 🐋")
 
 
 # ================================================
@@ -504,17 +504,6 @@ def analyze(symbol, sector, debug=None):
         flow = money["flow"]
 
         # ================================================
-        # 📈 24H CHANGE & VOLUME
-        # ================================================
-
-        ticker = requests.get(
-            f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
-        ).json()
-
-        change_24h = float(ticker["priceChangePercent"])
-        volume_24h = float(ticker["quoteVolume"])
-
-        # ================================================
         # 🔥 SMART RSI
         # ================================================
 
@@ -769,7 +758,7 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v11.3.5 ONLINE 🚀
+🐋 AHAD AI v19.0 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -794,7 +783,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v11.3.5 SCANNING...
+🐋 AHAD AI v19.0 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -880,7 +869,7 @@ Passed: {debug.get('passed', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v11.3.5 🐋
+🚨 AHAD AI v19.0 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -946,7 +935,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v11.3.5 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.0 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

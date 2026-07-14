@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.2
+# 🚀 AHAD AI v19.3
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.2 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.2 CORE READY 🐋")
+print("🔥 AHAD AI v19.3 CORE READY 🐋")
 
 
 # ================================================
@@ -341,6 +341,63 @@ def pre_pump_engine(candles):
 
 
 # ================================================
+# 🔥 VOLATILITY COMPRESSION ENGINE (NEW)
+# ================================================
+
+def volatility_engine(candles):
+    try:
+        if len(candles) < 60:
+            return {
+                "score": 0,
+                "status": "UNKNOWN"
+            }
+
+        # آخر 20 شمعة
+        recent = candles[-20:]
+
+        highs = [c["high"] for c in recent]
+        lows = [c["low"] for c in recent]
+
+        # نطاق الحركة
+        price_range = max(highs) - min(lows)
+
+        # متوسط ATR الحالي
+        atr_now = atr(candles[-14:])
+
+        # متوسط ATR السابق
+        atr_old = atr(candles[-60:-46])
+
+        if atr_old == 0:
+            compression = 0
+        else:
+            compression = (1 - (atr_now / atr_old)) * 100
+
+        compression = max(0, min(100, compression))
+
+        # التصنيف
+        if compression >= 70:
+            status = "🔥 SPRING LOADED"
+        elif compression >= 50:
+            status = "⚡ BUILDING PRESSURE"
+        else:
+            status = "NORMAL"
+
+        return {
+            "score": round(compression),
+            "status": status,
+            "range": round(price_range, 6)
+        }
+
+    except Exception as e:
+        print("VOLATILITY ERROR:", e)
+        return {
+            "score": 0,
+            "status": "ERROR",
+            "range": 0
+        }
+
+
+# ================================================
 # 📊 MULTI TIMEFRAME ENGINE
 # ================================================
 
@@ -511,6 +568,12 @@ def analyze(symbol, sector, debug=None):
         pre = pre_pump_engine(c15)
         multi = multi_rsi_engine(c15, c1h, c4h, c1d)
         trap = trap_detector(c15)
+
+        # ================================================
+        # 🔥 VOLATILITY COMPRESSION (معزول - للاختبار فقط)
+        # ================================================
+
+        vol = volatility_engine(c15)
 
         closes15 = [x["close"] for x in c15]
         closes1h = [x["close"] for x in c1h]
@@ -773,7 +836,8 @@ def analyze(symbol, sector, debug=None):
             "pre_pump": pre["status"],
             "multi": multi,
             "trap": trap,
-            "warning": warning
+            "warning": warning,
+            "volatility": vol  # معزول للاختبار فقط
         }
 
     except Exception as e:
@@ -787,7 +851,7 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.2 ONLINE 🚀
+🐋 AHAD AI v19.3 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -798,6 +862,7 @@ def start(message):
 🎯 Early Entry Filter ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
+🔥 Volatility Compression Engine ACTIVE (TEST MODE)
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -812,7 +877,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.2 SCANNING...
+🐋 AHAD AI v19.3 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -822,6 +887,7 @@ def scan(message):
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
+🔥 Volatility Compression TEST MODE
 
 Please wait ⏳
 """)
@@ -943,7 +1009,7 @@ Not Long: {debug.get('not_long', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.2 🐋
+🚨 AHAD AI v19.3 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1009,7 +1075,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.2 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

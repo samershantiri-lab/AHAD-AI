@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.1
+# 🚀 AHAD AI v19.2
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.1 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.2 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.1 CORE READY 🐋")
+print("🔥 AHAD AI v19.2 CORE READY 🐋")
 
 
 # ================================================
@@ -224,32 +224,53 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 # ================================================
 
 # ================================================
-# 🏦 SECTOR FLOW ENGINE (FIXED)
+# 🏦 SECTOR FLOW ENGINE (IMPROVED)
 # ================================================
 
 def sector_flow(symbols):
     try:
         result = {}
+        ranking = []
+
         for sector, coins in SECTORS.items():
-            power = 0
+            total = 0
+            matched = 0
+
             for symbol in symbols:
-                if any(coin in symbol for coin in coins):
+                base = symbol.split("-")[0]
+
+                if base in coins:
                     candles = get_candles(symbol, "1h")
+
                     if len(candles) > 50:
                         volumes = [x["volume"] for x in candles]
                         recent = sum(volumes[-5:])
                         average = sum(volumes[-50:]) / 50
+
                         if average > 0:
-                            power += recent / average
+                            total += recent / average
+                            matched += 1
 
-            result[sector] = round(power, 2)
+            power = round(total / matched, 2) if matched > 0 else 0
 
-        hot_sector = max(result, key=result.get)
-        return {"sector": hot_sector, "power": result[hot_sector]}
+            result[sector] = power
+            ranking.append((sector, power))
+
+        ranking = sorted(ranking, key=lambda x: x[1], reverse=True)
+
+        return {
+            "sector": ranking[0][0],
+            "power": ranking[0][1],
+            "ranking": ranking[:3]
+        }
 
     except Exception as e:
         print("SECTOR ERROR:", e)
-        return {"sector": "UNKNOWN", "power": 0}
+        return {
+            "sector": "UNKNOWN",
+            "power": 0,
+            "ranking": []
+        }
 
 
 # ================================================
@@ -721,8 +742,16 @@ def analyze(symbol, sector, debug=None):
             tp1 = price - move * 2
             tp2 = price - move * 3
 
-        if tp1 <= entry_high:
-            tp1 = entry_high + move * 0.8
+        # ================================================
+        # 🔧 TP1 FIX (LONG & SHORT)
+        # ================================================
+
+        if brain["direction"] == "🟢 LONG":
+            if tp1 <= entry_high:
+                tp1 = entry_high + move * 0.8
+        else:
+            if tp1 >= entry_low:
+                tp1 = entry_low - move * 0.8
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
@@ -758,7 +787,7 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.1 ONLINE 🚀
+🐋 AHAD AI v19.2 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -783,10 +812,10 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.1 SCANNING...
+🐋 AHAD AI v19.2 SCANNING...
 
 🔍 Checking Market Flow
-🏦 Finding Hot Sector
+🏦 Finding Hot Sector (Ranked)
 🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
@@ -806,12 +835,18 @@ Please wait ⏳
     flow = sector_flow(all_symbols)
     hot_sector = flow["sector"]
 
-    bot.send_message(message.chat.id, f"""
-🔥 MARKET FLOW
+    # ================================================
+    # 🏦 IMPROVED MARKET FLOW WITH RANKING
+    # ================================================
 
-🏦 Hot Sector: {hot_sector}
-🐋 Flow Power: {flow['power']}
-""")
+    ranking = flow["ranking"]
+    text = "🔥 MARKET FLOW\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+
+    for i, item in enumerate(ranking):
+        text += f"{medals[i]} {item[0]}  |  Flow: {item[1]}\n"
+
+    bot.send_message(message.chat.id, text)
 
     if len(symbols) < 20:
         symbols = all_symbols
@@ -908,7 +943,7 @@ Not Long: {debug.get('not_long', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.1 🐋
+🚨 AHAD AI v19.2 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -974,7 +1009,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.1 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.2 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

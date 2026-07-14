@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v16.1 – PHASE 1 FIXES + DIAGNOSTICS
+# 🚀 AHAD AI v16.2 – PHASE 1 FIXES + DIAGNOSTICS
 # SMART ENTRY EDITION
 # ================================================
 # التعديلات في v16:
@@ -10,8 +10,14 @@
 #
 # إضافة v16.1:
 # 4) نظام تشخيص (SCAN_STATS / SCAN_CANDIDATES) يطلع أسباب
-#    الرفض الفعلية + أقرب 5 مرشحين بكل /scan، عشان نضبط
-#    العتبات بناءً على أرقام حقيقية بدل التخمين.
+#    الرفض الفعلية + أقرب 5 مرشحين بكل /scan.
+#
+# إضافة v16.2 (بناءً على بيانات التشخيص الفعلية):
+# 5) تصحيح tp1 ليكون حسب الاتجاه (LONG/SHORT) — كان دايماً
+#    يفترض LONG، فكان يكسر R:R لصفقات SHORT (rr سالب).
+# 6) sector_flow(): مطابقة دقيقة على اسم العملة (مش substring)
+#    + متوسط حقيقي بدل مجموع — عشان ما ينحاز قطاع AI تلقائياً
+#    لمجرد كثرة الرموز اللي تحتوي الحرفين "AI".
 # ================================================
 
 # ================================================
@@ -50,7 +56,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v16 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v16.2 SMART ENTRY ONLINE 🚀"
 
 
 def run_web():
@@ -193,7 +199,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v16 CORE READY 🐋")
+print("🔥 AHAD AI v16.2 CORE READY 🐋")
 
 
 # ================================================
@@ -268,24 +274,30 @@ def sector_flow(symbols):
         result = {}
 
         for sector, coins in SECTORS.items():
-            power = 0
+            total = 0
+            matched = 0
 
             for symbol in symbols:
-                if any(coin in symbol for coin in coins):
+                # ✅ FIX v16.2: مطابقة دقيقة على اسم العملة الأساسي
+                # (بدل substring اللي كان يطابق أي رمز يحتوي "AI" كنص)
+                base = symbol.split("-")[0]
+
+                if base in coins:
                     candles = get_candles(symbol, "1h")
 
                     if len(candles) > 50:
                         volumes = [x["volume"] for x in candles]
 
                         recent = sum(volumes[-5:])
-
-                        # ✅ FIX v16: القسمة على 50 بدل 10 (متوسط حقيقي)
                         average = sum(volumes[-50:]) / 50
 
                         if average > 0:
-                            power += (recent / average)
+                            total += (recent / average)
+                            matched += 1
 
-            result[sector] = round(power, 2)
+            # ✅ FIX v16.2: متوسط حقيقي (total/matched) بدل مجموع خام
+            # عشان ما ينحاز القطاع الأكبر عدد رموز تلقائياً
+            result[sector] = round(total / matched, 2) if matched > 0 else 0
 
         hot_sector = max(result, key=result.get)
 
@@ -850,7 +862,7 @@ def start(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v16 ONLINE 🚀
+🐋 AHAD AI v16.2 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE (Fixed Flow Calc ✅)
@@ -872,10 +884,27 @@ Send /scan
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
+    # ✅ FIX v16.2: أي خطأ غير متوقع بأي مرحلة لازم يوصل كرسالة
+    # صريحة على تلغرام، بدل ما يختفي بصمت (زي ما صار سابقاً)
+    try:
+        _scan_impl(message)
+    except Exception as e:
+        print("SCAN CRASH:", e)
+        print(traceback.format_exc())
+        try:
+            bot.send_message(
+                message.chat.id,
+                f"🚨 SCAN CRASHED:\n{type(e).__name__}: {e}"
+            )
+        except Exception:
+            pass
+
+
+def _scan_impl(message):
     bot.reply_to(
         message,
         """
-🐋 AHAD AI v16 SCANNING...
+🐋 AHAD AI v16.2 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -949,6 +978,11 @@ Please wait ⏳
 
         time.sleep(0.03)
 
+    bot.send_message(
+        message.chat.id,
+        f"✅ انتهى فحص {len(symbols)} عملة — جاري تجهيز النتائج..."
+    )
+
     results = sorted(
         long_results,
         key=lambda x: (x["score"], x["liquidity"]),
@@ -1002,7 +1036,7 @@ Please wait ⏳
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v16 🐋
+🚨 AHAD AI v16.2 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1072,7 +1106,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v16 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v16.2 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

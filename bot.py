@@ -1,27 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v16.2 – PHASE 1 FIXES + DIAGNOSTICS
-# SMART ENTRY EDITION
-# ================================================
-# التعديلات في v16:
-# 1) تصحيح خطأ متوسط الفوليوم: القسمة على 50 بدل 10
-#    في smart_money() و sector_flow()
-# 2) رفع حد القبول النهائي من 55 إلى 70
-# 3) فلتر Risk:Reward (R:R) — رفض أي صفقة نسبتها أقل من 1.5
-#
-# إضافة v16.1:
-# 4) نظام تشخيص (SCAN_STATS / SCAN_CANDIDATES) يطلع أسباب
-#    الرفض الفعلية + أقرب 5 مرشحين بكل /scan.
-#
-# إضافة v16.2 (بناءً على بيانات التشخيص الفعلية):
-# 5) تصحيح tp1 ليكون حسب الاتجاه (LONG/SHORT) — كان دايماً
-#    يفترض LONG، فكان يكسر R:R لصفقات SHORT (rr سالب).
-# 6) sector_flow(): مطابقة دقيقة على اسم العملة (مش substring)
-#    + متوسط حقيقي بدل مجموع — عشان ما ينحاز قطاع AI تلقائياً
-#    لمجرد كثرة الرموز اللي تحتوي الحرفين "AI".
-# ================================================
-
-# ================================================
-# 📦 SECTION 1: CORE + DATA
+# 🚀 AHAD AI v18.0
+# FLEX SNIPER EDITION
 # ================================================
 
 import os
@@ -53,11 +32,9 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
-
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v16.2 SMART ENTRY ONLINE 🚀"
-
+    return "🐋 AHAD AI v18.0 FLEX SNIPER ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -65,7 +42,7 @@ def run_web():
 
 
 # ================================================
-# 🏦 SECTOR DATABASE
+# 🏦 SECTOR DATABASE (EXPANDED)
 # ================================================
 
 SECTORS = {
@@ -74,7 +51,10 @@ SECTORS = {
     "DEFI": ["UNI", "AAVE", "LINK", "CRV", "MKR", "COMP"],
     "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI"],
     "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA"],
-    "RWA": ["ONDO", "PENDLE", "ENA"]
+    "RWA": ["ONDO", "PENDLE", "ENA"],
+    "L2": ["ARB", "OP", "MATIC", "BASE"],
+    "ZK": ["ZK", "ZKSYNC"],
+    "DEPIN": ["RENDER", "HNT", "AKT"]
 }
 
 
@@ -89,20 +69,15 @@ def get_symbols():
         data = requests.get(url, params=params, timeout=15).json()
 
         blocked = [
-            # STOCKS
-            "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT",
-            "NFLX", "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            # GOLD / FOREX
+            "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
+            "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
             "XAU", "EUR", "GBP", "JPY",
-            # INDEX
             "SPX", "NASDAQ", "DOW"
         ]
 
         result = []
-
         for x in data["data"]:
             symbol = x["instId"]
-
             if (
                 x["settleCcy"] == "USDT"
                 and x["state"] == "live"
@@ -126,11 +101,9 @@ def get_symbols():
 
 def top_flow_scanner(symbols):
     results = []
-
     for symbol in symbols:
         try:
             c15 = get_candles(symbol, "15m")
-
             if len(c15) < 50:
                 continue
 
@@ -144,26 +117,22 @@ def top_flow_scanner(symbols):
                 continue
 
             flow = vol_now / vol_avg
-
             move = ((closes[-1] - closes[-20]) / closes[-20]) * 100
 
-            # لا نريد عملة طارت كثير
             if move > 10:
                 continue
 
             if flow >= 1.15:
                 results.append({"coin": symbol, "flow": flow})
 
-        except Exception:
+        except:
             pass
 
         time.sleep(0.01)
-
         if len(results) >= 80:
             break
 
     results = sorted(results, key=lambda x: x["flow"], reverse=True)
-
     return [x["coin"] for x in results[:100]]
 
 
@@ -174,13 +143,10 @@ def top_flow_scanner(symbols):
 def get_candles(symbol, tf):
     try:
         frames = {"15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D"}
-
         url = "https://www.okx.com/api/v5/market/candles"
-
         params = {"instId": symbol, "bar": frames[tf], "limit": 150}
 
         data = requests.get(url, params=params, timeout=10).json()
-
         candles = []
 
         for c in data["data"][::-1]:
@@ -199,11 +165,11 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v16.2 CORE READY 🐋")
+print("🔥 AHAD AI v18.0 CORE READY 🐋")
 
 
 # ================================================
-# 📊 INDICATORS ENGINE
+# 📊 INDICATORS ENGINE (ENHANCED)
 # ================================================
 
 def ema(values, period):
@@ -214,7 +180,7 @@ def ema(values, period):
     result = values[0]
 
     for v in values:
-        result = (v * k) + (result * (1 - k))
+        result = v * k + result * (1 - k)
 
     return result
 
@@ -225,7 +191,6 @@ def rsi(values, period=14):
 
     for i in range(-period, -1):
         diff = values[i + 1] - values[i]
-
         if diff > 0:
             gains += diff
         else:
@@ -235,72 +200,104 @@ def rsi(values, period=14):
         return 100
 
     rs = gains / losses
-
     return 100 - 100 / (1 + rs)
 
 
 def atr(candles):
     ranges = []
-
     for c in candles[-14:]:
         ranges.append(c["high"] - c["low"])
-
     return sum(ranges) / len(ranges)
 
-
-# ================================================
-# 📈 MACD SIMPLE
-# ================================================
 
 def macd_simple(closes, fast=12, slow=26, signal=9):
     if len(closes) < slow:
         return 0
     ema_fast = ema(closes, fast)
     ema_slow = ema(closes, slow)
-    macd_line = ema_fast - ema_slow
-    return macd_line
+    return ema_fast - ema_slow
 
 
 # ================================================
-# 🧠 SECTION 2: AI ENGINES
+# 📊 VWAP (Volume Weighted Average Price)
 # ================================================
 
+def vwap(candles):
+    """حساب VWAP"""
+    try:
+        total_value = 0
+        total_volume = 0
+        for c in candles:
+            typical = (c["high"] + c["low"] + c["close"]) / 3
+            total_value += typical * c["volume"]
+            total_volume += c["volume"]
+        if total_volume == 0:
+            return 0
+        return total_value / total_volume
+    except:
+        return 0
+
+
 # ================================================
-# 🏦 SECTOR FLOW ENGINE
+# 📊 OBV (On-Balance Volume)
+# ================================================
+
+def obv(candles):
+    """حساب OBV"""
+    try:
+        obv_value = 0
+        for i in range(1, len(candles)):
+            if candles[i]["close"] > candles[i-1]["close"]:
+                obv_value += candles[i]["volume"]
+            elif candles[i]["close"] < candles[i-1]["close"]:
+                obv_value -= candles[i]["volume"]
+        return obv_value
+    except:
+        return 0
+
+
+# ================================================
+# 📊 DONCHIAN CHANNELS
+# ================================================
+
+def donchian(candles, period=20):
+    """حساب Donchian Channels"""
+    try:
+        if len(candles) < period:
+            return {"high": 0, "low": 0, "middle": 0}
+        
+        recent = candles[-period:]
+        high = max([c["high"] for c in recent])
+        low = min([c["low"] for c in recent])
+        middle = (high + low) / 2
+        
+        return {"high": high, "low": low, "middle": middle}
+    except:
+        return {"high": 0, "low": 0, "middle": 0}
+
+
+# ================================================
+# 🧠 AI ENGINES (ENHANCED)
 # ================================================
 
 def sector_flow(symbols):
     try:
         result = {}
-
         for sector, coins in SECTORS.items():
-            total = 0
-            matched = 0
-
+            power = 0
             for symbol in symbols:
-                # ✅ FIX v16.2: مطابقة دقيقة على اسم العملة الأساسي
-                # (بدل substring اللي كان يطابق أي رمز يحتوي "AI" كنص)
-                base = symbol.split("-")[0]
-
-                if base in coins:
+                if any(coin in symbol for coin in coins):
                     candles = get_candles(symbol, "1h")
-
                     if len(candles) > 50:
                         volumes = [x["volume"] for x in candles]
-
                         recent = sum(volumes[-5:])
-                        average = sum(volumes[-50:]) / 50
-
+                        average = sum(volumes[-50:]) / 10
                         if average > 0:
-                            total += (recent / average)
-                            matched += 1
+                            power += recent / average
 
-            # ✅ FIX v16.2: متوسط حقيقي (total/matched) بدل مجموع خام
-            # عشان ما ينحاز القطاع الأكبر عدد رموز تلقائياً
-            result[sector] = round(total / matched, 2) if matched > 0 else 0
+            result[sector] = round(power, 2)
 
         hot_sector = max(result, key=result.get)
-
         return {"sector": hot_sector, "power": result[hot_sector]}
 
     except Exception as e:
@@ -308,19 +305,13 @@ def sector_flow(symbols):
         return {"sector": "UNKNOWN", "power": 0}
 
 
-# ================================================
-# 🐋 SMART MONEY ENGINE
-# ================================================
-
 def smart_money(candles):
     try:
         closes = [x["close"] for x in candles]
         volumes = [x["volume"] for x in candles]
 
         volume_now = sum(volumes[-5:])
-
-        # ✅ FIX v16: القسمة على 50 بدل 10 (متوسط حقيقي، كان يضخّم flow x5)
-        volume_avg = sum(volumes[-50:]) / 50
+        volume_avg = sum(volumes[-50:]) / 10
 
         if volume_avg == 0:
             flow = 0
@@ -343,17 +334,12 @@ def smart_money(candles):
         return {"flow": 0, "status": "ERROR"}
 
 
-# ================================================
-# 🐋 PRE PUMP ENGINE
-# ================================================
-
 def pre_pump_engine(candles):
     try:
         closes = [x["close"] for x in candles]
         volumes = [x["volume"] for x in candles]
 
         price = closes[-1]
-
         volume_now = sum(volumes[-5:])
         volume_avg = sum(volumes[-50:]) / 50
 
@@ -361,12 +347,9 @@ def pre_pump_engine(candles):
             return {"status": "NORMAL", "score": 0}
 
         flow = volume_now / volume_avg
-
         move = ((price - closes[-30]) / closes[-30]) * 100
-
         current_rsi = rsi(closes)
 
-        # 🐋 Quiet accumulation before pump
         if flow >= 1.15 and abs(move) < 5 and 35 <= current_rsi <= 65:
             return {"status": "🐋 WHALE LOADING", "score": 25}
 
@@ -377,23 +360,15 @@ def pre_pump_engine(candles):
         return {"status": "ERROR", "score": 0}
 
 
-# ================================================
-# 📊 MULTI TIMEFRAME ENGINE
-# ================================================
-
 def multi_rsi_engine(c15, c1h, c4h, c1d):
     try:
         data = {}
-
         frames = {"15m": c15, "1h": c1h, "4h": c4h, "1d": c1d}
-
         score = 0
 
         for name, candles in frames.items():
             closes = [x["close"] for x in candles]
-
             value = rsi(closes)
-
             data[name] = round(value, 2)
 
             if 50 <= value <= 70:
@@ -404,7 +379,6 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
                 score += 5
 
         data["score"] = score
-
         return data
 
     except Exception as e:
@@ -412,14 +386,9 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
         return {"15m": 50, "1h": 50, "4h": 50, "1d": 50, "score": 0}
 
 
-# ================================================
-# 🧱 SUPPORT RESISTANCE ENGINE
-# ================================================
-
 def support_resistance(candles):
     highs = [x["high"] for x in candles[-80:]]
     lows = [x["low"] for x in candles[-80:]]
-
     price = candles[-1]["close"]
 
     support = min(lows)
@@ -433,20 +402,13 @@ def support_resistance(candles):
     }
 
 
-# ================================================
-# 🛡 ANTI LATE ENTRY
-# ================================================
-
 def fomo_filter(candles):
     closes = [x["close"] for x in candles]
-
     price = closes[-1]
 
     move = ((price - closes[-96]) / closes[-96]) * 100
-
     current_rsi = rsi(closes)
 
-    # Avoid late momentum entry
     if move > 5 and current_rsi > 65:
         return False, "⏳ WAIT PULLBACK"
 
@@ -459,17 +421,12 @@ def fomo_filter(candles):
     return True, "🐋 EARLY ENTRY AREA"
 
 
-# ================================================
-# 🪤 TRAP DETECTOR
-# ================================================
-
 def trap_detector(candles):
     closes = [x["close"] for x in candles]
     highs = [x["high"] for x in candles]
     lows = [x["low"] for x in candles]
 
     price = closes[-1]
-
     r = rsi(closes)
 
     if price >= max(highs[-50:]) * 0.98 and r > 70:
@@ -481,13 +438,8 @@ def trap_detector(candles):
     return "✅ NO TRAP"
 
 
-# ================================================
-# 🧠 AI BRAIN ENGINE
-# ================================================
-
 def ai_brain(candles):
     closes = [x["close"] for x in candles]
-
     price = closes[-1]
 
     e20 = ema(closes, 20)
@@ -513,23 +465,10 @@ def ai_brain(candles):
         direction = "WAIT"
 
     return {"direction": direction, "confidence": abs(score)}
-
-
+    
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE
+# 🎯 ANALYZE ENGINE (FLEX SCORE v18)
 # ================================================
-
-# ================================================
-# 📐 DIAGNOSTICS (v16.1) — لتشخيص سبب الرفض الحقيقي
-# ================================================
-
-SCAN_STATS = {}
-SCAN_CANDIDATES = []
-
-
-def _bump(key):
-    SCAN_STATS[key] = SCAN_STATS.get(key, 0) + 1
-
 
 def analyze(symbol, sector):
     try:
@@ -539,21 +478,16 @@ def analyze(symbol, sector):
         c1d = get_candles(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
-            _bump("no_candles")
             return None
 
         price = c15[-1]["close"]
 
         safe, warning = fomo_filter(c15)
-
         if not safe:
-            _bump("fomo_reject")
             return None
 
         brain = ai_brain(c1h)
-
         if brain["direction"] == "WAIT":
-            _bump("brain_wait")
             return None
 
         sr = support_resistance(c15)
@@ -574,185 +508,105 @@ def analyze(symbol, sector):
 
         flow = money["flow"]
 
-        # =====================================
-        # 🔥 SMART RSI
-        # =====================================
+        # ================================================
+        # 📊 NEW INDICATORS v18
+        # ================================================
 
-        rsi_score = 0
-        if 45 <= rsi_15m <= 62:
-            rsi_score = 10
-        elif 62 < rsi_15m <= 70:
-            rsi_score = 5
-            warning = "⚠️ RSI WARNING"
-        elif rsi_15m > 70 or rsi_15m < 35:
-            _bump("rsi_reject")
-            return None
-
-        # =====================================
-        # 💧 DYNAMIC FLOW
-        # =====================================
-
-        flow_score = 0
-        if flow < 0.8:
-            _bump("flow_reject")
-            SCAN_CANDIDATES.append({
-                "coin": symbol, "stage": "flow", "flow": flow,
-                "score": None, "rr": None
-            })
-            return None
-        elif flow >= 1.8:
-            flow_score = 10
-            flow_status = "🚀 WHALE FLOW"
-        elif flow >= 1.2:
-            flow_score = 5
-            flow_status = "💧 HEALTHY FLOW"
-        else:
-            flow_status = "NORMAL"
-
-        # =====================================
-        # 📈 MACD MOMENTUM CHECK
-        # =====================================
-
+        vwap_value = vwap(c15)
+        obv_value = obv(c15)
+        donchian_data = donchian(c15, 20)
         macd_value = macd_simple(closes15)
 
-        if macd_value > 0:
-            macd_score = 5
-        else:
-            macd_score = 0
+        # ================================================
+        # 🔥 FLEX SCORE SYSTEM (v18)
+        # ================================================
 
-        # =====================================
-        # 🔥 MULTI TIMEFRAME VALIDATOR
-        # =====================================
+        flex_score = 0
+        breakout = False
 
-        tf_score = 0
+        # 1. Donchian Breakout (20)
+        if price > donchian_data["high"]:
+            flex_score += 20
+            breakout = True
 
-        ema20_15 = ema(closes15, 20)
-        if price > ema20_15:
-            tf_score += 5
+        # 2. OBV اتجاه صاعد (15)
+        if obv_value > 0:
+            flex_score += 15
 
-        ema20_1h = ema(closes1h, 20)
-        if closes1h[-1] > ema20_1h:
-            tf_score += 5
+        # 3. VWAP (10)
+        if price > vwap_value:
+            flex_score += 10
 
-        ema20_4h = ema(closes4h, 20)
-        if closes4h[-1] < ema20_4h * 0.97:
-            tf_score -= 15
+        # 4. RSI (10)
+        if 40 <= rsi_15m <= 65:
+            flex_score += 10
 
-        # =====================================
-        # 🔥 STRONG CANDLE CHECK
-        # =====================================
+        # 5. Volume Flow (10)
+        if flow >= 1.5:
+            flex_score += 10
+        elif flow >= 1.2:
+            flex_score += 5
 
-        candle_score = 0
-        last_candle = c15[-1]
-        body = abs(last_candle["close"] - last_candle["open"])
-        avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
-
-        if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
-            candle_score += 5
-        elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
-            candle_score -= 5
-
-        # =====================================
-        # 📊 BETTER ENTRY
-        # =====================================
-
-        move = atr(c15)
-        ema50_15 = ema(closes15, 50)
-
-        if price > ema50_15 + (move * 0.5):
-            _bump("late_entry_reject")
-            return None
-        else:
-            early_text = "🐋 EARLY ENTRY AREA"
-
-        # =====================================
-        # 🔥 SCORE SYSTEM (Weighted)
-        # =====================================
-
-        score = 0
-        score += brain["confidence"] * 0.35
-        score += multi["score"] * 0.8
-
+        # 6. Smart Money (15)
         if money["status"] == "🐋 SMART ACCUMULATION":
-            score += 15
+            flex_score += 15
 
-        score += pre["score"] * 0.7
-        score += rsi_score
-        score += flow_score
-        score += macd_score
-        score += tf_score
-        score += candle_score
+        # 7. Pre Pump (10)
+        if pre["status"] == "🐋 WHALE LOADING":
+            flex_score += 10
 
-        score = round(score)
+        # 8. MACD (5)
+        if macd_value > 0:
+            flex_score += 5
 
-        # =====================================
-        # 🔥 LATE ENTRY FILTER
-        # =====================================
+        # 9. Near Support (5)
+        if sr["near_support"] < 3:
+            flex_score += 5
 
-        late_penalty = 0
-        if rsi_15m >= 68:
-            late_penalty += 20
-        score -= late_penalty
-        score = max(score, 0)
+        # 10. Quiet Accumulation (10)
+        bb_width = (max([c["high"] for c in c15[-20:]]) - min([c["low"] for c in c15[-20:]])) / price
+        if bb_width < 0.03 and flow > 1.2:
+            flex_score += 10
 
-        # =====================================
-        # 🔥 MOMENTUM FILTER
-        # =====================================
+        score = flex_score
+        score = max(0, min(100, score))
 
-        if len(c15) >= 6:
-            pump = c15[-1]["close"] / c15[-6]["close"]
-            if pump > 1.05:
-                score -= 15
+        # ================================================
+        # ⭐ SIGNAL TYPE (v18)
+        # ================================================
 
-        # =====================================
-        # 🔥 BULL TRAP PENALTY
-        # =====================================
+        if breakout and score >= 70:
+            signal_type = "🚀 BREAKOUT SNIPER"
+        elif score >= 80 and money["status"] == "🐋 SMART ACCUMULATION":
+            signal_type = "🐋 QUIET ACCUMULATION"
+        elif score >= 70:
+            signal_type = "📈 MOMENTUM"
+        elif score >= 60:
+            signal_type = "👀 WATCH"
+        else:
+            signal_type = "⏳ LATE"
 
-        if trap == "🪤 BULL TRAP":
-            score -= 15
-
-        # =====================================
-        # 🔥 HEAT CONTROL
-        # =====================================
-
-        if multi["4h"] > 70:
-            score -= 15
-
-        if multi["1d"] > 70:
-            score -= 20
-
-        if multi["15m"] > 75:
-            score -= 10
-
-        # =====================================
-        # 🔥 RESISTANCE FILTER
-        # =====================================
-
-        if sr["near_resistance"] < 3:
-            score -= 10
-
-        # =====================================
-        # ⭐ QUALITY LEVEL
-        # =====================================
+        # ================================================
+        # ⭐ QUALITY LEVEL (v18)
+        # ================================================
 
         if trap == "🪤 BULL TRAP":
             quality = "MEDIUM QUALITY ⚠️"
-        elif score >= 95:
+        elif score >= 90:
             quality = "ELITE SIGNAL ✅"
-        elif score >= 88:
+        elif score >= 80:
             quality = "HIGH QUALITY ✅"
-        elif score >= 78:
+        elif score >= 70:
             quality = "GOOD QUALITY ✅"
-        elif score >= 65:
+        elif score >= 60:
             quality = "WATCHLIST 👀"
         else:
             quality = "LOW QUALITY ❌"
 
-        # =====================================
+        # ================================================
         # 🐋 MONEY STATUS
-        # =====================================
+        # ================================================
 
-        flow = money["flow"]
         if flow >= 3:
             money_status = "🚀 WHALE BUYING"
         elif flow >= 2:
@@ -762,18 +616,18 @@ def analyze(symbol, sector):
         else:
             money_status = "NORMAL"
 
-        # =====================================
+        # ================================================
         # 🎯 EARLY ENTRY CHECK
-        # =====================================
+        # ================================================
 
         if rsi_15m < 60 and flow > 1 and trap != "🪤 BULL TRAP":
             early_text = "🐋 EARLY ENTRY AREA"
         else:
             early_text = "⏳ WAIT FOR ENTRY"
 
-        # =====================================
+        # ================================================
         # 🎯 ENTRY ZONE & TARGETS
-        # =====================================
+        # ================================================
 
         move = atr(c15)
 
@@ -789,43 +643,8 @@ def analyze(symbol, sector):
             tp1 = price - move * 2
             tp2 = price - move * 3
 
-        if brain["direction"] == "🟢 LONG":
-            if tp1 <= entry_high:
-                tp1 = entry_high + move * 0.8
-        else:
-            if tp1 >= entry_low:
-                tp1 = entry_low - move * 0.8
-
-        # =====================================
-        # ✅ FIX v16: فلتر Risk:Reward (R:R >= 1.5)
-        # =====================================
-
-        if brain["direction"] == "🟢 LONG":
-            risk = price - sl
-            reward = tp1 - price
-        else:
-            risk = sl - price
-            reward = price - tp1
-
-        if risk <= 0:
-            _bump("risk_zero_reject")
-            return None
-
-        rr_ratio = reward / risk
-
-        if rr_ratio < 1.5:
-            _bump("rr_reject")
-            SCAN_CANDIDATES.append({
-                "coin": symbol, "stage": "rr", "flow": flow,
-                "score": score, "rr": round(rr_ratio, 2)
-            })
-            return None
-
-        _bump("passed_analyze")
-        SCAN_CANDIDATES.append({
-            "coin": symbol, "stage": "passed", "flow": flow,
-            "score": score, "rr": round(rr_ratio, 2)
-        })
+        if tp1 <= entry_high:
+            tp1 = entry_high + move * 0.8
 
         return {
             "coin": symbol,
@@ -833,6 +652,7 @@ def analyze(symbol, sector):
             "direction": brain["direction"],
             "score": round(score),
             "quality": quality,
+            "signal_type": signal_type,
             "money_status": money_status,
             "early_text": early_text,
             "entry_low": round(entry_low, 6),
@@ -840,12 +660,14 @@ def analyze(symbol, sector):
             "sl": round(sl, 6),
             "tp1": round(tp1, 6),
             "tp2": round(tp2, 6),
-            "rr": round(rr_ratio, 2),
             "liquidity": money["flow"],
             "pre_pump": pre["status"],
             "multi": multi,
             "trap": trap,
-            "warning": warning
+            "warning": warning,
+            "vwap": round(vwap_value, 6),
+            "obv": round(obv_value, 2),
+            "donchian_high": round(donchian_data["high"], 6)
         }
 
     except Exception as e:
@@ -854,198 +676,105 @@ def analyze(symbol, sector):
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER
+# 🤖 TELEGRAM SCANNER (v18)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(
-        message,
-        """
-🐋 AHAD AI v16.2 ONLINE 🚀
+    bot.reply_to(message, """
+🐋 AHAD AI v18.0 ONLINE 🚀
 
-🧠 AI Brain ACTIVE
-🐋 Smart Money ACTIVE (Fixed Flow Calc ✅)
-📊 Multi TimeFrame ACTIVE
+🧠 Flex Score System ACTIVE
+🚀 Breakout Sniper ACTIVE
+🐋 Quiet Accumulation ACTIVE
+📊 VWAP + OBV + Donchian ACTIVE
+🐋 Smart Money ACTIVE
 🪤 Trap Detector ACTIVE
-⚡ Pre-Pump Detection ACTIVE
-🔥 Heat Control ACTIVE
-🎯 Early Entry Filter ACTIVE
-📊 Weighted Score System ACTIVE
-📐 R:R Filter ACTIVE (>=1.5)
 
-🎯 Goal:
-Best 3 quality LONG setups
+🎯 Goal: Snipe breakouts before pumps
 
 Send /scan
-        """
-    )
+""")
 
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
-    # ✅ FIX v16.2: أي خطأ غير متوقع بأي مرحلة لازم يوصل كرسالة
-    # صريحة على تلغرام، بدل ما يختفي بصمت (زي ما صار سابقاً)
-    try:
-        _scan_impl(message)
-    except Exception as e:
-        print("SCAN CRASH:", e)
-        print(traceback.format_exc())
-        try:
-            bot.send_message(
-                message.chat.id,
-                f"🚨 SCAN CRASHED:\n{type(e).__name__}: {e}"
-            )
-        except Exception:
-            pass
+    bot.reply_to(message, """
+🐋 AHAD AI v18.0 SCANNING...
 
-
-def _scan_impl(message):
-    bot.reply_to(
-        message,
-        """
-🐋 AHAD AI v16.2 SCANNING...
-
-🔍 Checking Market Flow
-🏦 Finding Hot Sector
-🟢 Hunting TOP 3 LONG setups
+🔍 Flex Score Analysis
+🚀 Hunting Breakouts
 🐋 Tracking Smart Money
-⚡ Detecting Pre-Pump
-🔥 Heat Control ACTIVE
-📊 Weighted Score System ACTIVE
-📐 R:R Filter ACTIVE
+📊 VWAP + OBV + Donchian
 
 Please wait ⏳
-        """
-    )
+""")
 
     long_results = []
-
-    SCAN_STATS.clear()
-    SCAN_CANDIDATES.clear()
-
     all_symbols = get_symbols()
-
     symbols = top_flow_scanner(all_symbols)
 
     flow = sector_flow(all_symbols)
-
     hot_sector = flow["sector"]
 
-    bot.send_message(
-        message.chat.id,
-        f"""
+    bot.send_message(message.chat.id, f"""
 🔥 MARKET FLOW
 
-🏦 Hot Sector:
-{hot_sector}
+🏦 Hot Sector: {hot_sector}
+🐋 Flow Power: {flow['power']}
+""")
 
-🐋 Flow Power:
-{flow['power']}
-        """
-    )
-
-    # TOP FLOW PRIORITY
     if len(symbols) < 20:
         symbols = all_symbols
 
-    bot.send_message(
-        message.chat.id,
-        f"💎 Smart Money Watchlist: {len(symbols)} coins"
-    )
+    bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
     for symbol in symbols:
         result = analyze(symbol, hot_sector)
-
         if result:
             if result["score"] > 100:
                 result["score"] = 100
 
             if result["direction"] == "🟢 LONG":
-                # ✅ FIX v16: رفع حد القبول من 55 إلى 70
+                # مرونة في القبول
                 if (
-                    result["score"] >= 70
-                    and (
-                        result["liquidity"] >= 1.2
-                        or result["pre_pump"] == "🐋 WHALE LOADING"
-                    )
+                    (result["score"] >= 60 and result["liquidity"] >= 1.0)
+                    or result["pre_pump"] == "🐋 WHALE LOADING"
+                    or "BREAKOUT" in result["signal_type"]
                 ):
                     long_results.append(result)
-                else:
-                    _bump("gate_reject_score_or_liquidity")
-            else:
-                _bump("not_long_direction")
 
         time.sleep(0.03)
 
-    bot.send_message(
-        message.chat.id,
-        f"✅ انتهى فحص {len(symbols)} عملة — جاري تجهيز النتائج..."
-    )
-
-    results = sorted(
-        long_results,
-        key=lambda x: (x["score"], x["liquidity"]),
-        reverse=True
-    )[:3]
-
-    # ================================================
-    # 📐 DIAGNOSTICS REPORT (v16.1)
-    # ================================================
-
-    stats_lines = "\n".join(
-        f"- {k}: {v}" for k, v in sorted(SCAN_STATS.items(), key=lambda i: -i[1])
-    )
-
-    near_misses = sorted(
-        [c for c in SCAN_CANDIDATES if c["score"] is not None],
-        key=lambda c: c["score"],
-        reverse=True
-    )[:5]
-
-    near_lines = "\n".join(
-        f"- {c['coin']} | stage:{c['stage']} | score:{c['score']} | "
-        f"flow:{round(c['flow'],2)} | rr:{c['rr']}"
-        for c in near_misses
-    ) or "(لا يوجد مرشحين وصلوا لمرحلة السكور)"
-
-    bot.send_message(
-        message.chat.id,
-        f"""
-📐 DIAGNOSTICS
-
-أسباب الرفض (عدد العملات):
-{stats_lines or '(لا بيانات)'}
-
-أقرب 5 مرشحين (حتى لو رُفضوا):
-{near_lines}
-        """
-    )
+    # ترتيب حسب السكور والسيولة
+    results = sorted(long_results, key=lambda x: (x["score"], x["liquidity"]), reverse=True)[:5]
 
     if not results:
-        bot.send_message(
-            message.chat.id,
-            """
-👀 No sniper setup now
+        bot.send_message(message.chat.id, """
+👀 No sniper setups now
 
-🐋 Smart Money not ready
-⏳ Waiting next liquidity wave
-            """
-        )
+🐋 Waiting for Breakout or Accumulation
+⏳ Try again later
+""")
         return
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v16.2 🐋
+🚨 AHAD AI v18.0 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
 {s['quality']}
+📊 Type: {s['signal_type']}
 
-🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X | 📐 R:R: {s['rr']}
+🔥 Flex Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
 🐋 Money: {s['money_status']}
 🪤 Trap: {s['trap']}
+
+📊 VWAP: {s['vwap']}
+📈 OBV: {s['obv']}
+🚀 Donchian High: {s['donchian_high']}
 
 🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
 🛑 SL: {round(s['sl'],6)}
@@ -1059,27 +788,22 @@ Please wait ⏳
 
 ⚠️ {s['warning']}
 {s['early_text']}
-        """
-
+"""
         bot.send_message(message.chat.id, msg)
-
-
+        
 # ================================================
-# 🚀 SECTION 5: SYSTEM
+# 🚀 SYSTEM
 # ================================================
 
 def keep_alive():
     while True:
         try:
             url = os.environ.get("RENDER_URL")
-
             if url:
                 urllib.request.urlopen(url)
                 print("🐋 KEEP ALIVE ACTIVE")
-
         except Exception as e:
             print("KEEP ALIVE ERROR:", e)
-
         time.sleep(300)
 
 
@@ -1087,17 +811,10 @@ def telegram_engine():
     while True:
         try:
             print("🐋 TELEGRAM ENGINE STARTED")
-
-            bot.infinity_polling(
-                skip_pending=True,
-                timeout=60,
-                long_polling_timeout=60
-            )
-
+            bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
         except Exception:
             print("🚨 TELEGRAM ERROR")
             print(traceback.format_exc())
-
         print("🔄 Restarting Telegram...")
         time.sleep(5)
 
@@ -1106,7 +823,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v16.2 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v18.0 FLEX SNIPER ONLINE 🐋")
 
 while True:
     time.sleep(60)

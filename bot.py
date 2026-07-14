@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.0
+# 🚀 AHAD AI v19.1
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.0 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.1 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.0 CORE READY 🐋")
+print("🔥 AHAD AI v19.1 CORE READY 🐋")
 
 
 # ================================================
@@ -758,7 +758,7 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.0 ONLINE 🚀
+🐋 AHAD AI v19.1 ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Smart Money ACTIVE
@@ -783,7 +783,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.0 SCANNING...
+🐋 AHAD AI v19.1 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
@@ -819,14 +819,51 @@ Please wait ⏳
     bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
     for symbol in symbols:
+
         result = analyze(symbol, hot_sector, debug=debug)
+
         if result:
+
             if result["score"] > 100:
                 result["score"] = 100
 
+            # ==========================================
+            # LONG CHECK
+            # ==========================================
+
             if result["direction"] == "🟢 LONG":
-                if result["score"] >= 55 and (result["liquidity"] >= 1.2 or result["pre_pump"] == "🐋 WHALE LOADING"):
+
+                if (
+                    result["score"] >= 55
+                    and (
+                        result["liquidity"] >= 1.2
+                        or result["pre_pump"] == "🐋 WHALE LOADING"
+                    )
+                ):
+
                     long_results.append(result)
+
+                else:
+
+                    debug["final_gate"] = debug.get("final_gate", 0) + 1
+
+                    print(
+                        f"GATE REJECT | "
+                        f"{result['coin']} | "
+                        f"Score={result['score']} | "
+                        f"Flow={result['liquidity']} | "
+                        f"PrePump={result['pre_pump']}"
+                    )
+
+            else:
+
+                debug["not_long"] = debug.get("not_long", 0) + 1
+
+                print(
+                    f"SHORT SIGNAL | "
+                    f"{result['coin']} | "
+                    f"Score={result['score']}"
+                )
 
         time.sleep(0.03)
 
@@ -849,6 +886,8 @@ Heat: {debug.get('heat', 0)}
 Resistance: {debug.get('resistance', 0)}
 Score: {debug.get('score', 0)}
 Passed: {debug.get('passed', 0)}
+Final Gate: {debug.get('final_gate', 0)}
+Not Long: {debug.get('not_long', 0)}
 """
     bot.send_message(message.chat.id, debug_msg)
 
@@ -869,7 +908,7 @@ Passed: {debug.get('passed', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.0 🐋
+🚨 AHAD AI v19.1 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -935,7 +974,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.0 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.1 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

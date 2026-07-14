@@ -452,7 +452,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (WITH DEBUG)
+# 🎯 SECTION 3: ANALYZE ENGINE (WITH FULL DEBUG)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -641,18 +641,41 @@ def analyze(symbol, sector, debug=None):
             if pump > 1.05:
                 score -= 15
 
-        if trap == "🪤 BULL TRAP":
-            score -= 15
+        # ================================================
+        # 🔥 BULL TRAP CHECK
+        # ================================================
 
-        if multi["4h"] > 70:
-            score -= 15
-        if multi["1d"] > 70:
-            score -= 20
-        if multi["15m"] > 75:
-            score -= 10
+        if trap == "🪤 BULL TRAP":
+            if debug is not None:
+                debug["trap"] = debug.get("trap", 0) + 1
+            return None
+
+        # ================================================
+        # 🔥 HEAT CONTROL
+        # ================================================
+
+        if multi["4h"] > 70 or multi["1d"] > 70 or multi["15m"] > 75:
+            if debug is not None:
+                debug["heat"] = debug.get("heat", 0) + 1
+            return None
+
+        # ================================================
+        # 🔥 RESISTANCE FILTER
+        # ================================================
 
         if sr["near_resistance"] < 3:
-            score -= 10
+            if debug is not None:
+                debug["resistance"] = debug.get("resistance", 0) + 1
+            return None
+
+        # ================================================
+        # 🔥 SCORE FILTER (Minimum Score Check)
+        # ================================================
+
+        if score < 55:
+            if debug is not None:
+                debug["score"] = debug.get("score", 0) + 1
+            return None
 
         # ================================================
         # ⭐ QUALITY LEVEL
@@ -740,7 +763,7 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (WITH DEBUG)
+# 🤖 SECTION 4: TELEGRAM SCANNER (WITH FULL DEBUG)
 # ================================================
 
 @bot.message_handler(commands=["start"])
@@ -756,7 +779,7 @@ def start(message):
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
 📊 Weighted Score System ACTIVE
-🐞 Debug Funnel ACTIVE
+🐞 Full Debug Funnel ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -765,7 +788,7 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (WITH DEBUG REPORT)
+# 🔎 SMART SCANNER (WITH FULL DEBUG REPORT)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
@@ -780,7 +803,7 @@ def scan(message):
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
-🐞 Debug Funnel ACTIVE
+🐞 Full Debug Funnel ACTIVE
 
 Please wait ⏳
 """)
@@ -819,11 +842,11 @@ Please wait ⏳
         time.sleep(0.03)
 
     # ================================================
-    # 🐞 DEBUG REPORT
+    # 🐞 FULL DEBUG REPORT
     # ================================================
 
     debug_msg = f"""
-🐞 DEBUG REPORT
+🐞 FULL DEBUG REPORT
 
 Checked: {debug.get('checked', 0)}
 Candles: {debug.get('candles', 0)}
@@ -832,6 +855,10 @@ Brain: {debug.get('brain', 0)}
 RSI: {debug.get('rsi', 0)}
 Flow: {debug.get('flow', 0)}
 Late Entry: {debug.get('late_entry', 0)}
+Trap: {debug.get('trap', 0)}
+Heat: {debug.get('heat', 0)}
+Resistance: {debug.get('resistance', 0)}
+Score: {debug.get('score', 0)}
 Passed: {debug.get('passed', 0)}
 """
     bot.send_message(message.chat.id, debug_msg)

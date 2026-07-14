@@ -777,8 +777,12 @@ def analyze(symbol, sector):
             tp1 = price - move * 2
             tp2 = price - move * 3
 
-        if tp1 <= entry_high:
-            tp1 = entry_high + move * 0.8
+        if brain["direction"] == "🟢 LONG":
+            if tp1 <= entry_high:
+                tp1 = entry_high + move * 0.8
+        else:
+            if tp1 >= entry_low:
+                tp1 = entry_low - move * 0.8
 
         # =====================================
         # ✅ FIX v16: فلتر Risk:Reward (R:R >= 1.5)

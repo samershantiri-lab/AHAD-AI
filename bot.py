@@ -217,7 +217,9 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
     ema_fast = ema(closes, fast)
     ema_slow = ema(closes, slow)
     return ema_fast - ema_slow
-    # ================================================
+
+
+# ================================================
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
@@ -448,28 +450,39 @@ def ai_brain(candles):
         direction = "WAIT"
 
     return {"direction": direction, "confidence": abs(score)}
-    # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE
+    
+# ================================================
+# 🎯 SECTION 3: ANALYZE ENGINE (WITH DEBUG)
 # ================================================
 
-def analyze(symbol, sector):
+def analyze(symbol, sector, debug=None):
     try:
+
+        if debug is not None:
+            debug["checked"] = debug.get("checked", 0) + 1
+
         c15 = get_candles(symbol, "15m")
         c1h = get_candles(symbol, "1h")
         c4h = get_candles(symbol, "4h")
         c1d = get_candles(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
+            if debug is not None:
+                debug["candles"] = debug.get("candles", 0) + 1
             return None
 
         price = c15[-1]["close"]
 
         safe, warning = fomo_filter(c15)
         if not safe:
+            if debug is not None:
+                debug["fomo"] = debug.get("fomo", 0) + 1
             return None
 
         brain = ai_brain(c1h)
         if brain["direction"] == "WAIT":
+            if debug is not None:
+                debug["brain"] = debug.get("brain", 0) + 1
             return None
 
         sr = support_resistance(c15)
@@ -512,6 +525,8 @@ def analyze(symbol, sector):
             rsi_score = 5
             warning = "⚠️ RSI WARNING"
         elif rsi_15m > 70 or rsi_15m < 35:
+            if debug is not None:
+                debug["rsi"] = debug.get("rsi", 0) + 1
             return None
 
         # ================================================
@@ -520,6 +535,8 @@ def analyze(symbol, sector):
 
         flow_score = 0
         if flow < 0.8:
+            if debug is not None:
+                debug["flow"] = debug.get("flow", 0) + 1
             return None
         elif flow >= 1.8:
             flow_score = 10
@@ -582,6 +599,8 @@ def analyze(symbol, sector):
         ema50_15 = ema(closes15, 50)
 
         if price > ema50_15 + (move * 0.5):
+            if debug is not None:
+                debug["late_entry"] = debug.get("late_entry", 0) + 1
             early_text = "⏳ WAIT RETEST"
             return None
         else:
@@ -693,6 +712,9 @@ def analyze(symbol, sector):
         if tp1 <= entry_high:
             tp1 = entry_high + move * 0.8
 
+        if debug is not None:
+            debug["passed"] = debug.get("passed", 0) + 1
+
         return {
             "coin": symbol,
             "sector": sector,
@@ -716,8 +738,9 @@ def analyze(symbol, sector):
     except Exception as e:
         print("ANALYZE ERROR:", e)
         return None
-        # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER
+        
+# ================================================
+# 🤖 SECTION 4: TELEGRAM SCANNER (WITH DEBUG)
 # ================================================
 
 @bot.message_handler(commands=["start"])
@@ -733,6 +756,7 @@ def start(message):
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
 📊 Weighted Score System ACTIVE
+🐞 Debug Funnel ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -741,7 +765,7 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER
+# 🔎 SMART SCANNER (WITH DEBUG REPORT)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
@@ -756,9 +780,12 @@ def scan(message):
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
+🐞 Debug Funnel ACTIVE
 
 Please wait ⏳
 """)
+
+    debug = {}
 
     long_results = []
     all_symbols = get_symbols()
@@ -780,7 +807,7 @@ Please wait ⏳
     bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
     for symbol in symbols:
-        result = analyze(symbol, hot_sector)
+        result = analyze(symbol, hot_sector, debug=debug)
         if result:
             if result["score"] > 100:
                 result["score"] = 100
@@ -790,6 +817,28 @@ Please wait ⏳
                     long_results.append(result)
 
         time.sleep(0.03)
+
+    # ================================================
+    # 🐞 DEBUG REPORT
+    # ================================================
+
+    debug_msg = f"""
+🐞 DEBUG REPORT
+
+Checked: {debug.get('checked', 0)}
+Candles: {debug.get('candles', 0)}
+FOMO: {debug.get('fomo', 0)}
+Brain: {debug.get('brain', 0)}
+RSI: {debug.get('rsi', 0)}
+Flow: {debug.get('flow', 0)}
+Late Entry: {debug.get('late_entry', 0)}
+Passed: {debug.get('passed', 0)}
+"""
+    bot.send_message(message.chat.id, debug_msg)
+
+    # ================================================
+    # 📊 RESULTS
+    # ================================================
 
     results = sorted(long_results, key=lambda x: (x["score"], x["liquidity"]), reverse=True)[:3]
 
@@ -829,7 +878,8 @@ Please wait ⏳
 {s['early_text']}
 """
         bot.send_message(message.chat.id, msg)
-        # ================================================
+        
+# ================================================
 # 🚀 SECTION 5: SYSTEM
 # ================================================
 

@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v18.0
-# FLEX SNIPER EDITION
+# 🚀 AHAD AI v18.2
+# MICRO MOMENTUM EDITION
 # ================================================
 
 import os
@@ -34,7 +34,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v18.0 FLEX SNIPER ONLINE 🚀"
+    return "🐋 AHAD AI v18.2 MICRO MOMENTUM ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -42,7 +42,7 @@ def run_web():
 
 
 # ================================================
-# 🏦 SECTOR DATABASE (EXPANDED)
+# 🏦 SECTOR DATABASE
 # ================================================
 
 SECTORS = {
@@ -165,11 +165,11 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v18.0 CORE READY 🐋")
+print("🔥 AHAD AI v18.2 CORE READY 🐋")
 
 
 # ================================================
-# 📊 INDICATORS ENGINE (ENHANCED)
+# 📊 INDICATORS ENGINE
 # ================================================
 
 def ema(values, period):
@@ -219,11 +219,10 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 
 
 # ================================================
-# 📊 VWAP (Volume Weighted Average Price)
+# 📊 VWAP
 # ================================================
 
 def vwap(candles):
-    """حساب VWAP"""
     try:
         total_value = 0
         total_volume = 0
@@ -239,11 +238,10 @@ def vwap(candles):
 
 
 # ================================================
-# 📊 OBV (On-Balance Volume)
+# 📊 OBV
 # ================================================
 
 def obv(candles):
-    """حساب OBV"""
     try:
         obv_value = 0
         for i in range(1, len(candles)):
@@ -261,7 +259,6 @@ def obv(candles):
 # ================================================
 
 def donchian(candles, period=20):
-    """حساب Donchian Channels"""
     try:
         if len(candles) < period:
             return {"high": 0, "low": 0, "middle": 0}
@@ -277,7 +274,7 @@ def donchian(candles, period=20):
 
 
 # ================================================
-# 🧠 AI ENGINES (ENHANCED)
+# 🧠 AI ENGINES
 # ================================================
 
 def sector_flow(symbols):
@@ -467,7 +464,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 ANALYZE ENGINE (FLEX SCORE v18)
+# 🎯 ANALYZE ENGINE (FLEX SCORE + MICRO MOMENTUM)
 # ================================================
 
 def analyze(symbol, sector):
@@ -509,7 +506,54 @@ def analyze(symbol, sector):
         flow = money["flow"]
 
         # ================================================
-        # 📊 NEW INDICATORS v18
+        # 📊 MICRO MOMENTUM (آخر ساعة)
+        # ================================================
+
+        if len(c1h) >= 2:
+            micro_move = ((c1h[-1]["close"] - c1h[-2]["close"]) / c1h[-2]["close"]) * 100
+        else:
+            micro_move = 0
+
+        if micro_move > 3:
+            micro_score = 15
+            micro_label = "🚀 MICRO MOMENTUM"
+        elif micro_move > 1:
+            micro_score = 10
+            micro_label = "📈 MICRO MOMENTUM"
+        elif micro_move > 0:
+            micro_score = 5
+            micro_label = "📊 MICRO MOMENTUM"
+        else:
+            micro_score = 0
+            micro_label = "⏳ NO MICRO MOMENTUM"
+
+        # ================================================
+        # 📊 24H CHANGE & VOLUME (مرن)
+        # ================================================
+
+        ticker = requests.get(
+            f"https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={symbol}"
+        ).json()
+
+        change_24h = float(ticker["priceChangePercent"])
+        volume_24h = float(ticker["quoteVolume"])
+
+        # تصنيف الحجم (بدل الفلتر الصارم)
+        if volume_24h > 10_000_000:
+            volume_score = 15
+            volume_label = "🐋 WHALE"
+        elif volume_24h > 1_000_000:
+            volume_score = 10
+            volume_label = "🐬 DOLPHIN"
+        elif volume_24h > 500_000:
+            volume_score = 5
+            volume_label = "🐟 FISH"
+        else:
+            volume_score = 3
+            volume_label = "🦐 SHRIMP"
+
+        # ================================================
+        # 📊 NEW INDICATORS v18.2
         # ================================================
 
         vwap_value = vwap(c15)
@@ -518,7 +562,7 @@ def analyze(symbol, sector):
         macd_value = macd_simple(closes15)
 
         # ================================================
-        # 🔥 FLEX SCORE SYSTEM (v18)
+        # 🔥 FLEX SCORE SYSTEM (v18.2)
         # ================================================
 
         flex_score = 0
@@ -568,15 +612,23 @@ def analyze(symbol, sector):
         if bb_width < 0.03 and flow > 1.2:
             flex_score += 10
 
+        # 11. Micro Momentum (15)
+        flex_score += micro_score
+
+        # 12. Volume Score (15)
+        flex_score += volume_score
+
         score = flex_score
         score = max(0, min(100, score))
 
         # ================================================
-        # ⭐ SIGNAL TYPE (v18)
+        # ⭐ SIGNAL TYPE (v18.2)
         # ================================================
 
         if breakout and score >= 70:
             signal_type = "🚀 BREAKOUT SNIPER"
+        elif micro_score >= 15 and score >= 60:
+            signal_type = "⚡ MICRO MOMENTUM"
         elif score >= 80 and money["status"] == "🐋 SMART ACCUMULATION":
             signal_type = "🐋 QUIET ACCUMULATION"
         elif score >= 70:
@@ -587,7 +639,7 @@ def analyze(symbol, sector):
             signal_type = "⏳ LATE"
 
         # ================================================
-        # ⭐ QUALITY LEVEL (v18)
+        # ⭐ QUALITY LEVEL (v18.2)
         # ================================================
 
         if trap == "🪤 BULL TRAP":
@@ -667,7 +719,11 @@ def analyze(symbol, sector):
             "warning": warning,
             "vwap": round(vwap_value, 6),
             "obv": round(obv_value, 2),
-            "donchian_high": round(donchian_data["high"], 6)
+            "donchian_high": round(donchian_data["high"], 6),
+            "micro_score": micro_score,
+            "micro_label": micro_label,
+            "volume_label": volume_label,
+            "change_24h": round(change_24h, 2)
         }
 
     except Exception as e:
@@ -676,22 +732,23 @@ def analyze(symbol, sector):
 
 
 # ================================================
-# 🤖 TELEGRAM SCANNER (v18)
+# 🤖 TELEGRAM SCANNER (v18.2)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v18.0 ONLINE 🚀
+🐋 AHAD AI v18.2 ONLINE 🚀
 
 🧠 Flex Score System ACTIVE
+⚡ Micro Momentum ACTIVE
 🚀 Breakout Sniper ACTIVE
 🐋 Quiet Accumulation ACTIVE
 📊 VWAP + OBV + Donchian ACTIVE
 🐋 Smart Money ACTIVE
 🪤 Trap Detector ACTIVE
 
-🎯 Goal: Snipe breakouts before pumps
+🎯 Goal: Snipe breakouts & micro momentum
 
 Send /scan
 """)
@@ -700,9 +757,10 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v18.0 SCANNING...
+🐋 AHAD AI v18.2 SCANNING...
 
 🔍 Flex Score Analysis
+⚡ Hunting Micro Momentum
 🚀 Hunting Breakouts
 🐋 Tracking Smart Money
 📊 VWAP + OBV + Donchian
@@ -736,39 +794,52 @@ Please wait ⏳
                 result["score"] = 100
 
             if result["direction"] == "🟢 LONG":
-                # مرونة في القبول
+                # مرونة أعلى
                 if (
-                    (result["score"] >= 60 and result["liquidity"] >= 1.0)
+                    result["score"] >= 45
                     or result["pre_pump"] == "🐋 WHALE LOADING"
                     or "BREAKOUT" in result["signal_type"]
+                    or result.get("micro_score", 0) >= 10
                 ):
                     long_results.append(result)
 
         time.sleep(0.03)
 
-    # ترتيب حسب السكور والسيولة
-    results = sorted(long_results, key=lambda x: (x["score"], x["liquidity"]), reverse=True)[:5]
+    # ترتيب حسب: الزخم → السكور → السيولة
+    results = sorted(
+        long_results,
+        key=lambda x: (
+            x.get("micro_score", 0),
+            x["score"],
+            x["liquidity"]
+        ),
+        reverse=True
+    )[:5]
 
     if not results:
         bot.send_message(message.chat.id, """
 👀 No sniper setups now
 
-🐋 Waiting for Breakout or Accumulation
+⚡ Waiting for Micro Momentum
+🚀 Waiting for Breakout
 ⏳ Try again later
 """)
         return
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v18.0 🐋
+🚨 AHAD AI v18.2 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
 {s['quality']}
 📊 Type: {s['signal_type']}
+⚡ Micro: {s['micro_label']}
 
 🔥 Flex Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+📈 24H: {s['change_24h']}%
+💰 Volume: {s['volume_label']}
 🐋 Money: {s['money_status']}
 🪤 Trap: {s['trap']}
 
@@ -823,7 +894,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v18.0 FLEX SNIPER ONLINE 🐋")
+print("🔥 AHAD AI v18.2 MICRO MOMENTUM ONLINE 🐋")
 
 while True:
     time.sleep(60)

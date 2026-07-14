@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.5
+# 🚀 AHAD AI v19.3.6
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.5 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.6 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.5 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.6 CORE READY 🐋")
 
 
 # ================================================
@@ -851,13 +851,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (WITH FULL DEBUG)
+# 🤖 SECTION 4: TELEGRAM SCANNER (WITH TRACING)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.5 ONLINE 🚀
+🐋 AHAD AI v19.3.6 ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -869,6 +869,7 @@ def start(message):
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 🔥 Volatility Compression Engine ACTIVE (TEST MODE)
+📋 Tracing ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -877,13 +878,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (WITH FULL DEBUG REPORT)
+# 🔎 SMART SCANNER (WITH TRACING)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.5 SCANNING...
+🐋 AHAD AI v19.3.6 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -893,7 +894,7 @@ def scan(message):
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
-🔥 Volatility Compression TEST MODE
+📋 Tracing ACTIVE
 
 Please wait ⏳
 """)
@@ -927,7 +928,12 @@ Please wait ⏳
 
     for symbol in symbols:
 
+        print("=" * 50)
+        print("START:", symbol)
+
         result = analyze(symbol, hot_sector, debug=debug)
+
+        print("END:", symbol)
 
         if result:
 
@@ -949,6 +955,7 @@ Please wait ⏳
                 ):
 
                     long_results.append(result)
+                    print("ADDED:", result["coin"])
 
                 else:
 
@@ -1015,7 +1022,7 @@ Not Long: {debug.get('not_long', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.5 🐋
+🚨 AHAD AI v19.3.6 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1081,7 +1088,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.5 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.6 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3
+# 🚀 AHAD AI v19.3.5
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.5 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.5 CORE READY 🐋")
 
 
 # ================================================
@@ -341,7 +341,7 @@ def pre_pump_engine(candles):
 
 
 # ================================================
-# 🔥 VOLATILITY COMPRESSION ENGINE (NEW)
+# 🔥 VOLATILITY COMPRESSION ENGINE
 # ================================================
 
 def volatility_engine(candles):
@@ -558,10 +558,13 @@ def analyze(symbol, sector, debug=None):
             return None
 
         brain = ai_brain(c1h)
+        # Brain Engine - تخفيف الرفض: بدلاً من رفض الصفقة، نخصم 10 نقاط
         if brain["direction"] == "WAIT":
+            brain_penalty = 10
             if debug is not None:
                 debug["brain"] = debug.get("brain", 0) + 1
-            return None
+        else:
+            brain_penalty = 0
 
         sr = support_resistance(c15)
         money = smart_money(c15)
@@ -696,6 +699,9 @@ def analyze(symbol, sector, debug=None):
         score += macd_score
         score += tf_score
         score += candle_score
+
+        # تطبيق عقوبة Brain إذا كانت WAIT
+        score -= brain_penalty
 
         score = round(score)
 
@@ -837,7 +843,7 @@ def analyze(symbol, sector, debug=None):
             "multi": multi,
             "trap": trap,
             "warning": warning,
-            "volatility": vol  # معزول للاختبار فقط
+            "volatility": vol
         }
 
     except Exception as e:
@@ -851,9 +857,9 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3 ONLINE 🚀
+🐋 AHAD AI v19.3.5 ONLINE 🚀
 
-🧠 AI Brain ACTIVE
+🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
 🪤 Trap Detector ACTIVE
@@ -877,7 +883,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3 SCANNING...
+🐋 AHAD AI v19.3.5 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1009,7 +1015,7 @@ Not Long: {debug.get('not_long', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3 🐋
+🚨 AHAD AI v19.3.5 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1075,7 +1081,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.5 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

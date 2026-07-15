@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.9
+# 🚀 AHAD AI v19.3.9 STABLE
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.9 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.9 STABLE ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -97,7 +97,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER
+# 🐋 TOP FLOW SCANNER (FIXED)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -126,19 +126,19 @@ def top_flow_scanner(symbols):
             if flow >= 1.15:
                 results.append({"coin": symbol, "flow": flow})
 
-        except:
-            pass
+        except Exception as e:
+            print(symbol, e)
 
         time.sleep(0.01)
         if len(results) >= 80:
             break
 
     results = sorted(results, key=lambda x: x["flow"], reverse=True)
-    return [x["coin"] for x in results[:100]]
+    return [x["coin"] for x in results[:80]]
 
 
 # ================================================
-# 🕯 OKX CANDLES ENGINE
+# 🕯 OKX CANDLES ENGINE (FIXED)
 # ================================================
 
 def get_candles(symbol, tf):
@@ -148,8 +148,12 @@ def get_candles(symbol, tf):
         params = {"instId": symbol, "bar": frames[tf], "limit": 150}
 
         data = requests.get(url, params=params, timeout=10).json()
-        candles = []
 
+        # حماية من الاستجابة الناقصة
+        if not data or "data" not in data or not data["data"]:
+            return []
+
+        candles = []
         for c in data["data"][::-1]:
             candles.append({
                 "open": float(c[1]),
@@ -166,7 +170,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.9 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.9 STABLE CORE READY 🐋")
 
 
 # ================================================
@@ -223,6 +227,18 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
+# Cache للشموع أثناء الـ Scan
+_candle_cache = {}
+
+def get_candles_cached(symbol, tf):
+    key = f"{symbol}_{tf}"
+    if key in _candle_cache:
+        return _candle_cache[key]
+    candles = get_candles(symbol, tf)
+    _candle_cache[key] = candles
+    return candles
+
+
 # ================================================
 # 🏦 SECTOR FLOW ENGINE (IMPROVED)
 # ================================================
@@ -240,7 +256,7 @@ def sector_flow(symbols):
                 base = symbol.split("-")[0]
 
                 if base in coins:
-                    candles = get_candles(symbol, "1h")
+                    candles = get_candles_cached(symbol, "1h")
 
                     if len(candles) > 50:
                         volumes = [x["volume"] for x in candles]
@@ -290,6 +306,10 @@ def smart_money(candles):
         else:
             flow = volume_now / volume_avg
 
+        # Volume Acceleration
+        volume_avg_20 = sum(volumes[-20:]) / 4
+        volume_acceleration = volume_now / volume_avg_20 if volume_avg_20 > 0 else 0
+
         move = ((closes[-1] - closes[-24]) / closes[-24]) * 100
 
         if flow >= 1.5 and abs(move) < 8:
@@ -299,11 +319,15 @@ def smart_money(candles):
         else:
             status = "NORMAL"
 
-        return {"flow": round(flow, 2), "status": status}
+        return {
+            "flow": round(flow, 2),
+            "status": status,
+            "volume_acceleration": round(volume_acceleration, 2)
+        }
 
     except Exception as e:
         print("SMART MONEY ERROR:", e)
-        return {"flow": 0, "status": "ERROR"}
+        return {"flow": 0, "status": "ERROR", "volume_acceleration": 0}
 
 
 # ================================================
@@ -352,19 +376,14 @@ def volatility_engine(candles):
                 "status": "UNKNOWN"
             }
 
-        # آخر 20 شمعة
         recent = candles[-20:]
 
         highs = [c["high"] for c in recent]
         lows = [c["low"] for c in recent]
 
-        # نطاق الحركة
         price_range = max(highs) - min(lows)
 
-        # متوسط ATR الحالي
         atr_now = atr(candles[-14:])
-
-        # متوسط ATR السابق
         atr_old = atr(candles[-60:-46])
 
         if atr_old == 0:
@@ -374,7 +393,6 @@ def volatility_engine(candles):
 
         compression = max(0, min(100, compression))
 
-        # التصنيف
         if compression >= 70:
             status = "🔥 SPRING LOADED"
         elif compression >= 50:
@@ -492,7 +510,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (IMPROVED)
+# 🧠 AI BRAIN ENGINE (FIXED)
 # ================================================
 
 def ai_brain(candles):
@@ -501,7 +519,11 @@ def ai_brain(candles):
 
     e20 = ema(closes, 20)
     e50 = ema(closes, 50)
-    e200 = ema(closes, 100)
+    e100 = ema(closes, 100)
+
+    # Future: Add Momentum integration
+    # Future: Add Smart Money weighting
+    # Future: Add Confidence scoring
 
     score = 0
 
@@ -515,7 +537,7 @@ def ai_brain(candles):
     else:
         score -= 20
 
-    if e50 > e200:
+    if e50 > e100:
         score += 20
     else:
         score -= 20
@@ -530,7 +552,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.9)
+# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.9 STABLE)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -562,7 +584,6 @@ def analyze(symbol, sector, debug=None):
             return None
 
         brain = ai_brain(c1h)
-        # Brain Engine - تخفيف الرفض: بدلاً من رفض الصفقة، نخصم 10 نقاط
         if brain["direction"] == "WAIT":
             brain_penalty = 10
             reject_reason = "Brain"
@@ -576,10 +597,6 @@ def analyze(symbol, sector, debug=None):
         pre = pre_pump_engine(c15)
         multi = multi_rsi_engine(c15, c1h, c4h, c1d)
         trap = trap_detector(c15)
-
-        # ================================================
-        # 🔥 VOLATILITY COMPRESSION (معزول - للاختبار فقط)
-        # ================================================
 
         vol = volatility_engine(c15)
 
@@ -606,10 +623,8 @@ def analyze(symbol, sector, debug=None):
             rsi_score = 5
             warning = "⚠️ RSI WARNING"
         elif rsi_15m > 70 or rsi_15m < 35:
-            reject_reason = "RSI"
-            if debug is not None:
-                debug["rsi"] = debug.get("rsi", 0) + 1
-            return None
+            rsi_score = -10
+            warning = "⚠️ RSI EXTREME"
 
         # ================================================
         # 💧 DYNAMIC FLOW
@@ -632,11 +647,11 @@ def analyze(symbol, sector, debug=None):
             flow_status = "NORMAL"
 
         # ================================================
-        # 📈 MACD MOMENTUM
+        # 📈 MACD MOMENTUM (وزن مخفض)
         # ================================================
 
         macd_value = macd_simple(closes15)
-        macd_score = 5 if macd_value > 0 else 0
+        macd_score = 3 if macd_value > 0 else 0
 
         # ================================================
         # 🔥 MULTI TIMEFRAME VALIDATOR
@@ -659,7 +674,7 @@ def analyze(symbol, sector, debug=None):
 
         ema20_4h = ema(closes4h, 20)
         if closes4h[-1] < ema20_4h * 0.97:
-            tf_score -= 15
+            tf_score -= 10
 
         # ================================================
         # 🔥 STRONG CANDLE CHECK
@@ -695,7 +710,6 @@ def analyze(symbol, sector, debug=None):
         # 🚀 ENHANCED MOMENTUM ENGINE
         # ================================================
 
-        # 1. Price Velocity
         if len(closes15) >= 10:
             price_change_5 = ((closes15[-1] - closes15[-5]) / closes15[-5]) * 100
             price_change_10 = ((closes15[-1] - closes15[-10]) / closes15[-10]) * 100
@@ -703,16 +717,8 @@ def analyze(symbol, sector, debug=None):
         else:
             price_velocity = 0
 
-        # 2. Volume Acceleration
-        volumes = [x["volume"] for x in c15]
-        vol_now = sum(volumes[-5:])
-        vol_avg = sum(volumes[-20:]) / 4
-        if vol_avg > 0:
-            vol_ratio = vol_now / vol_avg
-        else:
-            vol_ratio = 1
+        volume_acceleration = money.get("volume_acceleration", 0)
 
-        # 3. Breakout Strength
         recent_high = max([x["high"] for x in c15[-20:]])
         recent_low = min([x["low"] for x in c15[-20:]])
         range_width = recent_high - recent_low
@@ -721,7 +727,6 @@ def analyze(symbol, sector, debug=None):
         else:
             breakout_strength = 50
 
-        # 4. Momentum Score (0-100)
         momentum_score = 0
 
         if price_velocity > 3:
@@ -731,11 +736,11 @@ def analyze(symbol, sector, debug=None):
         elif price_velocity > 0:
             momentum_score += 10
 
-        if vol_ratio > 2:
+        if volume_acceleration > 2:
             momentum_score += 30
-        elif vol_ratio > 1.5:
+        elif volume_acceleration > 1.5:
             momentum_score += 20
-        elif vol_ratio > 1.2:
+        elif volume_acceleration > 1.2:
             momentum_score += 10
 
         if breakout_strength > 80:
@@ -755,7 +760,7 @@ def analyze(symbol, sector, debug=None):
             momentum_status = "⚠️ Weak"
 
         # ================================================
-        # 🔥 SCORE SYSTEM (Weighted)
+        # 🧠 SINGLE SCORE ENGINE
         # ================================================
 
         score = 0
@@ -775,15 +780,6 @@ def analyze(symbol, sector, debug=None):
         elif sr["near_resistance"] > 3:
             score += 5
 
-        # RR (10)
-        risk = move
-        reward = move * 2
-        rr = reward / risk if risk > 0 else 0
-        if rr > 2:
-            score += 10
-        elif rr > 1.6:
-            score += 5
-
         # Trap (10)
         if trap == "✅ NO TRAP":
             score += 10
@@ -791,7 +787,12 @@ def analyze(symbol, sector, debug=None):
         # Multi Timeframe (5)
         score += multi["score"] * 0.1
 
-        # تطبيق عقوبة Brain إذا كانت WAIT
+        # RSI (خصم أو إضافة)
+        score += rsi_score
+
+        # MACD (خصم أو إضافة)
+        score += macd_score
+
         score -= brain_penalty
 
         score = round(max(0, min(100, score)))
@@ -822,27 +823,25 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 HEAT CONTROL
+        # 🔥 HEAT CONTROL (خصم بدلاً من رفض)
         # ================================================
 
-        if multi["4h"] > 70 or multi["1d"] > 70 or multi["15m"] > 75:
-            reject_reason = "Heat"
-            if debug is not None:
-                debug["heat"] = debug.get("heat", 0) + 1
-            return None
+        if multi["4h"] > 70:
+            score -= 10
+        if multi["1d"] > 70:
+            score -= 10
+        if multi["15m"] > 75:
+            score -= 5
 
         # ================================================
-        # 🔥 RESISTANCE FILTER
+        # 🔥 RESISTANCE FILTER (خصم بدلاً من رفض)
         # ================================================
 
         if sr["near_resistance"] < 3:
-            reject_reason = "Resistance"
-            if debug is not None:
-                debug["resistance"] = debug.get("resistance", 0) + 1
-            return None
+            score -= 15
 
         # ================================================
-        # 🔥 SCORE FILTER (Minimum Score Check)
+        # 🔥 SCORE FILTER
         # ================================================
 
         if score < 55:
@@ -889,7 +888,7 @@ def analyze(symbol, sector, debug=None):
             money_status = "NORMAL"
 
         # ================================================
-        # 🎯 EARLY ENTRY CHECK (IMPROVED)
+        # 🎯 EARLY ENTRY CHECK
         # ================================================
 
         if (
@@ -902,57 +901,68 @@ def analyze(symbol, sector, debug=None):
             early_text = "⏳ WAIT FOR ENTRY"
 
         # ================================================
-        # 🎯 ENTRY ZONE
+        # 🎯 ENTRY ZONE & TARGETS (LONG & SHORT)
         # ================================================
 
         entry_low = price * 0.995
         entry_high = price * 1.005
 
-        # ================================================
-        # 🔧 DYNAMIC ATR SL (SMART)
-        # ================================================
-
-        base_multiplier = 1.5
-
-        if flow >= 2:
-            base_multiplier += 0.3
-        if money_status == "🚀 WHALE BUYING" or money_status == "🐋 SMART ACCUMULATION":
-            base_multiplier += 0.3
-        if momentum_score >= 70:
-            base_multiplier += 0.2
-
-        sl = entry_low - move * base_multiplier
-        risk = entry_low - sl
-
-        # ================================================
-        # 🎯 DYNAMIC TARGETS BASED ON RISK
-        # ================================================
-
-        tp1 = entry_low + risk * 1.5
-        tp2 = entry_low + risk * 3
-        tp3 = entry_low + risk * 5
-
-        # ================================================
-        # 🔥 RISK REWARD FILTER (RR ≥ 1.6)
-        # ================================================
-
-        rr = (tp1 - entry_low) / risk
-        if rr < 1.6:
-            reject_reason = "Poor RR"
-            if debug is not None:
-                debug["rr"] = debug.get("rr", 0) + 1
-            return None
-
-        # ================================================
-        # 🔧 TP1 FIX (LONG & SHORT)
-        # ================================================
-
         if brain["direction"] == "🟢 LONG":
+            direction = "LONG"
+            base_multiplier = 1.5
+            if flow >= 2:
+                base_multiplier += 0.3
+            if money_status in ["🚀 WHALE BUYING", "🐋 SMART ACCUMULATION"]:
+                base_multiplier += 0.3
+            if momentum_score >= 70:
+                base_multiplier += 0.2
+
+            sl = entry_low - move * base_multiplier
+            risk = entry_low - sl
+
+            tp1 = entry_low + risk * 1.5
+            tp2 = entry_low + risk * 3
+            tp3 = entry_low + risk * 5
+
+        else:
+            direction = "SHORT"
+            base_multiplier = 1.5
+            if flow >= 2:
+                base_multiplier += 0.3
+            if money_status in ["🚀 WHALE BUYING", "🐋 SMART ACCUMULATION"]:
+                base_multiplier += 0.3
+            if momentum_score >= 70:
+                base_multiplier += 0.2
+
+            sl = entry_high + move * base_multiplier
+            risk = sl - entry_high
+
+            tp1 = entry_high - risk * 1.5
+            tp2 = entry_high - risk * 3
+            tp3 = entry_high - risk * 5
+
+        # ================================================
+        # 🔧 TP1 FIX
+        # ================================================
+
+        if direction == "LONG":
             if tp1 <= entry_high:
                 tp1 = entry_high + move * 0.8
         else:
             if tp1 >= entry_low:
                 tp1 = entry_low - move * 0.8
+
+        # ================================================
+        # 📊 RISK REWARD (للإبقاء على الحساب فقط)
+        # ================================================
+
+        if direction == "LONG":
+            rr = (tp1 - entry_low) / risk
+        else:
+            rr = (entry_high - tp1) / risk
+
+        # تم إلغاء فلتر RR مؤقتاً
+        # سيتم إعادة تفعيله في v20 مع Risk Engine مستقل
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
@@ -990,13 +1000,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.9)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.9 STABLE)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.9 ONLINE 🚀
+🐋 AHAD AI v19.3.9 STABLE ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1019,13 +1029,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (WITH REJECT REASON)
+# 🔎 SMART SCANNER
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.9 SCANNING...
+🐋 AHAD AI v19.3.9 STABLE SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1126,7 +1136,7 @@ Please wait ⏳
         time.sleep(0.03)
 
     # ================================================
-    # 🐞 FULL DEBUG REPORT WITH REJECT REASON
+    # 🐞 FULL DEBUG REPORT
     # ================================================
 
     debug_msg = f"""
@@ -1146,7 +1156,6 @@ Score: {debug.get('score', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
 Not Long: {debug.get('not_long', 0)}
-RR Reject: {debug.get('rr', 0)}
 Reject Reason: {debug.get('reject_reason', 'NONE')}
 """
     bot.send_message(message.chat.id, debug_msg)
@@ -1168,7 +1177,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.9 🐋
+🚨 AHAD AI v19.3.9 STABLE 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1211,7 +1220,7 @@ def keep_alive():
         try:
             url = os.environ.get("RENDER_URL")
             if url:
-                urllib.request.urlopen(url)
+                urllib.request.urlopen(url, timeout=10)
                 print("🐋 KEEP ALIVE ACTIVE")
         except Exception as e:
             print("KEEP ALIVE ERROR:", e)
@@ -1223,22 +1232,27 @@ def keep_alive():
 # ================================================
 
 def telegram_engine():
+    backoff = 5
     while True:
         try:
             print("🐋 TELEGRAM ENGINE STARTED")
             bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            backoff = 5  # Reset on success
         except Exception:
             print("🚨 TELEGRAM ERROR")
             print(traceback.format_exc())
-        print("🔄 Restarting Telegram...")
-        time.sleep(5)
+            print(f"🔄 Restarting Telegram in {backoff}s...")
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 30)  # Exponential backoff: 5, 10, 20, 30
 
 
 threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.9 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.9 STABLE ONLINE 🐋")
+print(f"📅 Started at: {time.ctime()}")
+print(f"🐍 Python Version: {os.sys.version}")
 
 while True:
     time.sleep(60)

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.7
+# 🚀 AHAD AI v19.3.8
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.7 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.8 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.7 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.8 CORE READY 🐋")
 
 
 # ================================================
@@ -530,7 +530,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (WITH REJECT REASON)
+# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.8)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -596,12 +596,12 @@ def analyze(symbol, sector, debug=None):
         flow = money["flow"]
 
         # ================================================
-        # 🔥 SMART RSI
+        # 🔥 SMART RSI (وزن مخفض - RSI لا يقود القرار)
         # ================================================
 
         rsi_score = 0
         if 45 <= rsi_15m <= 62:
-            rsi_score = 10
+            rsi_score = 8
         elif 62 < rsi_15m <= 70:
             rsi_score = 5
             warning = "⚠️ RSI WARNING"
@@ -691,6 +691,29 @@ def analyze(symbol, sector, debug=None):
             early_text = "🐋 EARLY ENTRY AREA"
 
         # ================================================
+        # 🚀 MOMENTUM ENGINE (NEW)
+        # ================================================
+
+        momentum = 0
+
+        if price > ema20_15:
+            momentum += 20
+
+        if ema20_15 > ema50_15:
+            momentum += 20
+
+        if macd_value > 0:
+            momentum += 20
+
+        if flow >= 1.5:
+            momentum += 20
+
+        if len(c15) >= 2 and c15[-1]["close"] > c15[-2]["close"]:
+            momentum += 20
+
+        momentum_score = momentum
+
+        # ================================================
         # 🔥 SCORE SYSTEM (Weighted)
         # ================================================
 
@@ -707,6 +730,7 @@ def analyze(symbol, sector, debug=None):
         score += macd_score
         score += tf_score
         score += candle_score
+        score += momentum_score * 0.15  # إضافة Momentum إلى السكور
 
         # تطبيق عقوبة Brain إذا كانت WAIT
         score -= brain_penalty
@@ -834,6 +858,41 @@ def analyze(symbol, sector, debug=None):
                 tp2 = price - move * 2.5
 
         # ================================================
+        # 🔧 DYNAMIC ATR SL
+        # ================================================
+
+        atr_mult = 1.8
+
+        if score >= 95:
+            atr_mult = 1.4
+        elif score >= 90:
+            atr_mult = 1.6
+        else:
+            atr_mult = 2.0
+
+        sl = entry_low - move * atr_mult
+        risk = entry_low - sl
+
+        # ================================================
+        # 🎯 DYNAMIC TARGETS BASED ON RISK
+        # ================================================
+
+        tp1 = entry_low + risk * 1.5
+        tp2 = entry_low + risk * 3
+        tp3 = entry_low + risk * 5
+
+        # ================================================
+        # 🔥 RISK REWARD FILTER
+        # ================================================
+
+        rr = (tp1 - entry_low) / risk
+        if rr < 1.5:
+            reject_reason = "Poor RR"
+            if debug is not None:
+                debug["rr"] = debug.get("rr", 0) + 1
+            return None
+
+        # ================================================
         # 🔧 TP1 FIX (LONG & SHORT)
         # ================================================
 
@@ -861,13 +920,16 @@ def analyze(symbol, sector, debug=None):
             "sl": round(sl, 6),
             "tp1": round(tp1, 6),
             "tp2": round(tp2, 6),
+            "tp3": round(tp3, 6),
             "liquidity": money["flow"],
             "pre_pump": pre["status"],
             "multi": multi,
             "trap": trap,
             "warning": warning,
             "volatility": vol,
-            "reject_reason": reject_reason
+            "reject_reason": reject_reason,
+            "momentum_score": momentum_score,
+            "rr": round(rr, 2)
         }
 
     except Exception as e:
@@ -875,13 +937,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (WITH REJECT REASON)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.8)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.7 ONLINE 🚀
+🐋 AHAD AI v19.3.8 ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -893,7 +955,7 @@ def start(message):
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 🔥 Volatility Compression ACTIVE
-📋 Tracing ACTIVE
+🚀 Momentum Engine ACTIVE
 📌 Reject Reason ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
@@ -909,13 +971,14 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.7 SCANNING...
+🐋 AHAD AI v19.3.8 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
 🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
+🚀 Momentum Engine ACTIVE
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
@@ -1029,6 +1092,7 @@ Score: {debug.get('score', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
 Not Long: {debug.get('not_long', 0)}
+RR Reject: {debug.get('rr', 0)}
 Reject Reason: {debug.get('reject_reason', 'NONE')}
 """
     bot.send_message(message.chat.id, debug_msg)
@@ -1050,7 +1114,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.7 🐋
+🚨 AHAD AI v19.3.8 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1059,6 +1123,8 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
 🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
 🐋 Money: {s['money_status']}
+⚡ Momentum: {s['momentum_score']}/100
+📊 RR: {s['rr']}
 🪤 Trap: {s['trap']}
 
 🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
@@ -1066,6 +1132,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
 🥇 TP1: {round(s['tp1'],6)}
 🥈 TP2: {round(s['tp2'],6)}
+🥉 TP3: {round(s['tp3'],6)}
 
 📊 RSI:
 15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
@@ -1116,7 +1183,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.7 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.8 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

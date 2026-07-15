@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.6
+# 🚀 AHAD AI v19.3.7
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.6 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.7 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.6 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.7 CORE READY 🐋")
 
 
 # ================================================
@@ -530,11 +530,13 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (WITH FULL DEBUG)
+# 🎯 SECTION 3: ANALYZE ENGINE (WITH REJECT REASON)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
     try:
+
+        reject_reason = ""
 
         if debug is not None:
             debug["checked"] = debug.get("checked", 0) + 1
@@ -545,6 +547,7 @@ def analyze(symbol, sector, debug=None):
         c1d = get_candles(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
+            reject_reason = "Candles"
             if debug is not None:
                 debug["candles"] = debug.get("candles", 0) + 1
             return None
@@ -553,6 +556,7 @@ def analyze(symbol, sector, debug=None):
 
         safe, warning = fomo_filter(c15)
         if not safe:
+            reject_reason = "FOMO"
             if debug is not None:
                 debug["fomo"] = debug.get("fomo", 0) + 1
             return None
@@ -561,6 +565,7 @@ def analyze(symbol, sector, debug=None):
         # Brain Engine - تخفيف الرفض: بدلاً من رفض الصفقة، نخصم 10 نقاط
         if brain["direction"] == "WAIT":
             brain_penalty = 10
+            reject_reason = "Brain"
             if debug is not None:
                 debug["brain"] = debug.get("brain", 0) + 1
         else:
@@ -601,6 +606,7 @@ def analyze(symbol, sector, debug=None):
             rsi_score = 5
             warning = "⚠️ RSI WARNING"
         elif rsi_15m > 70 or rsi_15m < 35:
+            reject_reason = "RSI"
             if debug is not None:
                 debug["rsi"] = debug.get("rsi", 0) + 1
             return None
@@ -611,6 +617,7 @@ def analyze(symbol, sector, debug=None):
 
         flow_score = 0
         if flow < 0.8:
+            reject_reason = "Flow"
             if debug is not None:
                 debug["flow"] = debug.get("flow", 0) + 1
             return None
@@ -675,6 +682,7 @@ def analyze(symbol, sector, debug=None):
         ema50_15 = ema(closes15, 50)
 
         if price > ema50_15 + (move * 0.5):
+            reject_reason = "Late Entry"
             if debug is not None:
                 debug["late_entry"] = debug.get("late_entry", 0) + 1
             early_text = "⏳ WAIT RETEST"
@@ -725,6 +733,7 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         if trap == "🪤 BULL TRAP":
+            reject_reason = "Trap"
             if debug is not None:
                 debug["trap"] = debug.get("trap", 0) + 1
             return None
@@ -734,6 +743,7 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         if multi["4h"] > 70 or multi["1d"] > 70 or multi["15m"] > 75:
+            reject_reason = "Heat"
             if debug is not None:
                 debug["heat"] = debug.get("heat", 0) + 1
             return None
@@ -743,6 +753,7 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         if sr["near_resistance"] < 3:
+            reject_reason = "Resistance"
             if debug is not None:
                 debug["resistance"] = debug.get("resistance", 0) + 1
             return None
@@ -752,26 +763,21 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         if score < 55:
+            reject_reason = "Score"
             if debug is not None:
                 debug["score"] = debug.get("score", 0) + 1
             return None
 
         # ================================================
-        # ⭐ QUALITY LEVEL
+        # ⭐ QUALITY LEVEL (IMPROVED)
         # ================================================
 
-        if trap == "🪤 BULL TRAP":
-            quality = "MEDIUM QUALITY ⚠️"
-        elif score >= 95:
-            quality = "ELITE SIGNAL ✅"
-        elif score >= 88:
-            quality = "HIGH QUALITY ✅"
-        elif score >= 78:
-            quality = "GOOD QUALITY ✅"
+        if score >= 90 and flow >= 3:
+            quality = "ELITE ✅"
         elif score >= 65:
             quality = "WATCHLIST 👀"
         else:
-            quality = "LOW QUALITY ❌"
+            quality = "NORMAL"
 
         # ================================================
         # 🐋 MONEY STATUS
@@ -804,12 +810,28 @@ def analyze(symbol, sector, debug=None):
 
         if brain["direction"] == "🟢 LONG":
             sl = sr["support"] * 0.995
-            tp1 = price + move * 2
-            tp2 = price + move * 3
+            # Dynamic Take Profit based on Flow
+            if flow >= 5:
+                tp1 = price + move * 2.8
+                tp2 = price + move * 4.5
+            elif flow >= 3:
+                tp1 = price + move * 2.2
+                tp2 = price + move * 3.5
+            else:
+                tp1 = price + move * 1.6
+                tp2 = price + move * 2.5
         else:
             sl = sr["resistance"] * 1.005
-            tp1 = price - move * 2
-            tp2 = price - move * 3
+            # Dynamic Take Profit for SHORT based on Flow
+            if flow >= 5:
+                tp1 = price - move * 2.8
+                tp2 = price - move * 4.5
+            elif flow >= 3:
+                tp1 = price - move * 2.2
+                tp2 = price - move * 3.5
+            else:
+                tp1 = price - move * 1.6
+                tp2 = price - move * 2.5
 
         # ================================================
         # 🔧 TP1 FIX (LONG & SHORT)
@@ -824,6 +846,7 @@ def analyze(symbol, sector, debug=None):
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
+            debug["reject_reason"] = reject_reason
 
         return {
             "coin": symbol,
@@ -843,7 +866,8 @@ def analyze(symbol, sector, debug=None):
             "multi": multi,
             "trap": trap,
             "warning": warning,
-            "volatility": vol
+            "volatility": vol,
+            "reject_reason": reject_reason
         }
 
     except Exception as e:
@@ -851,13 +875,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (WITH TRACING)
+# 🤖 SECTION 4: TELEGRAM SCANNER (WITH REJECT REASON)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.6 ONLINE 🚀
+🐋 AHAD AI v19.3.7 ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -868,8 +892,9 @@ def start(message):
 🎯 Early Entry Filter ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
-🔥 Volatility Compression Engine ACTIVE (TEST MODE)
+🔥 Volatility Compression ACTIVE
 📋 Tracing ACTIVE
+📌 Reject Reason ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -878,13 +903,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (WITH TRACING)
+# 🔎 SMART SCANNER (WITH REJECT REASON)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.6 SCANNING...
+🐋 AHAD AI v19.3.7 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -894,7 +919,7 @@ def scan(message):
 🔥 Heat Control ACTIVE
 📊 Weighted Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
-📋 Tracing ACTIVE
+📌 Reject Reason ACTIVE
 
 Please wait ⏳
 """)
@@ -960,6 +985,7 @@ Please wait ⏳
                 else:
 
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
+                    debug["reject_reason"] = "Final Gate"
 
                     print(
                         f"GATE REJECT | "
@@ -972,6 +998,7 @@ Please wait ⏳
             else:
 
                 debug["not_long"] = debug.get("not_long", 0) + 1
+                debug["reject_reason"] = "Not Long"
 
                 print(
                     f"SHORT SIGNAL | "
@@ -982,7 +1009,7 @@ Please wait ⏳
         time.sleep(0.03)
 
     # ================================================
-    # 🐞 FULL DEBUG REPORT
+    # 🐞 FULL DEBUG REPORT WITH REJECT REASON
     # ================================================
 
     debug_msg = f"""
@@ -1002,6 +1029,7 @@ Score: {debug.get('score', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
 Not Long: {debug.get('not_long', 0)}
+Reject Reason: {debug.get('reject_reason', 'NONE')}
 """
     bot.send_message(message.chat.id, debug_msg)
 
@@ -1022,7 +1050,7 @@ Not Long: {debug.get('not_long', 0)}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.6 🐋
+🚨 AHAD AI v19.3.7 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1088,7 +1116,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.6 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.7 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

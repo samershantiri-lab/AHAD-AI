@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.8
+# 🚀 AHAD AI v19.3.9
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.8 SMART ENTRY ONLINE 🚀"
+    return "🐋 AHAD AI v19.3.9 SMART ENTRY ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -166,7 +166,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.8 CORE READY 🐋")
+print("🔥 AHAD AI v19.3.9 CORE READY 🐋")
 
 
 # ================================================
@@ -530,7 +530,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.8)
+# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.9)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -617,17 +617,18 @@ def analyze(symbol, sector, debug=None):
 
         flow_score = 0
         if flow < 0.8:
-            reject_reason = "Flow"
+            reject_reason = "Low Flow"
             if debug is not None:
                 debug["flow"] = debug.get("flow", 0) + 1
             return None
         elif flow >= 1.8:
-            flow_score = 10
+            flow_score = 20
             flow_status = "🚀 WHALE FLOW"
         elif flow >= 1.2:
-            flow_score = 5
+            flow_score = 10
             flow_status = "💧 HEALTHY FLOW"
         else:
+            flow_score = 5
             flow_status = "NORMAL"
 
         # ================================================
@@ -691,51 +692,109 @@ def analyze(symbol, sector, debug=None):
             early_text = "🐋 EARLY ENTRY AREA"
 
         # ================================================
-        # 🚀 MOMENTUM ENGINE (NEW)
+        # 🚀 ENHANCED MOMENTUM ENGINE
         # ================================================
 
-        momentum = 0
+        # 1. Price Velocity
+        if len(closes15) >= 10:
+            price_change_5 = ((closes15[-1] - closes15[-5]) / closes15[-5]) * 100
+            price_change_10 = ((closes15[-1] - closes15[-10]) / closes15[-10]) * 100
+            price_velocity = (price_change_5 * 0.6) + (price_change_10 * 0.4)
+        else:
+            price_velocity = 0
 
-        if price > ema20_15:
-            momentum += 20
+        # 2. Volume Acceleration
+        volumes = [x["volume"] for x in c15]
+        vol_now = sum(volumes[-5:])
+        vol_avg = sum(volumes[-20:]) / 4
+        if vol_avg > 0:
+            vol_ratio = vol_now / vol_avg
+        else:
+            vol_ratio = 1
 
-        if ema20_15 > ema50_15:
-            momentum += 20
+        # 3. Breakout Strength
+        recent_high = max([x["high"] for x in c15[-20:]])
+        recent_low = min([x["low"] for x in c15[-20:]])
+        range_width = recent_high - recent_low
+        if range_width > 0:
+            breakout_strength = ((price - recent_low) / range_width) * 100
+        else:
+            breakout_strength = 50
 
-        if macd_value > 0:
-            momentum += 20
+        # 4. Momentum Score (0-100)
+        momentum_score = 0
 
-        if flow >= 1.5:
-            momentum += 20
+        if price_velocity > 3:
+            momentum_score += 40
+        elif price_velocity > 1:
+            momentum_score += 25
+        elif price_velocity > 0:
+            momentum_score += 10
 
-        if len(c15) >= 2 and c15[-1]["close"] > c15[-2]["close"]:
-            momentum += 20
+        if vol_ratio > 2:
+            momentum_score += 30
+        elif vol_ratio > 1.5:
+            momentum_score += 20
+        elif vol_ratio > 1.2:
+            momentum_score += 10
 
-        momentum_score = momentum
+        if breakout_strength > 80:
+            momentum_score += 30
+        elif breakout_strength > 60:
+            momentum_score += 20
+        elif breakout_strength > 50:
+            momentum_score += 10
+
+        momentum_score = min(100, momentum_score)
+
+        if momentum_score >= 70:
+            momentum_status = "🔥 Strong"
+        elif momentum_score >= 50:
+            momentum_status = "⚡ Moderate"
+        else:
+            momentum_status = "⚠️ Weak"
 
         # ================================================
         # 🔥 SCORE SYSTEM (Weighted)
         # ================================================
 
         score = 0
-        score += brain["confidence"] * 0.35
-        score += multi["score"] * 0.8
 
-        if money["status"] == "🐋 SMART ACCUMULATION":
-            score += 15
+        # Brain (30)
+        score += brain["confidence"] * 0.3
 
-        score += pre["score"] * 0.7
-        score += rsi_score
+        # Flow (20)
         score += flow_score
-        score += macd_score
-        score += tf_score
-        score += candle_score
-        score += momentum_score * 0.15  # إضافة Momentum إلى السكور
+
+        # Momentum (20)
+        score += momentum_score * 0.2
+
+        # Resistance (10)
+        if sr["near_resistance"] > 5:
+            score += 10
+        elif sr["near_resistance"] > 3:
+            score += 5
+
+        # RR (10)
+        risk = move
+        reward = move * 2
+        rr = reward / risk if risk > 0 else 0
+        if rr > 2:
+            score += 10
+        elif rr > 1.6:
+            score += 5
+
+        # Trap (10)
+        if trap == "✅ NO TRAP":
+            score += 10
+
+        # Multi Timeframe (5)
+        score += multi["score"] * 0.1
 
         # تطبيق عقوبة Brain إذا كانت WAIT
         score -= brain_penalty
 
-        score = round(score)
+        score = round(max(0, min(100, score)))
 
         # ================================================
         # 🔥 PENALTIES
@@ -745,7 +804,7 @@ def analyze(symbol, sector, debug=None):
         if rsi_15m >= 68:
             late_penalty += 20
         score -= late_penalty
-        score = max(score, 0)
+        score = max(0, score)
 
         if len(c15) >= 6:
             pump = c15[-1]["close"] / c15[-6]["close"]
@@ -793,15 +852,28 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # ⭐ QUALITY LEVEL (IMPROVED)
+        # ⭐ QUALITY LEVEL
         # ================================================
 
-        if score >= 90 and flow >= 3:
+        if score >= 85:
             quality = "ELITE ✅"
-        elif score >= 65:
+        elif score >= 70:
+            quality = "HIGH QUALITY ✅"
+        elif score >= 55:
             quality = "WATCHLIST 👀"
         else:
             quality = "NORMAL"
+
+        # ================================================
+        # 🧠 CONFIDENCE LEVEL
+        # ================================================
+
+        if score >= 85:
+            confidence_level = "🔥 HIGH"
+        elif score >= 70:
+            confidence_level = "⚡ MEDIUM"
+        else:
+            confidence_level = "⏳ LOW"
 
         # ================================================
         # 🐋 MONEY STATUS
@@ -817,60 +889,39 @@ def analyze(symbol, sector, debug=None):
             money_status = "NORMAL"
 
         # ================================================
-        # 🎯 EARLY ENTRY CHECK
+        # 🎯 EARLY ENTRY CHECK (IMPROVED)
         # ================================================
 
-        if rsi_15m < 60 and flow > 1 and trap != "🪤 BULL TRAP":
+        if (
+            momentum_score >= 60
+            and flow >= 1.2
+            and sr["near_resistance"] > 3
+        ):
             early_text = "🐋 EARLY ENTRY AREA"
         else:
             early_text = "⏳ WAIT FOR ENTRY"
 
         # ================================================
-        # 🎯 ENTRY ZONE & TARGETS
+        # 🎯 ENTRY ZONE
         # ================================================
 
         entry_low = price * 0.995
         entry_high = price * 1.005
 
-        if brain["direction"] == "🟢 LONG":
-            sl = sr["support"] * 0.995
-            # Dynamic Take Profit based on Flow
-            if flow >= 5:
-                tp1 = price + move * 2.8
-                tp2 = price + move * 4.5
-            elif flow >= 3:
-                tp1 = price + move * 2.2
-                tp2 = price + move * 3.5
-            else:
-                tp1 = price + move * 1.6
-                tp2 = price + move * 2.5
-        else:
-            sl = sr["resistance"] * 1.005
-            # Dynamic Take Profit for SHORT based on Flow
-            if flow >= 5:
-                tp1 = price - move * 2.8
-                tp2 = price - move * 4.5
-            elif flow >= 3:
-                tp1 = price - move * 2.2
-                tp2 = price - move * 3.5
-            else:
-                tp1 = price - move * 1.6
-                tp2 = price - move * 2.5
-
         # ================================================
-        # 🔧 DYNAMIC ATR SL
+        # 🔧 DYNAMIC ATR SL (SMART)
         # ================================================
 
-        atr_mult = 1.8
+        base_multiplier = 1.5
 
-        if score >= 95:
-            atr_mult = 1.4
-        elif score >= 90:
-            atr_mult = 1.6
-        else:
-            atr_mult = 2.0
+        if flow >= 2:
+            base_multiplier += 0.3
+        if money_status == "🚀 WHALE BUYING" or money_status == "🐋 SMART ACCUMULATION":
+            base_multiplier += 0.3
+        if momentum_score >= 70:
+            base_multiplier += 0.2
 
-        sl = entry_low - move * atr_mult
+        sl = entry_low - move * base_multiplier
         risk = entry_low - sl
 
         # ================================================
@@ -882,11 +933,11 @@ def analyze(symbol, sector, debug=None):
         tp3 = entry_low + risk * 5
 
         # ================================================
-        # 🔥 RISK REWARD FILTER
+        # 🔥 RISK REWARD FILTER (RR ≥ 1.6)
         # ================================================
 
         rr = (tp1 - entry_low) / risk
-        if rr < 1.5:
+        if rr < 1.6:
             reject_reason = "Poor RR"
             if debug is not None:
                 debug["rr"] = debug.get("rr", 0) + 1
@@ -913,6 +964,7 @@ def analyze(symbol, sector, debug=None):
             "direction": brain["direction"],
             "score": round(score),
             "quality": quality,
+            "confidence_level": confidence_level,
             "money_status": money_status,
             "early_text": early_text,
             "entry_low": round(entry_low, 6),
@@ -929,6 +981,7 @@ def analyze(symbol, sector, debug=None):
             "volatility": vol,
             "reject_reason": reject_reason,
             "momentum_score": momentum_score,
+            "momentum_status": momentum_status,
             "rr": round(rr, 2)
         }
 
@@ -937,13 +990,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.8)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.9)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.8 ONLINE 🚀
+🐋 AHAD AI v19.3.9 ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -952,11 +1005,12 @@ def start(message):
 ⚡ Pre-Pump Detection ACTIVE
 🔥 Heat Control ACTIVE
 🎯 Early Entry Filter ACTIVE
-📊 Weighted Score System ACTIVE
+📊 Enhanced Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 🔥 Volatility Compression ACTIVE
-🚀 Momentum Engine ACTIVE
+🚀 Enhanced Momentum Engine ACTIVE
 📌 Reject Reason ACTIVE
+🧠 Confidence Level ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -971,16 +1025,16 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.8 SCANNING...
+🐋 AHAD AI v19.3.9 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
 🟢 Hunting TOP 3 LONG setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
-🚀 Momentum Engine ACTIVE
+🚀 Enhanced Momentum Engine ACTIVE
 🔥 Heat Control ACTIVE
-📊 Weighted Score System ACTIVE
+📊 Enhanced Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 📌 Reject Reason ACTIVE
 
@@ -1083,7 +1137,7 @@ Candles: {debug.get('candles', 0)}
 FOMO: {debug.get('fomo', 0)}
 Brain: {debug.get('brain', 0)}
 RSI: {debug.get('rsi', 0)}
-Flow: {debug.get('flow', 0)}
+Low Flow: {debug.get('flow', 0)}
 Late Entry: {debug.get('late_entry', 0)}
 Trap: {debug.get('trap', 0)}
 Heat: {debug.get('heat', 0)}
@@ -1114,16 +1168,17 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.8 🐋
+🚨 AHAD AI v19.3.9 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
 {s['quality']}
+🧠 Confidence: {s['confidence_level']}
 
 🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
 🐋 Money: {s['money_status']}
-⚡ Momentum: {s['momentum_score']}/100
+⚡ Momentum: {s['momentum_score']}/100 {s['momentum_status']}
 📊 RR: {s['rr']}
 🪤 Trap: {s['trap']}
 
@@ -1183,7 +1238,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.8 SMART ENTRY ONLINE 🐋")
+print("🔥 AHAD AI v19.3.9 SMART ENTRY ONLINE 🐋")
 
 while True:
     time.sleep(60)

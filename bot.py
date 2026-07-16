@@ -1,7 +1,15 @@
 # ================================================
-# 🚀 AHAD AI v20.0 EXPERIMENTAL
-# SMART ENTRY EDITION
+# 🚀 AHAD AI v20.1.0
+# DYNAMIC FLOW SCANNER EDITION
 # ================================================
+
+# ================================================
+# ⚙️ CONFIGURATION
+# ================================================
+
+MIN_FLOW_COINS = 50
+MAX_FLOW_COINS = 150
+FLOW_RATIO = 0.40
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -38,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.0 EXPERIMENTAL ONLINE 🚀"
+    return "🐋 AHAD AI v20.1.0 DYNAMIC FLOW ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -97,7 +105,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER
+# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.0)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -130,11 +138,27 @@ def top_flow_scanner(symbols):
             print(symbol, e)
 
         time.sleep(0.01)
-        if len(results) >= 80:
-            break
 
-    results = sorted(results, key=lambda x: x["flow"], reverse=True)
-    return [x["coin"] for x in results[:80]]
+    if len(results) == 0:
+        return []
+
+    results.sort(key=lambda x: x["flow"], reverse=True)
+
+    best_flow = results[0]["flow"]
+    dynamic_threshold = best_flow * FLOW_RATIO
+
+    selected = []
+
+    for coin_data in results:
+        if len(selected) >= MAX_FLOW_COINS:
+            break
+        if coin_data["flow"] >= dynamic_threshold:
+            selected.append(coin_data["coin"])
+
+    if len(selected) < MIN_FLOW_COINS:
+        selected = [x["coin"] for x in results[:MIN_FLOW_COINS]]
+
+    return selected
 
 
 # ================================================
@@ -169,7 +193,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.0 EXPERIMENTAL CORE READY 🐋")
+print("🔥 AHAD AI v20.1.0 DYNAMIC FLOW CORE READY 🐋")
 
 
 # ================================================
@@ -545,7 +569,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.0 EXPERIMENTAL)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -606,7 +630,7 @@ def analyze(symbol, sector, debug=None):
         flow = money["flow"]
 
         # ================================================
-        # 🔥 SMART RSI (وزن مخفض - RSI لا يقود القرار)
+        # 🔥 SMART RSI
         # ================================================
 
         rsi_score = 0
@@ -640,7 +664,7 @@ def analyze(symbol, sector, debug=None):
             flow_status = "NORMAL"
 
         # ================================================
-        # 📈 MACD MOMENTUM (وزن مخفض)
+        # 📈 MACD MOMENTUM
         # ================================================
 
         macd_value = macd_simple(closes15)
@@ -753,7 +777,7 @@ def analyze(symbol, sector, debug=None):
             momentum_status = "⚠️ Weak"
 
         # ================================================
-        # 🧠 REBALANCED SCORE ENGINE (v20.0)
+        # 🧠 REBALANCED SCORE ENGINE (v20.1.0)
         # Flow × 1.5, Momentum × 1.5, RSI × 0.5, MACD × 0.5
         # ================================================
 
@@ -828,11 +852,10 @@ def analyze(symbol, sector, debug=None):
             score -= 5
 
         # ================================================
-        # 🔥 RESISTANCE FILTER (v20.0)
-        # رفض إذا كانت المقاومة قريبة جداً (< 1.2 ATR)
+        # 🔥 RESISTANCE FILTER (v20.1.0)
         # ================================================
 
-        distance_to_resistance = sr["near_resistance"] * price / 100  # تحويل النسبة إلى سعر
+        distance_to_resistance = sr["near_resistance"] * price / 100
         if distance_to_resistance < move * 1.2:
             reject_reason = "Too Close Resistance"
             if debug is not None:
@@ -840,7 +863,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 HIGHER TIMEFRAME TREND FILTER (v20.0)
+        # 🔥 HIGHER TIMEFRAME TREND FILTER (v20.1.0)
         # ================================================
 
         e200_4h = ema(closes4h, 200)
@@ -851,7 +874,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 NEW RISK / REWARD ENGINE (v20.0)
+        # 🔥 NEW RISK / REWARD ENGINE (v20.1.0)
         # ================================================
 
         risk = price - sr["support"]
@@ -869,7 +892,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 MINIMUM SCORE FILTER (v20.0)
+        # 🔥 MINIMUM SCORE FILTER (v20.1.0)
         # ================================================
 
         MIN_SCORE = 68
@@ -880,7 +903,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # ⭐ QUALITY LEVEL (v20.0 - بدون WATCHLIST)
+        # ⭐ QUALITY LEVEL (v20.1.0 - بدون WATCHLIST)
         # ================================================
 
         if score >= 85:
@@ -888,7 +911,6 @@ def analyze(symbol, sector, debug=None):
         elif score >= 70:
             quality = "HIGH QUALITY ✅"
         else:
-            # WATCHLIST تم إلغاؤها
             reject_reason = "Watchlist Only"
             if debug is not None:
                 debug["watchlist"] = debug.get("watchlist", 0) + 1
@@ -1028,13 +1050,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.0 EXPERIMENTAL)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.0 EXPERIMENTAL ONLINE 🚀
+🐋 AHAD AI v20.1.0 ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1051,6 +1073,7 @@ def start(message):
 🧠 Confidence Level ACTIVE
 🎯 New RR Engine ACTIVE
 📈 Higher Timeframe Filter ACTIVE
+✅ Dynamic Flow Scanner ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -1059,13 +1082,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER
+# 🔎 SMART SCANNER (v20.1.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.0 EXPERIMENTAL SCANNING...
+🐋 AHAD AI v20.1.0 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1078,6 +1101,7 @@ def scan(message):
 🐞 Full Debug Funnel ACTIVE
 📌 Reject Reason ACTIVE
 🎯 New RR Engine ACTIVE
+✅ Dynamic Flow Scanner ACTIVE
 
 Please wait ⏳
 """)
@@ -1167,13 +1191,15 @@ Please wait ⏳
         time.sleep(0.03)
 
     # ================================================
-    # 🐞 FULL DEBUG REPORT
+    # 🐞 FULL DEBUG REPORT (DYNAMIC)
     # ================================================
+
+    checked_count = debug.get('checked', 0)
 
     debug_msg = f"""
 🐞 FULL DEBUG REPORT
 
-Checked: {debug.get('checked', 0)}
+Checked: {checked_count}
 Candles: {debug.get('candles', 0)}
 FOMO: {debug.get('fomo', 0)}
 Brain: {debug.get('brain', 0)}
@@ -1211,7 +1237,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.0 EXPERIMENTAL 🐋
+🚨 AHAD AI v20.1.0 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1284,9 +1310,12 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.0 EXPERIMENTAL ONLINE 🐋")
+print("🔥 AHAD AI v20.1.0 DYNAMIC FLOW ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
+print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
+print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
+print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 
 while True:
     time.sleep(60)

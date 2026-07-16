@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v19.3.9 STABLE
+# 🚀 AHAD AI v20.0 EXPERIMENTAL
 # SMART ENTRY EDITION
 # ================================================
 
@@ -38,7 +38,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v19.3.9 STABLE ONLINE 🚀"
+    return "🐋 AHAD AI v20.0 EXPERIMENTAL ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -97,7 +97,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (FIXED)
+# 🐋 TOP FLOW SCANNER
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -138,7 +138,7 @@ def top_flow_scanner(symbols):
 
 
 # ================================================
-# 🕯 OKX CANDLES ENGINE (FIXED)
+# 🕯 OKX CANDLES ENGINE
 # ================================================
 
 def get_candles(symbol, tf):
@@ -149,7 +149,6 @@ def get_candles(symbol, tf):
 
         data = requests.get(url, params=params, timeout=10).json()
 
-        # حماية من الاستجابة الناقصة
         if not data or "data" not in data or not data["data"]:
             return []
 
@@ -170,7 +169,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v19.3.9 STABLE CORE READY 🐋")
+print("🔥 AHAD AI v20.0 EXPERIMENTAL CORE READY 🐋")
 
 
 # ================================================
@@ -227,7 +226,6 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
-# Cache للشموع أثناء الـ Scan
 _candle_cache = {}
 
 def get_candles_cached(symbol, tf):
@@ -240,7 +238,7 @@ def get_candles_cached(symbol, tf):
 
 
 # ================================================
-# 🏦 SECTOR FLOW ENGINE (IMPROVED)
+# 🏦 SECTOR FLOW ENGINE
 # ================================================
 
 def sector_flow(symbols):
@@ -290,7 +288,7 @@ def sector_flow(symbols):
 
 
 # ================================================
-# 🐋 SMART MONEY ENGINE (FIXED)
+# 🐋 SMART MONEY ENGINE
 # ================================================
 
 def smart_money(candles):
@@ -306,7 +304,6 @@ def smart_money(candles):
         else:
             flow = volume_now / volume_avg
 
-        # Volume Acceleration
         volume_avg_20 = sum(volumes[-20:]) / 4
         volume_acceleration = volume_now / volume_avg_20 if volume_avg_20 > 0 else 0
 
@@ -331,7 +328,7 @@ def smart_money(candles):
 
 
 # ================================================
-# 🐋 PRE PUMP ENGINE (IMPROVED)
+# 🐋 PRE PUMP ENGINE
 # ================================================
 
 def pre_pump_engine(candles):
@@ -510,7 +507,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (FIXED)
+# 🧠 AI BRAIN ENGINE
 # ================================================
 
 def ai_brain(candles):
@@ -520,10 +517,6 @@ def ai_brain(candles):
     e20 = ema(closes, 20)
     e50 = ema(closes, 50)
     e100 = ema(closes, 100)
-
-    # Future: Add Momentum integration
-    # Future: Add Smart Money weighting
-    # Future: Add Confidence scoring
 
     score = 0
 
@@ -552,7 +545,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v19.3.9 STABLE)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.0 EXPERIMENTAL)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -760,7 +753,8 @@ def analyze(symbol, sector, debug=None):
             momentum_status = "⚠️ Weak"
 
         # ================================================
-        # 🧠 SINGLE SCORE ENGINE
+        # 🧠 REBALANCED SCORE ENGINE (v20.0)
+        # Flow × 1.5, Momentum × 1.5, RSI × 0.5, MACD × 0.5
         # ================================================
 
         score = 0
@@ -768,11 +762,11 @@ def analyze(symbol, sector, debug=None):
         # Brain (30)
         score += brain["confidence"] * 0.3
 
-        # Flow (20)
-        score += flow_score
+        # Flow × 1.5 (20 → 30)
+        score += flow_score * 1.5
 
-        # Momentum (20)
-        score += momentum_score * 0.2
+        # Momentum × 1.5 (20 → 30)
+        score += momentum_score * 0.2 * 1.5
 
         # Resistance (10)
         if sr["near_resistance"] > 5:
@@ -787,11 +781,11 @@ def analyze(symbol, sector, debug=None):
         # Multi Timeframe (5)
         score += multi["score"] * 0.1
 
-        # RSI (خصم أو إضافة)
-        score += rsi_score
+        # RSI × 0.5 (8 → 4)
+        score += rsi_score * 0.5
 
-        # MACD (خصم أو إضافة)
-        score += macd_score
+        # MACD × 0.5 (3 → 1.5)
+        score += macd_score * 0.5
 
         score -= brain_penalty
 
@@ -823,7 +817,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 HEAT CONTROL (خصم بدلاً من رفض)
+        # 🔥 HEAT CONTROL
         # ================================================
 
         if multi["4h"] > 70:
@@ -834,34 +828,71 @@ def analyze(symbol, sector, debug=None):
             score -= 5
 
         # ================================================
-        # 🔥 RESISTANCE FILTER (خصم بدلاً من رفض)
+        # 🔥 RESISTANCE FILTER (v20.0)
+        # رفض إذا كانت المقاومة قريبة جداً (< 1.2 ATR)
         # ================================================
 
-        if sr["near_resistance"] < 3:
-            score -= 15
+        distance_to_resistance = sr["near_resistance"] * price / 100  # تحويل النسبة إلى سعر
+        if distance_to_resistance < move * 1.2:
+            reject_reason = "Too Close Resistance"
+            if debug is not None:
+                debug["resistance"] = debug.get("resistance", 0) + 1
+            return None
 
         # ================================================
-        # 🔥 SCORE FILTER
+        # 🔥 HIGHER TIMEFRAME TREND FILTER (v20.0)
         # ================================================
 
-        if score < 55:
-            reject_reason = "Score"
+        e200_4h = ema(closes4h, 200)
+        if brain["direction"] == "🟢 LONG" and closes4h[-1] < e200_4h:
+            reject_reason = "Higher Trend Down"
+            if debug is not None:
+                debug["higher_trend"] = debug.get("higher_trend", 0) + 1
+            return None
+
+        # ================================================
+        # 🔥 NEW RISK / REWARD ENGINE (v20.0)
+        # ================================================
+
+        risk = price - sr["support"]
+        reward = sr["resistance"] - price
+
+        if risk > 0:
+            rr_new = reward / risk
+        else:
+            rr_new = 0
+
+        if rr_new < 1.8:
+            reject_reason = "Bad RR"
+            if debug is not None:
+                debug["rr"] = debug.get("rr", 0) + 1
+            return None
+
+        # ================================================
+        # 🔥 MINIMUM SCORE FILTER (v20.0)
+        # ================================================
+
+        MIN_SCORE = 68
+        if score < MIN_SCORE:
+            reject_reason = f"Low Score ({score})"
             if debug is not None:
                 debug["score"] = debug.get("score", 0) + 1
             return None
 
         # ================================================
-        # ⭐ QUALITY LEVEL
+        # ⭐ QUALITY LEVEL (v20.0 - بدون WATCHLIST)
         # ================================================
 
         if score >= 85:
             quality = "ELITE ✅"
         elif score >= 70:
             quality = "HIGH QUALITY ✅"
-        elif score >= 55:
-            quality = "WATCHLIST 👀"
         else:
-            quality = "NORMAL"
+            # WATCHLIST تم إلغاؤها
+            reject_reason = "Watchlist Only"
+            if debug is not None:
+                debug["watchlist"] = debug.get("watchlist", 0) + 1
+            return None
 
         # ================================================
         # 🧠 CONFIDENCE LEVEL
@@ -918,11 +949,11 @@ def analyze(symbol, sector, debug=None):
                 base_multiplier += 0.2
 
             sl = entry_low - move * base_multiplier
-            risk = entry_low - sl
+            risk_sl = entry_low - sl
 
-            tp1 = entry_low + risk * 1.5
-            tp2 = entry_low + risk * 3
-            tp3 = entry_low + risk * 5
+            tp1 = entry_low + risk_sl * 1.5
+            tp2 = entry_low + risk_sl * 3
+            tp3 = entry_low + risk_sl * 5
 
         else:
             direction = "SHORT"
@@ -935,11 +966,11 @@ def analyze(symbol, sector, debug=None):
                 base_multiplier += 0.2
 
             sl = entry_high + move * base_multiplier
-            risk = sl - entry_high
+            risk_sl = sl - entry_high
 
-            tp1 = entry_high - risk * 1.5
-            tp2 = entry_high - risk * 3
-            tp3 = entry_high - risk * 5
+            tp1 = entry_high - risk_sl * 1.5
+            tp2 = entry_high - risk_sl * 3
+            tp3 = entry_high - risk_sl * 5
 
         # ================================================
         # 🔧 TP1 FIX
@@ -953,16 +984,13 @@ def analyze(symbol, sector, debug=None):
                 tp1 = entry_low - move * 0.8
 
         # ================================================
-        # 📊 RISK REWARD (للإبقاء على الحساب فقط)
+        # 📊 RR (للإبقاء على الحساب فقط)
         # ================================================
 
         if direction == "LONG":
-            rr = (tp1 - entry_low) / risk
+            rr = (tp1 - entry_low) / risk_sl
         else:
-            rr = (entry_high - tp1) / risk
-
-        # تم إلغاء فلتر RR مؤقتاً
-        # سيتم إعادة تفعيله في v20 مع Risk Engine مستقل
+            rr = (entry_high - tp1) / risk_sl
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
@@ -1000,13 +1028,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v19.3.9 STABLE)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.0 EXPERIMENTAL)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.9 STABLE ONLINE 🚀
+🐋 AHAD AI v20.0 EXPERIMENTAL ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1021,6 +1049,8 @@ def start(message):
 🚀 Enhanced Momentum Engine ACTIVE
 📌 Reject Reason ACTIVE
 🧠 Confidence Level ACTIVE
+🎯 New RR Engine ACTIVE
+📈 Higher Timeframe Filter ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -1035,7 +1065,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v19.3.9 STABLE SCANNING...
+🐋 AHAD AI v20.0 EXPERIMENTAL SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1047,6 +1077,7 @@ def scan(message):
 📊 Enhanced Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 📌 Reject Reason ACTIVE
+🎯 New RR Engine ACTIVE
 
 Please wait ⏳
 """)
@@ -1099,7 +1130,7 @@ Please wait ⏳
             if result["direction"] == "🟢 LONG":
 
                 if (
-                    result["score"] >= 55
+                    result["score"] >= 68
                     and (
                         result["liquidity"] >= 1.2
                         or result["pre_pump"] == "🐋 WHALE LOADING"
@@ -1152,7 +1183,10 @@ Late Entry: {debug.get('late_entry', 0)}
 Trap: {debug.get('trap', 0)}
 Heat: {debug.get('heat', 0)}
 Resistance: {debug.get('resistance', 0)}
+Higher Trend: {debug.get('higher_trend', 0)}
+RR: {debug.get('rr', 0)}
 Score: {debug.get('score', 0)}
+Watchlist: {debug.get('watchlist', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
 Not Long: {debug.get('not_long', 0)}
@@ -1177,7 +1211,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v19.3.9 STABLE 🐋
+🚨 AHAD AI v20.0 EXPERIMENTAL 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1237,20 +1271,20 @@ def telegram_engine():
         try:
             print("🐋 TELEGRAM ENGINE STARTED")
             bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-            backoff = 5  # Reset on success
+            backoff = 5
         except Exception:
             print("🚨 TELEGRAM ERROR")
             print(traceback.format_exc())
             print(f"🔄 Restarting Telegram in {backoff}s...")
             time.sleep(backoff)
-            backoff = min(backoff * 2, 30)  # Exponential backoff: 5, 10, 20, 30
+            backoff = min(backoff * 2, 30)
 
 
 threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v19.3.9 STABLE ONLINE 🐋")
+print("🔥 AHAD AI v20.0 EXPERIMENTAL ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 

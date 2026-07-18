@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.1.0
-# DYNAMIC FLOW SCANNER EDITION
+# 🚀 AHAD AI v20.1.1
+# STABILITY PATCH EDITION
 # ================================================
 
 # ================================================
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.1.0 DYNAMIC FLOW ONLINE 🚀"
+    return "🐋 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -77,11 +77,19 @@ def get_symbols():
         params = {"instType": "SWAP"}
         data = requests.get(url, params=params, timeout=15).json()
 
+        # قائمة الأصول الممنوعة (Stocks, Indices, Commodities, ETFs, Tokenized)
         blocked = [
+            # Stocks
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            "XAU", "EUR", "GBP", "JPY",
-            "SPX", "NASDAQ", "DOW"
+            # Indices
+            "SPX", "NASDAQ", "DOW",
+            # Commodities
+            "XAU", "XAG", "WTI", "BRENT",
+            # Forex
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
+            # ETFs & Tokenized
+            "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
         result = []
@@ -93,6 +101,7 @@ def get_symbols():
                 and x.get("ctType") == "linear"
                 and "USD" not in x["instId"].replace("USDT", "")
                 and not any(b in symbol for b in blocked)
+                and not any(b in symbol.split("-")[0] for b in blocked)
             ):
                 result.append(symbol)
 
@@ -105,7 +114,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.0)
+# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.1)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -193,7 +202,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.1.0 DYNAMIC FLOW CORE READY 🐋")
+print("🔥 AHAD AI v20.1.1 STABILITY PATCH CORE READY 🐋")
 
 
 # ================================================
@@ -569,7 +578,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.1)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -579,6 +588,24 @@ def analyze(symbol, sector, debug=None):
 
         if debug is not None:
             debug["checked"] = debug.get("checked", 0) + 1
+
+        # ================================================
+        # 🛡️ ASSET VALIDATION (PATCH 1)
+        # ================================================
+
+        blocked_assets = [
+            "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
+            "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
+            "SPX", "NASDAQ", "DOW",
+            "XAU", "XAG", "WTI", "BRENT",
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
+            "USDT_ETF", "BTC_ETF", "ETH_ETF"
+        ]
+
+        base = symbol.split("-")[0]
+        if base in blocked_assets:
+            reject_reason = "Blocked Asset"
+            return None
 
         c15 = get_candles(symbol, "15m")
         c1h = get_candles(symbol, "1h")
@@ -777,38 +804,25 @@ def analyze(symbol, sector, debug=None):
             momentum_status = "⚠️ Weak"
 
         # ================================================
-        # 🧠 REBALANCED SCORE ENGINE (v20.1.0)
-        # Flow × 1.5, Momentum × 1.5, RSI × 0.5, MACD × 0.5
+        # 🧠 REBALANCED SCORE ENGINE
         # ================================================
 
         score = 0
 
-        # Brain (30)
         score += brain["confidence"] * 0.3
-
-        # Flow × 1.5 (20 → 30)
         score += flow_score * 1.5
-
-        # Momentum × 1.5 (20 → 30)
         score += momentum_score * 0.2 * 1.5
 
-        # Resistance (10)
         if sr["near_resistance"] > 5:
             score += 10
         elif sr["near_resistance"] > 3:
             score += 5
 
-        # Trap (10)
         if trap == "✅ NO TRAP":
             score += 10
 
-        # Multi Timeframe (5)
         score += multi["score"] * 0.1
-
-        # RSI × 0.5 (8 → 4)
         score += rsi_score * 0.5
-
-        # MACD × 0.5 (3 → 1.5)
         score += macd_score * 0.5
 
         score -= brain_penalty
@@ -852,7 +866,7 @@ def analyze(symbol, sector, debug=None):
             score -= 5
 
         # ================================================
-        # 🔥 RESISTANCE FILTER (v20.1.0)
+        # 🔥 RESISTANCE FILTER
         # ================================================
 
         distance_to_resistance = sr["near_resistance"] * price / 100
@@ -863,7 +877,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 HIGHER TIMEFRAME TREND FILTER (v20.1.0)
+        # 🔥 HIGHER TIMEFRAME TREND FILTER
         # ================================================
 
         e200_4h = ema(closes4h, 200)
@@ -874,25 +888,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 🔥 NEW RISK / REWARD ENGINE (v20.1.0)
-        # ================================================
-
-        risk = price - sr["support"]
-        reward = sr["resistance"] - price
-
-        if risk > 0:
-            rr_new = reward / risk
-        else:
-            rr_new = 0
-
-        if rr_new < 1.8:
-            reject_reason = "Bad RR"
-            if debug is not None:
-                debug["rr"] = debug.get("rr", 0) + 1
-            return None
-
-        # ================================================
-        # 🔥 MINIMUM SCORE FILTER (v20.1.0)
+        # 🔥 MINIMUM SCORE FILTER
         # ================================================
 
         MIN_SCORE = 68
@@ -903,7 +899,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # ⭐ QUALITY LEVEL (v20.1.0 - بدون WATCHLIST)
+        # ⭐ QUALITY LEVEL
         # ================================================
 
         if score >= 85:
@@ -954,7 +950,7 @@ def analyze(symbol, sector, debug=None):
             early_text = "⏳ WAIT FOR ENTRY"
 
         # ================================================
-        # 🎯 ENTRY ZONE & TARGETS (LONG & SHORT)
+        # 🎯 ENTRY ZONE & TARGETS (PATCH 2 & 3)
         # ================================================
 
         entry_low = price * 0.995
@@ -962,6 +958,8 @@ def analyze(symbol, sector, debug=None):
 
         if brain["direction"] == "🟢 LONG":
             direction = "LONG"
+
+            # Dynamic SL based on market conditions
             base_multiplier = 1.5
             if flow >= 2:
                 base_multiplier += 0.3
@@ -971,13 +969,28 @@ def analyze(symbol, sector, debug=None):
                 base_multiplier += 0.2
 
             sl = entry_low - move * base_multiplier
-            risk_sl = entry_low - sl
+            risk = entry_low - sl
 
-            tp1 = entry_low + risk_sl * 1.5
-            tp2 = entry_low + risk_sl * 3
-            tp3 = entry_low + risk_sl * 5
+            # TP Calculation (PATCH 2)
+            tp1 = entry_low + risk * 1.5
+            tp2 = entry_low + risk * 3.0
+            tp3 = entry_low + risk * 5.0
+
+            # TP1 Fix
+            if tp1 <= entry_high:
+                tp1 = entry_high + move * 0.8
+
+            # Ensure TP1 < TP2 < TP3
+            if tp2 <= tp1:
+                tp2 = tp1 + move * 0.5
+            if tp3 <= tp2:
+                tp3 = tp2 + move * 0.5
+
+            # RR Calculation (PATCH 3)
+            rr = (tp1 - entry_low) / risk
 
         else:
+            # SHORT Logic (مؤجل، لكن محفوظ)
             direction = "SHORT"
             base_multiplier = 1.5
             if flow >= 2:
@@ -988,31 +1001,89 @@ def analyze(symbol, sector, debug=None):
                 base_multiplier += 0.2
 
             sl = entry_high + move * base_multiplier
-            risk_sl = sl - entry_high
+            risk = sl - entry_high
 
-            tp1 = entry_high - risk_sl * 1.5
-            tp2 = entry_high - risk_sl * 3
-            tp3 = entry_high - risk_sl * 5
+            tp1 = entry_high - risk * 1.5
+            tp2 = entry_high - risk * 3.0
+            tp3 = entry_high - risk * 5.0
 
-        # ================================================
-        # 🔧 TP1 FIX
-        # ================================================
-
-        if direction == "LONG":
-            if tp1 <= entry_high:
-                tp1 = entry_high + move * 0.8
-        else:
             if tp1 >= entry_low:
                 tp1 = entry_low - move * 0.8
+
+            if tp2 >= tp1:
+                tp2 = tp1 - move * 0.5
+            if tp3 >= tp2:
+                tp3 = tp2 - move * 0.5
+
+            rr = (entry_high - tp1) / risk
+
+        # ================================================
+        # 🛡️ VALIDATION LAYER (PATCH 4)
+        # ================================================
+
+        validation_errors = []
+
+        # LONG Validation
+        if direction == "LONG":
+            if sl >= entry_low:
+                validation_errors.append("SL must be below Entry")
+            if tp1 <= entry_low:
+                validation_errors.append("TP1 must be above Entry")
+            if tp2 <= tp1:
+                validation_errors.append("TP2 must be above TP1")
+            if tp3 <= tp2:
+                validation_errors.append("TP3 must be above TP2")
+        else:
+            # SHORT Validation (مؤجل)
+            if sl <= entry_high:
+                validation_errors.append("SL must be above Entry")
+            if tp1 >= entry_high:
+                validation_errors.append("TP1 must be below Entry")
+            if tp2 >= tp1:
+                validation_errors.append("TP2 must be below TP1")
+            if tp3 >= tp2:
+                validation_errors.append("TP3 must be below TP2")
+
+        # RR Validation
+        if rr <= 0:
+            validation_errors.append("RR must be positive")
+
+        # Asset Validation (PATCH 1)
+        if base in blocked_assets:
+            validation_errors.append("Blocked Asset")
+
+        # Sector Validation
+        if sector == "UNKNOWN":
+            validation_errors.append("Invalid Sector")
+
+        # Entry Validation
+        if entry_low <= 0 or entry_high <= 0:
+            validation_errors.append("Invalid Entry")
+
+        # SL Validation
+        if sl <= 0:
+            validation_errors.append("Invalid SL")
+
+        # TP Validation
+        if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
+            validation_errors.append("Invalid TP")
+
+        # RR Validation
+        if rr < 1.8:
+            reject_reason = "Bad RR (Validation)"
+            if debug is not None:
+                debug["rr"] = debug.get("rr", 0) + 1
+            return None
+
+        if validation_errors:
+            reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
+            if debug is not None:
+                debug["validation"] = debug.get("validation", 0) + 1
+            return None
 
         # ================================================
         # 📊 RR (للإبقاء على الحساب فقط)
         # ================================================
-
-        if direction == "LONG":
-            rr = (tp1 - entry_low) / risk_sl
-        else:
-            rr = (entry_high - tp1) / risk_sl
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
@@ -1050,13 +1121,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.1)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.0 ONLINE 🚀
+🐋 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1074,6 +1145,7 @@ def start(message):
 🎯 New RR Engine ACTIVE
 📈 Higher Timeframe Filter ACTIVE
 ✅ Dynamic Flow Scanner ACTIVE
+🛡️ Validation Layer ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -1082,13 +1154,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.1.0)
+# 🔎 SMART SCANNER (v20.1.1)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.0 SCANNING...
+🐋 AHAD AI v20.1.1 STABILITY PATCH SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1102,6 +1174,7 @@ def scan(message):
 📌 Reject Reason ACTIVE
 🎯 New RR Engine ACTIVE
 ✅ Dynamic Flow Scanner ACTIVE
+🛡️ Validation Layer ACTIVE
 
 Please wait ⏳
 """)
@@ -1213,6 +1286,7 @@ Higher Trend: {debug.get('higher_trend', 0)}
 RR: {debug.get('rr', 0)}
 Score: {debug.get('score', 0)}
 Watchlist: {debug.get('watchlist', 0)}
+Validation: {debug.get('validation', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
 Not Long: {debug.get('not_long', 0)}
@@ -1237,7 +1311,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.1.0 🐋
+🚨 AHAD AI v20.1.1 STABILITY PATCH 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1310,12 +1384,13 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.1.0 DYNAMIC FLOW ONLINE 🐋")
+print("🔥 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
 print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
 print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
+print("🛡️ Validation Layer ACTIVE")
 
 while True:
     time.sleep(60)

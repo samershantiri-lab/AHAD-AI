@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v20.1.1
+# 🚀 AHAD AI v20.1.2
 # STABILITY PATCH EDITION
 # ================================================
 
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🚀"
+    return "🐋 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -77,18 +77,12 @@ def get_symbols():
         params = {"instType": "SWAP"}
         data = requests.get(url, params=params, timeout=15).json()
 
-        # قائمة الأصول الممنوعة (Stocks, Indices, Commodities, ETFs, Tokenized)
         blocked = [
-            # Stocks
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            # Indices
             "SPX", "NASDAQ", "DOW",
-            # Commodities
             "XAU", "XAG", "WTI", "BRENT",
-            # Forex
             "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
-            # ETFs & Tokenized
             "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
@@ -114,7 +108,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.1)
+# 🐋 TOP FLOW SCANNER (DYNAMIC)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -202,7 +196,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.1.1 STABILITY PATCH CORE READY 🐋")
+print("🔥 AHAD AI v20.1.2 STABILITY PATCH CORE READY 🐋")
 
 
 # ================================================
@@ -578,7 +572,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.1)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.2)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -959,7 +953,6 @@ def analyze(symbol, sector, debug=None):
         if brain["direction"] == "🟢 LONG":
             direction = "LONG"
 
-            # Dynamic SL based on market conditions
             base_multiplier = 1.5
             if flow >= 2:
                 base_multiplier += 0.3
@@ -971,26 +964,21 @@ def analyze(symbol, sector, debug=None):
             sl = entry_low - move * base_multiplier
             risk = entry_low - sl
 
-            # TP Calculation (PATCH 2)
             tp1 = entry_low + risk * 1.5
             tp2 = entry_low + risk * 3.0
             tp3 = entry_low + risk * 5.0
 
-            # TP1 Fix
             if tp1 <= entry_high:
                 tp1 = entry_high + move * 0.8
 
-            # Ensure TP1 < TP2 < TP3
             if tp2 <= tp1:
                 tp2 = tp1 + move * 0.5
             if tp3 <= tp2:
                 tp3 = tp2 + move * 0.5
 
-            # RR Calculation (PATCH 3)
             rr = (tp1 - entry_low) / risk
 
         else:
-            # SHORT Logic (مؤجل، لكن محفوظ)
             direction = "SHORT"
             base_multiplier = 1.5
             if flow >= 2:
@@ -1023,7 +1011,6 @@ def analyze(symbol, sector, debug=None):
 
         validation_errors = []
 
-        # LONG Validation
         if direction == "LONG":
             if sl >= entry_low:
                 validation_errors.append("SL must be below Entry")
@@ -1034,7 +1021,6 @@ def analyze(symbol, sector, debug=None):
             if tp3 <= tp2:
                 validation_errors.append("TP3 must be above TP2")
         else:
-            # SHORT Validation (مؤجل)
             if sl <= entry_high:
                 validation_errors.append("SL must be above Entry")
             if tp1 >= entry_high:
@@ -1044,31 +1030,24 @@ def analyze(symbol, sector, debug=None):
             if tp3 >= tp2:
                 validation_errors.append("TP3 must be below TP2")
 
-        # RR Validation
         if rr <= 0:
             validation_errors.append("RR must be positive")
 
-        # Asset Validation (PATCH 1)
         if base in blocked_assets:
             validation_errors.append("Blocked Asset")
 
-        # Sector Validation
         if sector == "UNKNOWN":
             validation_errors.append("Invalid Sector")
 
-        # Entry Validation
         if entry_low <= 0 or entry_high <= 0:
             validation_errors.append("Invalid Entry")
 
-        # SL Validation
         if sl <= 0:
             validation_errors.append("Invalid SL")
 
-        # TP Validation
         if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
             validation_errors.append("Invalid TP")
 
-        # RR Validation
         if rr < 1.8:
             reject_reason = "Bad RR (Validation)"
             if debug is not None:
@@ -1080,10 +1059,6 @@ def analyze(symbol, sector, debug=None):
             if debug is not None:
                 debug["validation"] = debug.get("validation", 0) + 1
             return None
-
-        # ================================================
-        # 📊 RR (للإبقاء على الحساب فقط)
-        # ================================================
 
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
@@ -1121,13 +1096,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.1)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.2)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🚀
+🐋 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1154,13 +1129,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.1.1)
+# 🔎 SMART SCANNER (v20.1.2)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.1 STABILITY PATCH SCANNING...
+🐋 AHAD AI v20.1.2 STABILITY PATCH SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1179,6 +1154,11 @@ def scan(message):
 Please wait ⏳
 """)
 
+    # ====== FIX v20.1.2 ======
+    global _candle_cache
+    _candle_cache.clear()
+    # =========================
+
     debug = {}
 
     long_results = []
@@ -1187,10 +1167,6 @@ Please wait ⏳
 
     flow = sector_flow(all_symbols)
     hot_sector = flow["sector"]
-
-    # ================================================
-    # 🏦 IMPROVED MARKET FLOW WITH RANKING
-    # ================================================
 
     ranking = flow["ranking"]
     text = "🔥 MARKET FLOW\n\n"
@@ -1219,10 +1195,6 @@ Please wait ⏳
 
             if result["score"] > 100:
                 result["score"] = 100
-
-            # ==========================================
-            # LONG CHECK
-            # ==========================================
 
             if result["direction"] == "🟢 LONG":
 
@@ -1263,10 +1235,6 @@ Please wait ⏳
 
         time.sleep(0.03)
 
-    # ================================================
-    # 🐞 FULL DEBUG REPORT (DYNAMIC)
-    # ================================================
-
     checked_count = debug.get('checked', 0)
 
     debug_msg = f"""
@@ -1294,10 +1262,6 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 """
     bot.send_message(message.chat.id, debug_msg)
 
-    # ================================================
-    # 📊 RESULTS
-    # ================================================
-
     results = sorted(long_results, key=lambda x: (x["score"], x["liquidity"]), reverse=True)[:3]
 
     if not results:
@@ -1311,7 +1275,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.1.1 STABILITY PATCH 🐋
+🚨 AHAD AI v20.1.2 STABILITY PATCH 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1384,13 +1348,14 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.1.1 STABILITY PATCH ONLINE 🐋")
+print("🔥 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
 print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
 print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 print("🛡️ Validation Layer ACTIVE")
+print("🗑️ Cache cleared on each scan")
 
 while True:
     time.sleep(60)

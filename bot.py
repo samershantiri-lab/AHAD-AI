@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v20.1.2
+# 🚀 AHAD AI v20.1.3
 # STABILITY PATCH EDITION
 # ================================================
 
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🚀"
+    return "🐋 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -108,7 +108,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (DYNAMIC)
+# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.3)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -143,7 +143,9 @@ def top_flow_scanner(symbols):
         time.sleep(0.01)
 
     if len(results) == 0:
-        return []
+        return [], 0
+
+    flow_candidates = len(results)
 
     results.sort(key=lambda x: x["flow"], reverse=True)
 
@@ -161,7 +163,7 @@ def top_flow_scanner(symbols):
     if len(selected) < MIN_FLOW_COINS:
         selected = [x["coin"] for x in results[:MIN_FLOW_COINS]]
 
-    return selected
+    return selected, flow_candidates
 
 
 # ================================================
@@ -196,7 +198,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.1.2 STABILITY PATCH CORE READY 🐋")
+print("🔥 AHAD AI v20.1.3 STABILITY PATCH CORE READY 🐋")
 
 
 # ================================================
@@ -572,7 +574,7 @@ def ai_brain(candles):
     return {"direction": direction, "confidence": abs(score)}
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.2)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.3)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1096,13 +1098,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.2)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.3)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🚀
+🐋 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🚀
 
 🧠 AI Brain ACTIVE (Flexible)
 🐋 Smart Money ACTIVE
@@ -1129,13 +1131,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.1.2)
+# 🔎 SMART SCANNER (v20.1.3)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.2 STABILITY PATCH SCANNING...
+🐋 AHAD AI v20.1.3 STABILITY PATCH SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1154,7 +1156,7 @@ def scan(message):
 Please wait ⏳
 """)
 
-    # ====== FIX v20.1.2 ======
+    # ====== FIX v20.1.3 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1163,7 +1165,8 @@ Please wait ⏳
 
     long_results = []
     all_symbols = get_symbols()
-    symbols = top_flow_scanner(all_symbols)
+
+    symbols, flow_candidates = top_flow_scanner(all_symbols)
 
     flow = sector_flow(all_symbols)
     hot_sector = flow["sector"]
@@ -1241,6 +1244,8 @@ Please wait ⏳
 🐞 FULL DEBUG REPORT
 
 Checked: {checked_count}
+Flow Candidates: {flow_candidates}
+Selected: {len(symbols)}
 Candles: {debug.get('candles', 0)}
 FOMO: {debug.get('fomo', 0)}
 Brain: {debug.get('brain', 0)}
@@ -1275,7 +1280,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.1.2 STABILITY PATCH 🐋
+🚨 AHAD AI v20.1.3 STABILITY PATCH 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1348,7 +1353,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.1.2 STABILITY PATCH ONLINE 🐋")
+print("🔥 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")

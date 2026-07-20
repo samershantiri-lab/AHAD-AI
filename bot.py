@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.2.0
-# STAGE 1 EDITION
+# 🚀 AHAD AI v20.3.0
+# STAGE 2 EDITION
 # ================================================
 
 # ================================================
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.2.0 STAGE 1 ONLINE 🚀"
+    return "🐋 AHAD AI v20.3.0 STAGE 2 ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -198,7 +198,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.2.0 STAGE 1 CORE READY 🐋")
+print("🔥 AHAD AI v20.3.0 STAGE 2 CORE READY 🐋")
 
 
 # ================================================
@@ -492,7 +492,7 @@ def support_resistance(candles):
 
 
 # ================================================
-# 🛡 ANTI LATE ENTRY
+# 🛡 ANTI LATE ENTRY (FOMO FILTER)
 # ================================================
 
 def fomo_filter(candles):
@@ -536,7 +536,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.2.0 STAGE 1)
+# 🧠 AI BRAIN ENGINE (v20.3.0)
 # ================================================
 
 def ai_brain(candles):
@@ -620,10 +620,10 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-        }
+                }
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.2.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.3.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -780,13 +780,27 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 BETTER ENTRY
+        # 📊 DYNAMIC LATE ENTRY (v20.3.0 STAGE 2)
         # ================================================
 
         move = atr(c15)
         ema50_15 = ema(closes15, 50)
 
-        if price > ema50_15 + (move * 0.5):
+        # السماح بمساحة أكبر إذا كان الاتجاه صاعداً
+        ema20_15 = ema(closes15, 20)
+        ema100_15 = ema(closes15, 100)
+
+        late_limit = 0.5
+
+        # ترند صحي
+        if ema20_15 > ema50_15 > ema100_15:
+            late_limit = 0.8
+
+        # ترند قوي جداً
+        if price > ema20_15 and ema20_15 > ema50_15 > ema100_15:
+            late_limit = 1.0
+
+        if price > ema50_15 + (move * late_limit):
             reject_reason = "Late Entry"
             if debug is not None:
                 debug["late_entry"] = debug.get("late_entry", 0) + 1
@@ -854,7 +868,7 @@ def analyze(symbol, sector, debug=None):
 
         score = 0
 
-        # Brain Confidence (استخدام الثقة الجديدة)
+        # Brain Confidence
         score += brain["confidence"] * 0.3
 
         # Flow
@@ -1162,13 +1176,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.2.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.3.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.2.0 STAGE 1 ONLINE 🚀
+🐋 AHAD AI v20.3.0 STAGE 2 ONLINE 🚀
 
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
@@ -1176,7 +1190,7 @@ def start(message):
 🪤 Trap Detector ACTIVE
 ⚡ Pre-Pump Detection ACTIVE
 🔥 Heat Control ACTIVE
-🎯 Early Entry Filter ACTIVE
+🎯 Dynamic Late Entry ACTIVE
 📊 Enhanced Score System ACTIVE
 🐞 Full Debug Funnel ACTIVE
 🔥 Volatility Compression ACTIVE
@@ -1196,13 +1210,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.2.0)
+# 🔎 SMART SCANNER (v20.3.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.2.0 STAGE 1 SCANNING...
+🐋 AHAD AI v20.3.0 STAGE 2 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1218,11 +1232,12 @@ def scan(message):
 ✅ Dynamic Flow Scanner ACTIVE
 🛡️ Validation Layer ACTIVE
 🧠 Brain v2.0 ACTIVE
+🎯 Dynamic Late Entry ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.2.0 ======
+    # ====== FIX v20.3.0 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1346,7 +1361,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.2.0 STAGE 1 🐋
+🚨 AHAD AI v20.3.0 STAGE 2 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1420,7 +1435,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.2.0 STAGE 1 ONLINE 🐋")
+print("🔥 AHAD AI v20.3.0 STAGE 2 ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1429,6 +1444,7 @@ print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 print("🛡️ Validation Layer ACTIVE")
 print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
+print("🎯 Dynamic Late Entry ACTIVE")
 
 while True:
     time.sleep(60)

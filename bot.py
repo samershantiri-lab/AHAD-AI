@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.3.0
-# STAGE 2 EDITION
+# 🚀 AHAD AI v20.3.1
+# DEBUG REASON EDITION
 # ================================================
 
 # ================================================
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.3.0 STAGE 2 ONLINE 🚀"
+    return "🐋 AHAD AI v20.3.1 DEBUG REASON ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -198,7 +198,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.3.0 STAGE 2 CORE READY 🐋")
+print("🔥 AHAD AI v20.3.1 DEBUG REASON CORE READY 🐋")
 
 
 # ================================================
@@ -536,7 +536,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.3.0)
+# 🧠 AI BRAIN ENGINE (v20.3.1)
 # ================================================
 
 def ai_brain(candles):
@@ -620,10 +620,10 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-                }
+                 }
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.3.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.3.1)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -673,6 +673,8 @@ def analyze(symbol, sector, debug=None):
             return None
 
         brain = ai_brain(c1h)
+        debug_reason = []
+
         if brain["direction"] == "WAIT":
             brain_penalty = 10
             reject_reason = "Brain"
@@ -780,23 +782,20 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 DYNAMIC LATE ENTRY (v20.3.0 STAGE 2)
+        # 📊 DYNAMIC LATE ENTRY (v20.3.1)
         # ================================================
 
         move = atr(c15)
         ema50_15 = ema(closes15, 50)
 
-        # السماح بمساحة أكبر إذا كان الاتجاه صاعداً
         ema20_15 = ema(closes15, 20)
         ema100_15 = ema(closes15, 100)
 
         late_limit = 0.5
 
-        # ترند صحي
         if ema20_15 > ema50_15 > ema100_15:
             late_limit = 0.8
 
-        # ترند قوي جداً
         if price > ema20_15 and ema20_15 > ema50_15 > ema100_15:
             late_limit = 1.0
 
@@ -868,35 +867,22 @@ def analyze(symbol, sector, debug=None):
 
         score = 0
 
-        # Brain Confidence
         score += brain["confidence"] * 0.3
-
-        # Flow
         score += flow_score * 1.5
-
-        # Momentum
         score += momentum_score * 0.2 * 1.5
 
-        # Resistance
         if sr["near_resistance"] > 5:
             score += 10
         elif sr["near_resistance"] > 3:
             score += 5
 
-        # Trap
         if trap == "✅ NO TRAP":
             score += 10
 
-        # Multi Timeframe
         score += multi["score"] * 0.1
-
-        # RSI
         score += rsi_score * 0.5
-
-        # MACD
         score += macd_score * 0.5
 
-        # Brain Penalty
         score -= brain_penalty
 
         score = round(max(0, min(100, score)))
@@ -1138,9 +1124,26 @@ def analyze(symbol, sector, debug=None):
                 debug["validation"] = debug.get("validation", 0) + 1
             return None
 
+        # ================================================
+        # 🐞 DEBUG REASON (v20.3.1)
+        # ================================================
+
+        if brain["direction"] != "🟢 LONG":
+            debug_reason.append(f"Brain={brain['direction']}")
+
+        if brain["long_score"] < brain["short_score"]:
+            debug_reason.append("LongScore<ShortScore")
+
+        if momentum_status != "🔥 Strong" and momentum_status != "⚡ Moderate":
+            debug_reason.append(f"Momentum={momentum_status}")
+
+        if score < MIN_SCORE:
+            debug_reason.append(f"Score={round(score)}")
+
         if debug is not None:
             debug["passed"] = debug.get("passed", 0) + 1
             debug["reject_reason"] = reject_reason
+            debug["debug_reason"] = debug_reason
 
         return {
             "coin": symbol,
@@ -1164,6 +1167,7 @@ def analyze(symbol, sector, debug=None):
             "warning": warning,
             "volatility": vol,
             "reject_reason": reject_reason,
+            "debug_reason": debug_reason,
             "momentum_score": momentum_score,
             "momentum_status": momentum_status,
             "rr": round(rr, 2),
@@ -1176,13 +1180,13 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.3.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.3.1)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.3.0 STAGE 2 ONLINE 🚀
+🐋 AHAD AI v20.3.1 DEBUG REASON ONLINE 🚀
 
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
@@ -1202,6 +1206,7 @@ def start(message):
 ✅ Dynamic Flow Scanner ACTIVE
 🛡️ Validation Layer ACTIVE
 📊 Brain LONG/SHORT Scores ACTIVE
+🐞 Debug Reason ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -1210,13 +1215,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.3.0)
+# 🔎 SMART SCANNER (v20.3.1)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.3.0 STAGE 2 SCANNING...
+🐋 AHAD AI v20.3.1 DEBUG REASON SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1233,11 +1238,12 @@ def scan(message):
 🛡️ Validation Layer ACTIVE
 🧠 Brain v2.0 ACTIVE
 🎯 Dynamic Late Entry ACTIVE
+🐞 Debug Reason ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.3.0 ======
+    # ====== FIX v20.3.1 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1296,25 +1302,35 @@ Please wait ⏳
                 else:
 
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
-                    debug["reject_reason"] = "Final Gate"
+                    debug["reject_reason"] = (
+                        "Not Long"
+                        if not result.get("debug_reason")
+                        else " | ".join(result["debug_reason"])
+                    )
 
                     print(
                         f"GATE REJECT | "
                         f"{result['coin']} | "
                         f"Score={result['score']} | "
                         f"Flow={result['liquidity']} | "
-                        f"PrePump={result['pre_pump']}"
+                        f"PrePump={result['pre_pump']} | "
+                        f"Reason={debug['reject_reason']}"
                     )
 
             else:
 
                 debug["not_long"] = debug.get("not_long", 0) + 1
-                debug["reject_reason"] = "Not Long"
+                debug["reject_reason"] = (
+                    "Not Long"
+                    if not result.get("debug_reason")
+                    else " | ".join(result["debug_reason"])
+                )
 
                 print(
                     f"SHORT SIGNAL | "
                     f"{result['coin']} | "
-                    f"Score={result['score']}"
+                    f"Score={result['score']} | "
+                    f"Reason={debug['reject_reason']}"
                 )
 
         time.sleep(0.03)
@@ -1361,7 +1377,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.3.0 STAGE 2 🐋
+🚨 AHAD AI v20.3.1 DEBUG REASON 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1391,7 +1407,8 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 {s['early_text']}
 """
         bot.send_message(message.chat.id, msg)
-        
+
+
 # ================================================
 # 🚀 SECTION 5: SYSTEM
 # ================================================
@@ -1435,7 +1452,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.3.0 STAGE 2 ONLINE 🐋")
+print("🔥 AHAD AI v20.3.1 DEBUG REASON ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1445,6 +1462,7 @@ print("🛡️ Validation Layer ACTIVE")
 print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry ACTIVE")
+print("🐞 Debug Reason ACTIVE")
 
 while True:
     time.sleep(60)

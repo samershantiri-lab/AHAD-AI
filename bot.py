@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.1.3
-# STABILITY PATCH EDITION
+# 🚀 AHAD AI v20.2.0
+# STAGE 1 EDITION
 # ================================================
 
 # ================================================
@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🚀"
+    return "🐋 AHAD AI v20.2.0 STAGE 1 ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -108,7 +108,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (DYNAMIC v20.1.3)
+# 🐋 TOP FLOW SCANNER (DYNAMIC)
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -198,7 +198,7 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.1.3 STABILITY PATCH CORE READY 🐋")
+print("🔥 AHAD AI v20.2.0 STAGE 1 CORE READY 🐋")
 
 
 # ================================================
@@ -536,7 +536,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE
+# 🧠 AI BRAIN ENGINE (v20.2.0 STAGE 1)
 # ================================================
 
 def ai_brain(candles):
@@ -547,34 +547,83 @@ def ai_brain(candles):
     e50 = ema(closes, 50)
     e100 = ema(closes, 100)
 
-    score = 0
+    long_score = 0
+    short_score = 0
+
+    # ==========================================
+    # Price Position
+    # ==========================================
 
     if price > e20:
-        score += 20
+        long_score += 25
     else:
-        score -= 20
+        short_score += 25
+
+    # ==========================================
+    # EMA Alignment
+    # ==========================================
 
     if e20 > e50:
-        score += 20
+        long_score += 20
     else:
-        score -= 20
+        short_score += 20
 
     if e50 > e100:
-        score += 20
+        long_score += 20
     else:
-        score -= 20
+        short_score += 20
 
-    if score >= 50:
+    # ==========================================
+    # EMA Slope
+    # ==========================================
+
+    if len(closes) >= 5:
+
+        old20 = ema(closes[:-4], 20)
+
+        if e20 > old20:
+            long_score += 15
+        elif e20 < old20:
+            short_score += 15
+
+    # ==========================================
+    # Distance From EMA20
+    # ==========================================
+
+    distance = abs(price - e20) / e20
+
+    if distance < 0.01:
+        long_score += 10
+        short_score += 10
+
+    # ==========================================
+    # Confidence
+    # ==========================================
+
+    confidence = abs(long_score - short_score)
+
+    # ==========================================
+    # Direction
+    # ==========================================
+
+    if long_score >= 60 and long_score > short_score:
         direction = "🟢 LONG"
-    elif score <= -50:
+
+    elif short_score >= 60 and short_score > long_score:
         direction = "🔴 SHORT"
+
     else:
         direction = "WAIT"
 
-    return {"direction": direction, "confidence": abs(score)}
+    return {
+        "direction": direction,
+        "confidence": confidence,
+        "long_score": long_score,
+        "short_score": short_score
+        }
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.1.3)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.2.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -586,7 +635,7 @@ def analyze(symbol, sector, debug=None):
             debug["checked"] = debug.get("checked", 0) + 1
 
         # ================================================
-        # 🛡️ ASSET VALIDATION (PATCH 1)
+        # 🛡️ ASSET VALIDATION
         # ================================================
 
         blocked_assets = [
@@ -805,22 +854,35 @@ def analyze(symbol, sector, debug=None):
 
         score = 0
 
+        # Brain Confidence (استخدام الثقة الجديدة)
         score += brain["confidence"] * 0.3
+
+        # Flow
         score += flow_score * 1.5
+
+        # Momentum
         score += momentum_score * 0.2 * 1.5
 
+        # Resistance
         if sr["near_resistance"] > 5:
             score += 10
         elif sr["near_resistance"] > 3:
             score += 5
 
+        # Trap
         if trap == "✅ NO TRAP":
             score += 10
 
+        # Multi Timeframe
         score += multi["score"] * 0.1
+
+        # RSI
         score += rsi_score * 0.5
+
+        # MACD
         score += macd_score * 0.5
 
+        # Brain Penalty
         score -= brain_penalty
 
         score = round(max(0, min(100, score)))
@@ -946,7 +1008,7 @@ def analyze(symbol, sector, debug=None):
             early_text = "⏳ WAIT FOR ENTRY"
 
         # ================================================
-        # 🎯 ENTRY ZONE & TARGETS (PATCH 2 & 3)
+        # 🎯 ENTRY ZONE & TARGETS
         # ================================================
 
         entry_low = price * 0.995
@@ -1008,7 +1070,7 @@ def analyze(symbol, sector, debug=None):
             rr = (entry_high - tp1) / risk
 
         # ================================================
-        # 🛡️ VALIDATION LAYER (PATCH 4)
+        # 🛡️ VALIDATION LAYER
         # ================================================
 
         validation_errors = []
@@ -1090,7 +1152,9 @@ def analyze(symbol, sector, debug=None):
             "reject_reason": reject_reason,
             "momentum_score": momentum_score,
             "momentum_status": momentum_status,
-            "rr": round(rr, 2)
+            "rr": round(rr, 2),
+            "brain_long_score": brain["long_score"],
+            "brain_short_score": brain["short_score"]
         }
 
     except Exception as e:
@@ -1098,15 +1162,15 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.1.3)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.2.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🚀
+🐋 AHAD AI v20.2.0 STAGE 1 ONLINE 🚀
 
-🧠 AI Brain ACTIVE (Flexible)
+🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
 🪤 Trap Detector ACTIVE
@@ -1123,6 +1187,7 @@ def start(message):
 📈 Higher Timeframe Filter ACTIVE
 ✅ Dynamic Flow Scanner ACTIVE
 🛡️ Validation Layer ACTIVE
+📊 Brain LONG/SHORT Scores ACTIVE
 
 🎯 Goal: Best 3 quality LONG setups
 
@@ -1131,13 +1196,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.1.3)
+# 🔎 SMART SCANNER (v20.2.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.1.3 STABILITY PATCH SCANNING...
+🐋 AHAD AI v20.2.0 STAGE 1 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1152,11 +1217,12 @@ def scan(message):
 🎯 New RR Engine ACTIVE
 ✅ Dynamic Flow Scanner ACTIVE
 🛡️ Validation Layer ACTIVE
+🧠 Brain v2.0 ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.1.3 ======
+    # ====== FIX v20.2.0 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1280,13 +1346,14 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.1.3 STABILITY PATCH 🐋
+🚨 AHAD AI v20.2.0 STAGE 1 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
 {s['quality']}
 🧠 Confidence: {s['confidence_level']}
+📊 Brain Scores | LONG: {s['brain_long_score']} | SHORT: {s['brain_short_score']}
 
 🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
 🐋 Money: {s['money_status']}
@@ -1353,7 +1420,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.1.3 STABILITY PATCH ONLINE 🐋")
+print("🔥 AHAD AI v20.2.0 STAGE 1 ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1361,6 +1428,7 @@ print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
 print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 print("🛡️ Validation Layer ACTIVE")
 print("🗑️ Cache cleared on each scan")
+print("🧠 Brain v2.0 ACTIVE")
 
 while True:
     time.sleep(60)

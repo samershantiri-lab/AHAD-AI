@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.4.0
-# STAGE 1 EDITION
+# 🚀 AHAD AI v20.5.0
+# STAGE 1 - DATABASE FOUNDATION
 # ================================================
 
 # ================================================
@@ -21,6 +21,7 @@ import threading
 import traceback
 import requests
 import urllib.request
+import sqlite3
 
 from flask import Flask
 import telebot
@@ -39,6 +40,67 @@ bot = telebot.TeleBot(TOKEN)
 
 
 # ================================================
+# 🗄 AHAD AI DATABASE
+# ================================================
+
+DB_NAME = "ahad_ai.db"
+
+
+def init_database():
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS trades (
+
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        symbol TEXT,
+        side TEXT,
+
+        signal_time TEXT,
+
+        entry REAL,
+        sl REAL,
+
+        tp1 REAL,
+        tp2 REAL,
+        tp3 REAL,
+
+        sector TEXT,
+
+        score INTEGER,
+
+        brain_long INTEGER,
+        brain_short INTEGER,
+
+        flow REAL,
+        momentum INTEGER,
+        rr REAL,
+
+        confidence TEXT,
+
+        late_score INTEGER,
+
+        status TEXT,
+
+        result TEXT,
+
+        max_profit REAL,
+        max_drawdown REAL,
+
+        close_time TEXT
+
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+    print("🗄 AHAD AI DATABASE READY")
+
+
+# ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -46,7 +108,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.4.0 STAGE 1 ONLINE 🚀"
+    return "🐋 AHAD AI v20.5.0 STAGE 1 ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -198,7 +260,8 @@ def get_candles(symbol, tf):
         return []
 
 
-print("🔥 AHAD AI v20.4.0 STAGE 1 CORE READY 🐋")
+init_database()
+print("🔥 AHAD AI v20.5.0 STAGE 1 CORE READY 🐋")
 
 
 # ================================================
@@ -536,7 +599,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.4.0)
+# 🧠 AI BRAIN ENGINE (v20.5.0)
 # ================================================
 
 def ai_brain(candles):
@@ -620,10 +683,10 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-                }
+    }
     
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.4.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.5.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -782,7 +845,7 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 DYNAMIC LATE ENTRY v20.4.0 STAGE 1
+        # 📊 DYNAMIC LATE ENTRY v20.5.0
         # ================================================
 
         move = atr(c15)
@@ -1217,14 +1280,15 @@ def analyze(symbol, sector, debug=None):
         return None
         
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.4.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.5.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.4.0 STAGE 1 ONLINE 🚀
+🐋 AHAD AI v20.5.0 STAGE 1 ONLINE 🚀
 
+🗄 Database Foundation ACTIVE
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
@@ -1252,13 +1316,13 @@ Send /scan
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.4.0)
+# 🔎 SMART SCANNER (v20.5.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.4.0 STAGE 1 SCANNING...
+🐋 AHAD AI v20.5.0 STAGE 1 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1280,7 +1344,7 @@ def scan(message):
 Please wait ⏳
 """)
 
-    # ====== FIX v20.4.0 ======
+    # ====== FIX v20.5.0 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1415,7 +1479,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.4.0 STAGE 1 🐋
+🚨 AHAD AI v20.5.0 STAGE 1 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1490,7 +1554,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.4.0 STAGE 1 ONLINE 🐋")
+print("🔥 AHAD AI v20.5.0 STAGE 1 ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1501,6 +1565,7 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
+print("🗄️ Database Foundation ACTIVE")
 
 while True:
     time.sleep(60)

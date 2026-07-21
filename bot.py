@@ -1,6 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v20.5.0 STAGE 3 - HOTFIX
-# RELIABILITY + DEBUG IMPROVEMENTS
+# 🚀 AHAD AI v20.6.0 – Performance Analytics Edition
 # ================================================
 
 # ================================================
@@ -144,7 +143,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v20.5.0 STAGE 3'),
+            trade_data.get('version', 'v20.6.0'),
             'OPEN',
             'PENDING',
             0.0,
@@ -165,7 +164,7 @@ def save_trade(trade_data):
 
 
 # ================================================
-# 📈 TRADE TRACKING SYSTEM (STAGE 3 - HOTFIX)
+# 📈 TRADE TRACKING SYSTEM (STAGE 3)
 # ================================================
 
 def get_open_trades():
@@ -346,6 +345,67 @@ def update_open_trades():
 
 
 # ================================================
+# 📊 PERFORMANCE ANALYTICS (v20.6.0)
+# ================================================
+
+def get_report_stats():
+    """إحصائيات أداء AHAD AI"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+
+        # إجمالي الصفقات
+        cur.execute("SELECT COUNT(*) FROM trades")
+        total = cur.fetchone()[0]
+
+        # الصفقات المفتوحة
+        cur.execute("SELECT COUNT(*) FROM trades WHERE status='OPEN'")
+        open_trades = cur.fetchone()[0]
+
+        # الصفقات المغلقة
+        cur.execute("SELECT COUNT(*) FROM trades WHERE status='CLOSED'")
+        closed = cur.fetchone()[0]
+
+        # نتائج الصفقات
+        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP1'")
+        tp1 = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP2'")
+        tp2 = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP3'")
+        tp3 = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM trades WHERE result='LOSS_SL'")
+        sl = cur.fetchone()[0]
+
+        conn.close()
+
+        wins = tp1 + tp2 + tp3
+
+        if closed > 0:
+            win_rate = round((wins / closed) * 100, 2)
+        else:
+            win_rate = 0
+
+        return {
+            "total": total,
+            "open": open_trades,
+            "closed": closed,
+            "tp1": tp1,
+            "tp2": tp2,
+            "tp3": tp3,
+            "sl": sl,
+            "wins": wins,
+            "win_rate": win_rate
+        }
+
+    except Exception as e:
+        print(f"❌ Report Error: {e}")
+        return None
+
+
+# ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -353,7 +413,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.5.0 STAGE 3 ONLINE 🚀"
+    return "🐋 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -506,7 +566,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v20.5.0 STAGE 3 CORE READY 🐋")
+print("🔥 AHAD AI v20.6.0 – Performance Analytics Edition CORE READY 🐋")
 
 
 # ================================================
@@ -844,7 +904,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.5.0)
+# 🧠 AI BRAIN ENGINE (v20.6.0)
 # ================================================
 
 def ai_brain(candles):
@@ -928,9 +988,9 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-            }
+        }
     # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.5.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.6.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1089,7 +1149,7 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 DYNAMIC LATE ENTRY v20.5.0
+        # 📊 DYNAMIC LATE ENTRY v20.6.0
         # ================================================
 
         move = atr(c15)
@@ -1489,7 +1549,7 @@ def analyze(symbol, sector, debug=None):
             debug["reject_reason"] = reject_reason
             debug["debug_reason"] = debug_reason
 
-        # ====== TRADE DATA FOR RECORDER (STAGE 3) ======
+        # ====== TRADE DATA FOR RECORDER (v20.6.0) ======
         trade_data = {
             'symbol': symbol,
             'side': brain['direction'].replace('🟢 ', '').replace('🔴 ', ''),
@@ -1508,7 +1568,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v20.5.0 STAGE 3'
+            'version': 'v20.6.0'
         }
         # =================================================
 
@@ -1547,17 +1607,18 @@ def analyze(symbol, sector, debug=None):
         print("ANALYZE ERROR:", e)
         return None
         # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.5.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.6.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 3 ONLINE 🚀
+🐋 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🚀
 
 🗄 Database Foundation ACTIVE
 💾 Trade Recorder ACTIVE
-📈 Trade Tracker ACTIVE (HOTFIX)
+📈 Trade Tracker ACTIVE
+📊 Performance Analytics ACTIVE
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
@@ -1580,18 +1641,22 @@ def start(message):
 
 🎯 Goal: Best 3 quality LONG setups
 
-Send /scan
+Commands:
+/scan – Run scanner
+/report – Performance report
+/open – Open trades list
+/history – Last 10 closed trades
 """)
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.5.0)
+# 🔎 SMART SCANNER (v20.6.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 3 SCANNING...
+🐋 AHAD AI v20.6.0 – Performance Analytics Edition SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1610,12 +1675,13 @@ def scan(message):
 🎯 Dynamic Late Entry v2 ACTIVE
 🐞 Debug Reason ACTIVE
 💾 Trade Recorder ACTIVE
-📈 Trade Tracker ACTIVE (HOTFIX)
+📈 Trade Tracker ACTIVE
+📊 Performance Analytics ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.5.0 ======
+    # ====== FIX v20.6.0 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1750,7 +1816,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.5.0 STAGE 3 🐋
+🚨 AHAD AI v20.6.0 – Performance Analytics Edition 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1780,7 +1846,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 {s['early_text']}
 """
 
-        # ====== SAVE TRADE TO DATABASE (STAGE 3) ======
+        # ====== SAVE TRADE TO DATABASE (v20.6.0) ======
         if s.get('trade_data'):
             trade_id = save_trade(s['trade_data'])
             if trade_id:
@@ -1791,6 +1857,118 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
         # =============================================
 
         bot.send_message(message.chat.id, msg)
+
+
+# ================================================
+# 📊 PERFORMANCE COMMANDS (v20.6.0)
+# ================================================
+
+@bot.message_handler(commands=['report'])
+def report_command(message):
+    """إحصائيات الأداء الإجمالية"""
+    stats = get_report_stats()
+
+    if not stats:
+        bot.reply_to(message, "❌ Failed to generate report.")
+        return
+
+    report = f"""
+📊 AHAD AI PERFORMANCE REPORT
+━━━━━━━━━━━━━━━━━━━━━━
+
+📂 Total Trades   : {stats['total']}
+🟢 Open Trades   : {stats['open']}
+🔒 Closed Trades : {stats['closed']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🏆 TP1 : {stats['tp1']}
+🥈 TP2 : {stats['tp2']}
+🥉 TP3 : {stats['tp3']}
+❌ SL  : {stats['sl']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 Win Rate : {stats['win_rate']}%
+
+━━━━━━━━━━━━━━━━━━━━━━
+🤖 AHAD AI v20.6.0
+"""
+
+    bot.reply_to(message, report)
+
+
+@bot.message_handler(commands=['open'])
+def open_trades_command(message):
+    """عرض الصفقات المفتوحة"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        cur.execute("""
+        SELECT id, symbol, side, entry, tp1, tp2, tp3, sl, signal_time
+        FROM trades
+        WHERE status = 'OPEN'
+        ORDER BY id DESC
+        """)
+        
+        rows = cur.fetchall()
+        conn.close()
+        
+        if not rows:
+            bot.reply_to(message, "📭 No open trades.")
+            return
+        
+        msg = "📂 OPEN TRADES\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for row in rows[:10]:  # عرض آخر 10 صفقات مفتوحة
+            msg += f"#{row[0]} {row[1]} | {row[2]}\n"
+            msg += f"Entry: {row[3]} | SL: {row[7]}\n"
+            msg += f"TP1: {row[4]} | TP2: {row[5]} | TP3: {row[6]}\n"
+            msg += f"🕐 {row[8][:16]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        bot.reply_to(message, msg)
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
+
+
+@bot.message_handler(commands=['history'])
+def history_command(message):
+    """عرض آخر 10 صفقات مغلقة"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        cur.execute("""
+        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
+        FROM trades
+        WHERE status = 'CLOSED'
+        ORDER BY id DESC
+        LIMIT 10
+        """)
+        
+        rows = cur.fetchall()
+        conn.close()
+        
+        if not rows:
+            bot.reply_to(message, "📭 No closed trades yet.")
+            return
+        
+        msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for row in rows:
+            result_icon = "✅" if "WIN" in row[4] else "❌"
+            msg += f"{result_icon} #{row[0]} {row[1]} | {row[2]}\n"
+            msg += f"Entry: {row[3]} | Result: {row[4]}\n"
+            msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
+            msg += f"🕐 {row[7][:16] if row[7] else 'N/A'}\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        bot.reply_to(message, msg)
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
 
 
 # ================================================
@@ -1837,7 +2015,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v20.5.0 STAGE 3 ONLINE 🐋")
+print("🔥 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1850,10 +2028,10 @@ print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
 print("🗄️ Database Foundation ACTIVE")
 print("💾 Trade Recorder ACTIVE")
-print("📈 Trade Tracker ACTIVE (HOTFIX)")
-print("🔧 NULL Value Handling ACTIVE")
-print("🐞 Debug Logging ENHANCED")
-print("⏳ STAGE 3 COMPLETE - SYSTEM STABLE")
+print("📈 Trade Tracker ACTIVE")
+print("📊 Performance Analytics ACTIVE (v20.6.0)")
+print("📋 Commands: /scan | /report | /open | /history")
+print("✅ SYSTEM READY")
 
 while True:
     time.sleep(60)

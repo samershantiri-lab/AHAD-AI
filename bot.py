@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.5.0
-# STAGE 1 - DATABASE FOUNDATION
+# 🚀 AHAD AI v20.5.0 STAGE 2
+# TRADE RECORDER SYSTEM
 # ================================================
 
 # ================================================
@@ -22,6 +22,7 @@ import traceback
 import requests
 import urllib.request
 import sqlite3
+from datetime import datetime
 
 from flask import Flask
 import telebot
@@ -82,6 +83,8 @@ def init_database():
 
         late_score INTEGER,
 
+        version TEXT,
+
         status TEXT,
 
         result TEXT,
@@ -101,6 +104,67 @@ def init_database():
 
 
 # ================================================
+# 💾 TRADE RECORDER (STAGE 2)
+# ================================================
+
+def save_trade(trade_data):
+    """حفظ الصفقة في قاعدة البيانات"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        cur.execute("""
+        INSERT INTO trades (
+            symbol, side, signal_time,
+            entry, sl, tp1, tp2, tp3,
+            sector, score,
+            brain_long, brain_short,
+            flow, momentum, rr,
+            confidence, late_score,
+            version,
+            status, result,
+            max_profit, max_drawdown,
+            close_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            trade_data['symbol'],
+            trade_data['side'],
+            trade_data['signal_time'],
+            trade_data['entry'],
+            trade_data['sl'],
+            trade_data['tp1'],
+            trade_data['tp2'],
+            trade_data['tp3'],
+            trade_data['sector'],
+            trade_data['score'],
+            trade_data['brain_long'],
+            trade_data['brain_short'],
+            trade_data['flow'],
+            trade_data['momentum'],
+            trade_data['rr'],
+            trade_data['confidence'],
+            trade_data['late_score'],
+            trade_data.get('version', 'v20.5.0'),
+            'OPEN',
+            'PENDING',
+            0.0,
+            0.0,
+            None
+        ))
+        
+        conn.commit()
+        trade_id = cur.lastrowid
+        conn.close()
+        
+        print(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id})")
+        return trade_id
+        
+    except Exception as e:
+        print(f"❌ Error saving trade: {e}")
+        return None
+
+
+# ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -108,7 +172,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.5.0 STAGE 1 ONLINE 🚀"
+    return "🐋 AHAD AI v20.5.0 STAGE 2 ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -261,7 +325,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v20.5.0 STAGE 1 CORE READY 🐋")
+print("🔥 AHAD AI v20.5.0 STAGE 2 CORE READY 🐋")
 
 
 # ================================================
@@ -684,8 +748,7 @@ def ai_brain(candles):
         "long_score": long_score,
         "short_score": short_score
     }
-    
-# ================================================
+    # ================================================
 # 🎯 SECTION 3: ANALYZE ENGINE (v20.5.0)
 # ================================================
 
@@ -1245,6 +1308,29 @@ def analyze(symbol, sector, debug=None):
             debug["reject_reason"] = reject_reason
             debug["debug_reason"] = debug_reason
 
+        # ====== TRADE DATA FOR RECORDER (STAGE 2) ======
+        trade_data = {
+            'symbol': symbol,
+            'side': brain['direction'].replace('🟢 ', '').replace('🔴 ', ''),
+            'signal_time': datetime.now().isoformat(),
+            'entry': round(entry_low, 6),
+            'sl': round(sl, 6),
+            'tp1': round(tp1, 6),
+            'tp2': round(tp2, 6),
+            'tp3': round(tp3, 6),
+            'sector': sector,
+            'score': round(score),
+            'brain_long': brain['long_score'],
+            'brain_short': brain['short_score'],
+            'flow': round(flow, 2),
+            'momentum': momentum_score,
+            'rr': round(rr, 2),
+            'confidence': confidence_level,
+            'late_score': late_score,
+            'version': 'v20.5.0'
+        }
+        # =================================================
+
         return {
             "coin": symbol,
             "sector": sector,
@@ -1272,23 +1358,24 @@ def analyze(symbol, sector, debug=None):
             "momentum_status": momentum_status,
             "rr": round(rr, 2),
             "brain_long_score": brain["long_score"],
-            "brain_short_score": brain["short_score"]
+            "brain_short_score": brain["short_score"],
+            "trade_data": trade_data  # <-- Added for STAGE 2
         }
 
     except Exception as e:
         print("ANALYZE ERROR:", e)
         return None
-        
-# ================================================
+        # ================================================
 # 🤖 SECTION 4: TELEGRAM SCANNER (v20.5.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 1 ONLINE 🚀
+🐋 AHAD AI v20.5.0 STAGE 2 ONLINE 🚀
 
 🗄 Database Foundation ACTIVE
+💾 Trade Recorder ACTIVE
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
@@ -1322,7 +1409,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 1 SCANNING...
+🐋 AHAD AI v20.5.0 STAGE 2 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1340,6 +1427,7 @@ def scan(message):
 🧠 Brain v2.0 ACTIVE
 🎯 Dynamic Late Entry v2 ACTIVE
 🐞 Debug Reason ACTIVE
+💾 Trade Recorder ACTIVE
 
 Please wait ⏳
 """)
@@ -1479,7 +1567,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.5.0 STAGE 1 🐋
+🚨 AHAD AI v20.5.0 STAGE 2 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1508,6 +1596,17 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 ⚠️ {s['warning']}
 {s['early_text']}
 """
+
+        # ====== SAVE TRADE TO DATABASE (STAGE 2) ======
+        if s.get('trade_data'):
+            trade_id = save_trade(s['trade_data'])
+            if trade_id:
+                msg += f"\n\n💾 Trade ID: #{trade_id}"
+                print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+            else:
+                msg += "\n\n❌ Failed to save trade"
+        # =============================================
+
         bot.send_message(message.chat.id, msg)
 
 
@@ -1554,7 +1653,7 @@ threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
-print("🔥 AHAD AI v20.5.0 STAGE 1 ONLINE 🐋")
+print("🔥 AHAD AI v20.5.0 STAGE 2 ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1566,6 +1665,8 @@ print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
 print("🗄️ Database Foundation ACTIVE")
+print("💾 Trade Recorder ACTIVE (STAGE 2)")
+print("⏳ STAGE 3 NOT STARTED")
 
 while True:
     time.sleep(60)

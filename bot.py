@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.5.0 STAGE 3
-# TRADE TRACKING SYSTEM
+# 🚀 AHAD AI v20.5.0 STAGE 3 - HOTFIX
+# RELIABILITY + DEBUG IMPROVEMENTS
 # ================================================
 
 # ================================================
@@ -165,7 +165,7 @@ def save_trade(trade_data):
 
 
 # ================================================
-# 📈 TRADE TRACKING SYSTEM (STAGE 3)
+# 📈 TRADE TRACKING SYSTEM (STAGE 3 - HOTFIX)
 # ================================================
 
 def get_open_trades():
@@ -195,10 +195,11 @@ def get_open_trades():
                 'tp1': row[5],
                 'tp2': row[6],
                 'tp3': row[7],
-                'max_profit': row[8],
-                'max_drawdown': row[9]
+                'max_profit': row[8] if row[8] is not None else 0.0,
+                'max_drawdown': row[9] if row[9] is not None else 0.0
             })
         
+        print(f"📂 OPEN trades loaded: {len(trades)}")
         return trades
         
     except Exception as e:
@@ -927,7 +928,7 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-    }
+            }
     # ================================================
 # 🎯 SECTION 3: ANALYZE ENGINE (v20.5.0)
 # ================================================
@@ -1556,7 +1557,7 @@ def start(message):
 
 🗄 Database Foundation ACTIVE
 💾 Trade Recorder ACTIVE
-📈 Trade Tracker ACTIVE
+📈 Trade Tracker ACTIVE (HOTFIX)
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
@@ -1609,7 +1610,7 @@ def scan(message):
 🎯 Dynamic Late Entry v2 ACTIVE
 🐞 Debug Reason ACTIVE
 💾 Trade Recorder ACTIVE
-📈 Trade Tracker ACTIVE
+📈 Trade Tracker ACTIVE (HOTFIX)
 
 Please wait ⏳
 """)
@@ -1849,7 +1850,9 @@ print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
 print("🗄️ Database Foundation ACTIVE")
 print("💾 Trade Recorder ACTIVE")
-print("📈 Trade Tracker ACTIVE (STAGE 3)")
+print("📈 Trade Tracker ACTIVE (HOTFIX)")
+print("🔧 NULL Value Handling ACTIVE")
+print("🐞 Debug Logging ENHANCED")
 print("⏳ STAGE 3 COMPLETE - SYSTEM STABLE")
 
 while True:

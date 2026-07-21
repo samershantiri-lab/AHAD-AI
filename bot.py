@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v20.6.0 – Performance Analytics Edition
+# 🚀 AHAD AI v20.7.0 - Dual Direction Engine
 # ================================================
 
 # ================================================
@@ -143,7 +143,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v20.6.0'),
+            trade_data.get('version', 'v20.7.0'),
             'OPEN',
             'PENDING',
             0.0,
@@ -345,7 +345,7 @@ def update_open_trades():
 
 
 # ================================================
-# 📊 PERFORMANCE ANALYTICS (v20.6.0)
+# 📊 PERFORMANCE ANALYTICS (v20.7.0)
 # ================================================
 
 def get_report_stats():
@@ -413,7 +413,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🚀"
+    return "🐋 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -566,7 +566,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v20.6.0 – Performance Analytics Edition CORE READY 🐋")
+print("🔥 AHAD AI v20.7.0 - Dual Direction Engine CORE READY 🐋")
 
 
 # ================================================
@@ -904,7 +904,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.6.0)
+# 🧠 AI BRAIN ENGINE (v20.7.0)
 # ================================================
 
 def ai_brain(candles):
@@ -988,9 +988,9 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-        }
+    }
     # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.6.0)
+# 🎯 SECTION 3: ANALYZE ENGINE (v20.7.0)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1149,7 +1149,7 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 DYNAMIC LATE ENTRY v20.6.0
+        # 📊 DYNAMIC LATE ENTRY v20.7.0
         # ================================================
 
         move = atr(c15)
@@ -1549,7 +1549,7 @@ def analyze(symbol, sector, debug=None):
             debug["reject_reason"] = reject_reason
             debug["debug_reason"] = debug_reason
 
-        # ====== TRADE DATA FOR RECORDER (v20.6.0) ======
+        # ====== TRADE DATA FOR RECORDER (v20.7.0) ======
         trade_data = {
             'symbol': symbol,
             'side': brain['direction'].replace('🟢 ', '').replace('🔴 ', ''),
@@ -1568,7 +1568,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v20.6.0'
+            'version': 'v20.7.0'
         }
         # =================================================
 
@@ -1607,13 +1607,13 @@ def analyze(symbol, sector, debug=None):
         print("ANALYZE ERROR:", e)
         return None
         # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.6.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v20.7.0)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🚀
+🐋 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🚀
 
 🗄 Database Foundation ACTIVE
 💾 Trade Recorder ACTIVE
@@ -1638,8 +1638,9 @@ def start(message):
 🛡️ Validation Layer ACTIVE
 📊 Brain LONG/SHORT Scores ACTIVE
 🐞 Debug Reason ACTIVE
+🔄 Dual Direction Engine ACTIVE
 
-🎯 Goal: Best 3 quality LONG setups
+🎯 Goal: Best 2 LONG + Best 1 SHORT
 
 Commands:
 /scan – Run scanner
@@ -1650,17 +1651,18 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.6.0)
+# 🔎 SMART SCANNER (v20.7.0)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.6.0 – Performance Analytics Edition SCANNING...
+🐋 AHAD AI v20.7.0 - Dual Direction Engine SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
-🟢 Hunting TOP 3 LONG setups
+🟢 Hunting TOP 2 LONG setups
+🔴 Hunting TOP 1 SHORT setup
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
 🚀 Enhanced Momentum Engine ACTIVE
@@ -1677,11 +1679,12 @@ def scan(message):
 💾 Trade Recorder ACTIVE
 📈 Trade Tracker ACTIVE
 📊 Performance Analytics ACTIVE
+🔄 Dual Direction Engine ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.6.0 ======
+    # ====== FIX v20.7.0 ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1689,6 +1692,7 @@ Please wait ⏳
     debug = {}
 
     long_results = []
+    short_results = []
     all_symbols = get_symbols()
 
     symbols, flow_candidates = top_flow_scanner(all_symbols)
@@ -1725,7 +1729,6 @@ Please wait ⏳
                 result["score"] = 100
 
             if result["direction"] == "🟢 LONG":
-
                 if (
                     result["score"] >= 68
                     and (
@@ -1733,19 +1736,15 @@ Please wait ⏳
                         or result["pre_pump"] == "🐋 WHALE LOADING"
                     )
                 ):
-
                     long_results.append(result)
-                    print("ADDED:", result["coin"])
-
+                    print("ADDED LONG:", result["coin"])
                 else:
-
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     debug["reject_reason"] = (
                         "Not Long"
                         if not result.get("debug_reason")
                         else " | ".join(result["debug_reason"])
                     )
-
                     print(
                         f"GATE REJECT | "
                         f"{result['coin']} | "
@@ -1755,17 +1754,42 @@ Please wait ⏳
                         f"Reason={debug['reject_reason']}"
                     )
 
-            else:
+            elif result["direction"] == "🔴 SHORT":
+                if (
+                    result["score"] >= 68
+                    and (
+                        result["liquidity"] >= 1.2
+                        or result["pre_pump"] == "🐋 WHALE LOADING"
+                    )
+                ):
+                    short_results.append(result)
+                    print("ADDED SHORT:", result["coin"])
+                else:
+                    debug["final_gate"] = debug.get("final_gate", 0) + 1
+                    debug["reject_reason"] = (
+                        "Not Short"
+                        if not result.get("debug_reason")
+                        else " | ".join(result["debug_reason"])
+                    )
+                    print(
+                        f"GATE REJECT SHORT | "
+                        f"{result['coin']} | "
+                        f"Score={result['score']} | "
+                        f"Flow={result['liquidity']} | "
+                        f"PrePump={result['pre_pump']} | "
+                        f"Reason={debug['reject_reason']}"
+                    )
 
+            else:
                 debug["not_long"] = debug.get("not_long", 0) + 1
                 debug["reject_reason"] = (
-                    "Not Long"
+                    "Not Long/Short"
                     if not result.get("debug_reason")
                     else " | ".join(result["debug_reason"])
                 )
 
                 print(
-                    f"SHORT SIGNAL | "
+                    f"WAIT SIGNAL | "
                     f"{result['coin']} | "
                     f"Score={result['score']} | "
                     f"Reason={debug['reject_reason']}"
@@ -1798,12 +1822,26 @@ Watchlist: {debug.get('watchlist', 0)}
 Validation: {debug.get('validation', 0)}
 Passed: {debug.get('passed', 0)}
 Final Gate: {debug.get('final_gate', 0)}
-Not Long: {debug.get('not_long', 0)}
+Not Long/Short: {debug.get('not_long', 0)}
 Reject Reason: {debug.get('reject_reason', 'NONE')}
 """
     bot.send_message(message.chat.id, debug_msg)
 
-    results = sorted(long_results, key=lambda x: (x["score"], x["liquidity"]), reverse=True)[:3]
+    # ====== SELECT BEST 2 LONG + BEST 1 SHORT ======
+    best_longs = sorted(
+        long_results,
+        key=lambda x: (x["score"], x["liquidity"]),
+        reverse=True
+    )[:2]
+
+    best_shorts = sorted(
+        short_results,
+        key=lambda x: (x["score"], x["liquidity"]),
+        reverse=True
+    )[:1]
+
+    results = best_longs + best_shorts
+    # ===============================================
 
     if not results:
         bot.send_message(message.chat.id, """
@@ -1816,7 +1854,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.6.0 – Performance Analytics Edition 🐋
+🚨 AHAD AI v20.7.0 - Dual Direction Engine 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1846,7 +1884,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 {s['early_text']}
 """
 
-        # ====== SAVE TRADE TO DATABASE (v20.6.0) ======
+        # ====== SAVE TRADE TO DATABASE ======
         if s.get('trade_data'):
             trade_id = save_trade(s['trade_data'])
             if trade_id:
@@ -1854,13 +1892,13 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
                 print(f"✅ Trade #{trade_id} saved for {s['coin']}")
             else:
                 msg += "\n\n❌ Failed to save trade"
-        # =============================================
+        # ==================================
 
         bot.send_message(message.chat.id, msg)
 
 
 # ================================================
-# 📊 PERFORMANCE COMMANDS (v20.6.0)
+# 📊 PERFORMANCE COMMANDS (v20.7.0)
 # ================================================
 
 @bot.message_handler(commands=['report'])
@@ -1892,7 +1930,7 @@ def report_command(message):
 🎯 Win Rate : {stats['win_rate']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v20.6.0
+🤖 AHAD AI v20.7.0
 """
 
     bot.reply_to(message, report)
@@ -1921,7 +1959,7 @@ def open_trades_command(message):
         
         msg = "📂 OPEN TRADES\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        for row in rows[:10]:  # عرض آخر 10 صفقات مفتوحة
+        for row in rows[:10]:
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
             msg += f"Entry: {row[3]} | SL: {row[7]}\n"
             msg += f"TP1: {row[4]} | TP2: {row[5]} | TP3: {row[6]}\n"
@@ -2015,7 +2053,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v20.6.0 – Performance Analytics Edition ONLINE 🐋")
+print("🔥 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -2029,8 +2067,10 @@ print("🐞 Debug Reason ACTIVE")
 print("🗄️ Database Foundation ACTIVE")
 print("💾 Trade Recorder ACTIVE")
 print("📈 Trade Tracker ACTIVE")
-print("📊 Performance Analytics ACTIVE (v20.6.0)")
+print("📊 Performance Analytics ACTIVE")
+print("🔄 Dual Direction Engine ACTIVE (v20.7.0)")
 print("📋 Commands: /scan | /report | /open | /history")
+print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY")
 
 while True:

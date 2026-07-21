@@ -1,6 +1,6 @@
 # ================================================
-# 🚀 AHAD AI v20.5.0 STAGE 2
-# TRADE RECORDER SYSTEM
+# 🚀 AHAD AI v20.5.0 STAGE 3
+# TRADE TRACKING SYSTEM
 # ================================================
 
 # ================================================
@@ -144,7 +144,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v20.5.0'),
+            trade_data.get('version', 'v20.5.0 STAGE 3'),
             'OPEN',
             'PENDING',
             0.0,
@@ -165,6 +165,186 @@ def save_trade(trade_data):
 
 
 # ================================================
+# 📈 TRADE TRACKING SYSTEM (STAGE 3)
+# ================================================
+
+def get_open_trades():
+    """جلب جميع الصفقات المفتوحة"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        cur.execute("""
+        SELECT id, symbol, side, entry, sl, tp1, tp2, tp3,
+               max_profit, max_drawdown
+        FROM trades
+        WHERE status = 'OPEN'
+        """)
+        
+        rows = cur.fetchall()
+        conn.close()
+        
+        trades = []
+        for row in rows:
+            trades.append({
+                'id': row[0],
+                'symbol': row[1],
+                'side': row[2],
+                'entry': row[3],
+                'sl': row[4],
+                'tp1': row[5],
+                'tp2': row[6],
+                'tp3': row[7],
+                'max_profit': row[8],
+                'max_drawdown': row[9]
+            })
+        
+        return trades
+        
+    except Exception as e:
+        print(f"❌ Error getting open trades: {e}")
+        return []
+
+
+def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
+    """تحديث بيانات الصفقة"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        cur.execute("""
+        UPDATE trades
+        SET status = ?,
+            result = ?,
+            max_profit = ?,
+            max_drawdown = ?,
+            close_time = ?
+        WHERE id = ?
+        """, (status, result, max_profit, max_drawdown, close_time, trade_id))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Trade {trade_id} updated: {status} | {result}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error updating trade {trade_id}: {e}")
+        return False
+
+
+def update_open_trades():
+    """متابعة الصفقات المفتوحة كل 5 دقائق"""
+    print("📈 Trade Tracker STARTED")
+    
+    while True:
+        try:
+            open_trades = get_open_trades()
+            
+            if not open_trades:
+                time.sleep(300)
+                continue
+            
+            print(f"📊 Checking {len(open_trades)} open trades...")
+            
+            for trade in open_trades:
+                try:
+                    # جلب السعر الحالي
+                    candles = get_candles(trade['symbol'], "15m")
+                    if not candles:
+                        continue
+                    
+                    current_price = candles[-1]['close']
+                    
+                    # حساب الربح والخسارة الحالية
+                    if trade['side'] == 'LONG':
+                        profit_percent = ((current_price - trade['entry']) / trade['entry']) * 100
+                    else:  # SHORT
+                        profit_percent = ((trade['entry'] - current_price) / trade['entry']) * 100
+                    
+                    # تحديث أقصى ربح
+                    if profit_percent > trade['max_profit']:
+                        trade['max_profit'] = profit_percent
+                    
+                    # تحديث أقصى خسارة
+                    if profit_percent < trade['max_drawdown']:
+                        trade['max_drawdown'] = profit_percent
+                    
+                    # التحقق من TP/SL
+                    new_status = None
+                    result = None
+                    close_time = datetime.now().isoformat()
+                    
+                    if trade['side'] == 'LONG':
+                        # TP3 تحقق
+                        if current_price >= trade['tp3']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP3'
+                        # TP2 تحقق
+                        elif current_price >= trade['tp2']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP2'
+                        # TP1 تحقق
+                        elif current_price >= trade['tp1']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP1'
+                        # SL تحقق
+                        elif current_price <= trade['sl']:
+                            new_status = 'CLOSED'
+                            result = 'LOSS_SL'
+                    
+                    else:  # SHORT
+                        # TP3 تحقق
+                        if current_price <= trade['tp3']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP3'
+                        # TP2 تحقق
+                        elif current_price <= trade['tp2']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP2'
+                        # TP1 تحقق
+                        elif current_price <= trade['tp1']:
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP1'
+                        # SL تحقق
+                        elif current_price >= trade['sl']:
+                            new_status = 'CLOSED'
+                            result = 'LOSS_SL'
+                    
+                    # تحديث قاعدة البيانات إذا تم الإغلاق
+                    if new_status:
+                        update_trade(
+                            trade['id'],
+                            new_status,
+                            result,
+                            round(trade['max_profit'], 2),
+                            round(trade['max_drawdown'], 2),
+                            close_time
+                        )
+                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
+                    else:
+                        # تحديث max_profit و max_drawdown فقط
+                        update_trade(
+                            trade['id'],
+                            'OPEN',
+                            'PENDING',
+                            round(trade['max_profit'], 2),
+                            round(trade['max_drawdown'], 2),
+                            None
+                        )
+                
+                except Exception as e:
+                    print(f"❌ Error processing trade {trade.get('id', 'unknown')}: {e}")
+                    continue
+            
+            time.sleep(300)  # 5 دقائق
+            
+        except Exception as e:
+            print(f"❌ Trade Tracker error: {e}")
+            time.sleep(60)
+
+
+# ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -172,7 +352,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.5.0 STAGE 2 ONLINE 🚀"
+    return "🐋 AHAD AI v20.5.0 STAGE 3 ONLINE 🚀"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -325,7 +505,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v20.5.0 STAGE 2 CORE READY 🐋")
+print("🔥 AHAD AI v20.5.0 STAGE 3 CORE READY 🐋")
 
 
 # ================================================
@@ -1308,7 +1488,7 @@ def analyze(symbol, sector, debug=None):
             debug["reject_reason"] = reject_reason
             debug["debug_reason"] = debug_reason
 
-        # ====== TRADE DATA FOR RECORDER (STAGE 2) ======
+        # ====== TRADE DATA FOR RECORDER (STAGE 3) ======
         trade_data = {
             'symbol': symbol,
             'side': brain['direction'].replace('🟢 ', '').replace('🔴 ', ''),
@@ -1327,7 +1507,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v20.5.0'
+            'version': 'v20.5.0 STAGE 3'
         }
         # =================================================
 
@@ -1359,7 +1539,7 @@ def analyze(symbol, sector, debug=None):
             "rr": round(rr, 2),
             "brain_long_score": brain["long_score"],
             "brain_short_score": brain["short_score"],
-            "trade_data": trade_data  # <-- Added for STAGE 2
+            "trade_data": trade_data
         }
 
     except Exception as e:
@@ -1372,10 +1552,11 @@ def analyze(symbol, sector, debug=None):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 2 ONLINE 🚀
+🐋 AHAD AI v20.5.0 STAGE 3 ONLINE 🚀
 
 🗄 Database Foundation ACTIVE
 💾 Trade Recorder ACTIVE
+📈 Trade Tracker ACTIVE
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
 📊 Multi TimeFrame ACTIVE
@@ -1409,7 +1590,7 @@ Send /scan
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.5.0 STAGE 2 SCANNING...
+🐋 AHAD AI v20.5.0 STAGE 3 SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1428,6 +1609,7 @@ def scan(message):
 🎯 Dynamic Late Entry v2 ACTIVE
 🐞 Debug Reason ACTIVE
 💾 Trade Recorder ACTIVE
+📈 Trade Tracker ACTIVE
 
 Please wait ⏳
 """)
@@ -1567,7 +1749,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.5.0 STAGE 2 🐋
+🚨 AHAD AI v20.5.0 STAGE 3 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1597,7 +1779,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 {s['early_text']}
 """
 
-        # ====== SAVE TRADE TO DATABASE (STAGE 2) ======
+        # ====== SAVE TRADE TO DATABASE (STAGE 3) ======
         if s.get('trade_data'):
             trade_id = save_trade(s['trade_data'])
             if trade_id:
@@ -1652,8 +1834,9 @@ def telegram_engine():
 threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v20.5.0 STAGE 2 ONLINE 🐋")
+print("🔥 AHAD AI v20.5.0 STAGE 3 ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -1665,8 +1848,9 @@ print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
 print("🗄️ Database Foundation ACTIVE")
-print("💾 Trade Recorder ACTIVE (STAGE 2)")
-print("⏳ STAGE 3 NOT STARTED")
+print("💾 Trade Recorder ACTIVE")
+print("📈 Trade Tracker ACTIVE (STAGE 3)")
+print("⏳ STAGE 3 COMPLETE - SYSTEM STABLE")
 
 while True:
     time.sleep(60)

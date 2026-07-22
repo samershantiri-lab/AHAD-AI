@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v20.7.0 - Dual Direction Engine
+# 🚀 AHAD AI v21.0.0 – PostgreSQL Production Edition
 # ================================================
 
 # ================================================
@@ -20,7 +20,7 @@ import threading
 import traceback
 import requests
 import urllib.request
-import sqlite3
+import psycopg2
 from datetime import datetime
 
 from flask import Flask
@@ -40,78 +40,143 @@ bot = telebot.TeleBot(TOKEN)
 
 
 # ================================================
-# 🗄 AHAD AI DATABASE
+# 🗄 POSTGRESQL DATABASE
 # ================================================
 
-DB_NAME = "ahad_ai.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise Exception("❌ DATABASE_URL NOT FOUND")
+
+
+def get_db_connection():
+    """Create a PostgreSQL connection with proper settings"""
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=10,
+        sslmode='require'
+    )
 
 
 def init_database():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
+    """Initialize PostgreSQL database with tables and indexes"""
+    conn = None
+    cur = None
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS trades (
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
 
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
 
-        symbol TEXT,
-        side TEXT,
+            symbol TEXT,
+            side TEXT,
 
-        signal_time TEXT,
+            signal_time TIMESTAMP,
 
-        entry REAL,
-        sl REAL,
+            entry DOUBLE PRECISION,
+            sl DOUBLE PRECISION,
 
-        tp1 REAL,
-        tp2 REAL,
-        tp3 REAL,
+            tp1 DOUBLE PRECISION,
+            tp2 DOUBLE PRECISION,
+            tp3 DOUBLE PRECISION,
 
-        sector TEXT,
+            sector TEXT,
 
-        score INTEGER,
+            score INTEGER,
 
-        brain_long INTEGER,
-        brain_short INTEGER,
+            brain_long INTEGER,
+            brain_short INTEGER,
 
-        flow REAL,
-        momentum INTEGER,
-        rr REAL,
+            flow DOUBLE PRECISION,
+            momentum INTEGER,
+            rr DOUBLE PRECISION,
 
-        confidence TEXT,
+            confidence TEXT,
 
-        late_score INTEGER,
+            late_score INTEGER,
 
-        version TEXT,
+            version TEXT,
 
-        status TEXT,
+            status TEXT,
 
-        result TEXT,
+            result TEXT,
 
-        max_profit REAL,
-        max_drawdown REAL,
+            max_profit DOUBLE PRECISION,
+            max_drawdown DOUBLE PRECISION,
 
-        close_time TEXT
+            close_time TIMESTAMP
 
-    )
-    """)
+        )
+        """)
 
-    conn.commit()
-    conn.close()
+        # Indexes for performance
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)
+        """)
 
-    print("🗄 AHAD AI DATABASE READY")
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_result ON trades(result)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_signal_time ON trades(signal_time)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_status_symbol ON trades(status, symbol)
+        """)
+
+        conn.commit()
+        print("🟢 PostgreSQL Connected")
+        print("🗄 AHAD AI DATABASE READY")
+        print("📊 Indexes: status, result, signal_time, symbol, status_symbol")
+
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # ================================================
-# 💾 TRADE RECORDER (STAGE 2)
+# 💾 TRADE RECORDER
 # ================================================
 
 def save_trade(trade_data):
-    """حفظ الصفقة في قاعدة البيانات"""
+    """Save trade to PostgreSQL database with duplicate check"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
         
+        # ====== CHECK FOR DUPLICATE ======
+        cur.execute("""
+        SELECT id FROM trades
+        WHERE symbol = %s
+        AND side = %s
+        AND status = 'OPEN'
+        """, (trade_data['symbol'], trade_data['side']))
+        
+        existing = cur.fetchone()
+        
+        if existing:
+            print(f"⚠️ Duplicate trade skipped: {trade_data['symbol']} ({trade_data['side']})")
+            return existing[0]
+        # =================================
+
         cur.execute("""
         INSERT INTO trades (
             symbol, side, signal_time,
@@ -124,11 +189,23 @@ def save_trade(trade_data):
             status, result,
             max_profit, max_drawdown,
             close_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (
+            %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s,
+            %s, %s,
+            %s, %s, %s,
+            %s, %s,
+            %s,
+            %s, %s,
+            %s, %s,
+            %s
+        )
+        RETURNING id
         """, (
             trade_data['symbol'],
             trade_data['side'],
-            trade_data['signal_time'],
+            datetime.now(),
             trade_data['entry'],
             trade_data['sl'],
             trade_data['tp1'],
@@ -143,47 +220,55 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v20.7.0'),
+            trade_data.get('version', 'v21.0.0'),
             'OPEN',
             'PENDING',
             0.0,
             0.0,
             None
         ))
-        
+
+        trade_id = cur.fetchone()[0]
+
         conn.commit()
-        trade_id = cur.lastrowid
-        conn.close()
-        
+
         print(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id})")
         return trade_id
-        
+
     except Exception as e:
         print(f"❌ Error saving trade: {e}")
-        return None
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # ================================================
-# 📈 TRADE TRACKING SYSTEM (STAGE 3)
+# 📈 TRADE TRACKING SYSTEM
 # ================================================
 
 def get_open_trades():
-    """جلب جميع الصفقات المفتوحة"""
+    """Get all open trades from PostgreSQL"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
-        
+
         cur.execute("""
         SELECT id, symbol, side, entry, sl, tp1, tp2, tp3,
                max_profit, max_drawdown
         FROM trades
         WHERE status = 'OPEN'
         """)
-        
+
         rows = cur.fetchall()
-        conn.close()
-        
+
         trades = []
+
         for row in rows:
             trades.append({
                 'id': row[0],
@@ -197,121 +282,132 @@ def get_open_trades():
                 'max_profit': row[8] if row[8] is not None else 0.0,
                 'max_drawdown': row[9] if row[9] is not None else 0.0
             })
-        
+
         print(f"📂 OPEN trades loaded: {len(trades)}")
         return trades
-        
+
     except Exception as e:
         print(f"❌ Error getting open trades: {e}")
-        return []
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
-    """تحديث بيانات الصفقة"""
+    """Update trade data in PostgreSQL"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
-        
+
         cur.execute("""
         UPDATE trades
-        SET status = ?,
-            result = ?,
-            max_profit = ?,
-            max_drawdown = ?,
-            close_time = ?
-        WHERE id = ?
-        """, (status, result, max_profit, max_drawdown, close_time, trade_id))
-        
+        SET status = %s,
+            result = %s,
+            max_profit = %s,
+            max_drawdown = %s,
+            close_time = %s
+        WHERE id = %s
+        """, (
+            status,
+            result,
+            max_profit,
+            max_drawdown,
+            close_time,
+            trade_id
+        ))
+
         conn.commit()
-        conn.close()
-        
+
         print(f"✅ Trade {trade_id} updated: {status} | {result}")
         return True
-        
+
     except Exception as e:
         print(f"❌ Error updating trade {trade_id}: {e}")
-        return False
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def update_open_trades():
-    """متابعة الصفقات المفتوحة كل 5 دقائق"""
+    """Monitor open trades every 5 minutes"""
     print("📈 Trade Tracker STARTED")
-    
+
     while True:
         try:
             open_trades = get_open_trades()
-            
+
             if not open_trades:
                 time.sleep(300)
                 continue
-            
+
             print(f"📊 Checking {len(open_trades)} open trades...")
-            
+
             for trade in open_trades:
                 try:
-                    # جلب السعر الحالي
+                    # Get current price
                     candles = get_candles(trade['symbol'], "15m")
                     if not candles:
                         continue
-                    
+
                     current_price = candles[-1]['close']
-                    
-                    # حساب الربح والخسارة الحالية
+
+                    # Calculate current profit/loss
                     if trade['side'] == 'LONG':
                         profit_percent = ((current_price - trade['entry']) / trade['entry']) * 100
                     else:  # SHORT
                         profit_percent = ((trade['entry'] - current_price) / trade['entry']) * 100
-                    
-                    # تحديث أقصى ربح
+
+                    # Update max profit
                     if profit_percent > trade['max_profit']:
                         trade['max_profit'] = profit_percent
-                    
-                    # تحديث أقصى خسارة
+
+                    # Update max drawdown
                     if profit_percent < trade['max_drawdown']:
                         trade['max_drawdown'] = profit_percent
-                    
-                    # التحقق من TP/SL
+
+                    # Check TP/SL
                     new_status = None
                     result = None
-                    close_time = datetime.now().isoformat()
-                    
+                    close_time = datetime.now()
+
                     if trade['side'] == 'LONG':
-                        # TP3 تحقق
                         if current_price >= trade['tp3']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP3'
-                        # TP2 تحقق
                         elif current_price >= trade['tp2']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP2'
-                        # TP1 تحقق
                         elif current_price >= trade['tp1']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP1'
-                        # SL تحقق
                         elif current_price <= trade['sl']:
                             new_status = 'CLOSED'
                             result = 'LOSS_SL'
-                    
+
                     else:  # SHORT
-                        # TP3 تحقق
                         if current_price <= trade['tp3']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP3'
-                        # TP2 تحقق
                         elif current_price <= trade['tp2']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP2'
-                        # TP1 تحقق
                         elif current_price <= trade['tp1']:
                             new_status = 'CLOSED'
                             result = 'WIN_TP1'
-                        # SL تحقق
                         elif current_price >= trade['sl']:
                             new_status = 'CLOSED'
                             result = 'LOSS_SL'
-                    
-                    # تحديث قاعدة البيانات إذا تم الإغلاق
+
+                    # Update database if closed
                     if new_status:
                         update_trade(
                             trade['id'],
@@ -323,7 +419,7 @@ def update_open_trades():
                         )
                         print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
                     else:
-                        # تحديث max_profit و max_drawdown فقط
+                        # Update max_profit and max_drawdown only
                         update_trade(
                             trade['id'],
                             'OPEN',
@@ -332,54 +428,53 @@ def update_open_trades():
                             round(trade['max_drawdown'], 2),
                             None
                         )
-                
+
                 except Exception as e:
                     print(f"❌ Error processing trade {trade.get('id', 'unknown')}: {e}")
                     continue
-            
-            time.sleep(300)  # 5 دقائق
-            
+
+            time.sleep(300)  # 5 minutes
+
         except Exception as e:
             print(f"❌ Trade Tracker error: {e}")
             time.sleep(60)
 
 
 # ================================================
-# 📊 PERFORMANCE ANALYTICS (v20.7.0)
+# 📊 PERFORMANCE ANALYTICS
 # ================================================
 
 def get_report_stats():
-    """إحصائيات أداء AHAD AI"""
+    """Get AHAD AI performance statistics"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
 
-        # إجمالي الصفقات
-        cur.execute("SELECT COUNT(*) FROM trades")
-        total = cur.fetchone()[0]
+        # Single optimized query
+        cur.execute("""
+        SELECT
+            COUNT(*) AS total,
+            COUNT(CASE WHEN status = 'OPEN' THEN 1 END) AS open_trades,
+            COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) AS closed,
+            COUNT(CASE WHEN result = 'WIN_TP1' THEN 1 END) AS tp1,
+            COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
+            COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
+            COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl
+        FROM trades
+        """)
 
-        # الصفقات المفتوحة
-        cur.execute("SELECT COUNT(*) FROM trades WHERE status='OPEN'")
-        open_trades = cur.fetchone()[0]
+        row = cur.fetchone()
 
-        # الصفقات المغلقة
-        cur.execute("SELECT COUNT(*) FROM trades WHERE status='CLOSED'")
-        closed = cur.fetchone()[0]
-
-        # نتائج الصفقات
-        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP1'")
-        tp1 = cur.fetchone()[0]
-
-        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP2'")
-        tp2 = cur.fetchone()[0]
-
-        cur.execute("SELECT COUNT(*) FROM trades WHERE result='WIN_TP3'")
-        tp3 = cur.fetchone()[0]
-
-        cur.execute("SELECT COUNT(*) FROM trades WHERE result='LOSS_SL'")
-        sl = cur.fetchone()[0]
-
-        conn.close()
+        total = row[0] or 0
+        open_trades = row[1] or 0
+        closed = row[2] or 0
+        tp1 = row[3] or 0
+        tp2 = row[4] or 0
+        tp3 = row[5] or 0
+        sl = row[6] or 0
 
         wins = tp1 + tp2 + tp3
 
@@ -402,10 +497,13 @@ def get_report_stats():
 
     except Exception as e:
         print(f"❌ Report Error: {e}")
-        return None
-
-
-# ================================================
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+            # ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -413,7 +511,27 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🚀"
+    return "🐋 AHAD AI v21.0.0 – PostgreSQL Production Edition ONLINE 🚀"
+
+@app.route("/health")
+def health():
+    """Health check endpoint for monitoring"""
+    conn = None
+    cur = None
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        return "✅ HEALTHY", 200
+    except Exception as e:
+        return f"❌ UNHEALTHY: {e}", 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -566,7 +684,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v20.7.0 - Dual Direction Engine CORE READY 🐋")
+print("🔥 AHAD AI v21.0.0 – PostgreSQL Production Edition CORE READY 🐋")
 
 
 # ================================================
@@ -904,7 +1022,7 @@ def trap_detector(candles):
 
 
 # ================================================
-# 🧠 AI BRAIN ENGINE (v20.7.0)
+# 🧠 AI BRAIN ENGINE
 # ================================================
 
 def ai_brain(candles):
@@ -988,9 +1106,9 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-    }
+}
     # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v20.7.0)
+# 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1149,7 +1267,7 @@ def analyze(symbol, sector, debug=None):
             candle_score -= 5
 
         # ================================================
-        # 📊 DYNAMIC LATE ENTRY v20.7.0
+        # 📊 DYNAMIC LATE ENTRY
         # ================================================
 
         move = atr(c15)
@@ -1549,11 +1667,11 @@ def analyze(symbol, sector, debug=None):
             debug["reject_reason"] = reject_reason
             debug["debug_reason"] = debug_reason
 
-        # ====== TRADE DATA FOR RECORDER (v20.7.0) ======
+        # ====== TRADE DATA FOR RECORDER ======
         trade_data = {
             'symbol': symbol,
             'side': brain['direction'].replace('🟢 ', '').replace('🔴 ', ''),
-            'signal_time': datetime.now().isoformat(),
+            'signal_time': datetime.now(),
             'entry': round(entry_low, 6),
             'sl': round(sl, 6),
             'tp1': round(tp1, 6),
@@ -1568,7 +1686,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v20.7.0'
+            'version': 'v21.0.0'
         }
         # =================================================
 
@@ -1607,16 +1725,16 @@ def analyze(symbol, sector, debug=None):
         print("ANALYZE ERROR:", e)
         return None
         # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v20.7.0)
+# 🤖 SECTION 4: TELEGRAM SCANNER
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🚀
+🐋 AHAD AI v21.0.0 – PostgreSQL Production Edition 🚀
 
-🗄 Database Foundation ACTIVE
-💾 Trade Recorder ACTIVE
+🗄 PostgreSQL Database ACTIVE
+💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE
 📊 Performance Analytics ACTIVE
 🧠 AI Brain v2.0 ACTIVE
@@ -1639,6 +1757,10 @@ def start(message):
 📊 Brain LONG/SHORT Scores ACTIVE
 🐞 Debug Reason ACTIVE
 🔄 Dual Direction Engine ACTIVE
+🗄 PostgreSQL Production Ready
+🔒 SSL Connection ENABLED
+📊 5 Indexes for Performance
+⏰ TIMESTAMP Support
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -1651,13 +1773,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v20.7.0)
+# 🔎 SMART SCANNER
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v20.7.0 - Dual Direction Engine SCANNING...
+🐋 AHAD AI v21.0.0 – PostgreSQL Production Edition SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -1676,15 +1798,16 @@ def scan(message):
 🧠 Brain v2.0 ACTIVE
 🎯 Dynamic Late Entry v2 ACTIVE
 🐞 Debug Reason ACTIVE
-💾 Trade Recorder ACTIVE
+💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE
+🗄 PostgreSQL Production Ready
 
 Please wait ⏳
 """)
 
-    # ====== FIX v20.7.0 ======
+    # ====== CLEAR CACHE ======
     global _candle_cache
     _candle_cache.clear()
     # =========================
@@ -1854,7 +1977,7 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
     for s in results:
         msg = f"""
-🚨 AHAD AI v20.7.0 - Dual Direction Engine 🐋
+🚨 AHAD AI v21.0.0 – PostgreSQL Production Edition 🐋
 
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
@@ -1886,31 +2009,32 @@ Reject Reason: {debug.get('reject_reason', 'NONE')}
 
         # ====== SAVE TRADE TO DATABASE ======
         if s.get('trade_data'):
-            trade_id = save_trade(s['trade_data'])
-            if trade_id:
-                msg += f"\n\n💾 Trade ID: #{trade_id}"
-                print(f"✅ Trade #{trade_id} saved for {s['coin']}")
-            else:
-                msg += "\n\n❌ Failed to save trade"
+            try:
+                trade_id = save_trade(s['trade_data'])
+                if trade_id:
+                    msg += f"\n\n💾 Trade ID: #{trade_id}"
+                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                else:
+                    msg += "\n\n❌ Failed to save trade"
+            except Exception as e:
+                print(f"❌ Exception saving trade: {e}")
+                msg += "\n\n❌ Database error saving trade"
         # ==================================
 
         bot.send_message(message.chat.id, msg)
 
 
 # ================================================
-# 📊 PERFORMANCE COMMANDS (v20.7.0)
+# 📊 PERFORMANCE COMMANDS
 # ================================================
 
 @bot.message_handler(commands=['report'])
 def report_command(message):
-    """إحصائيات الأداء الإجمالية"""
-    stats = get_report_stats()
+    """Performance statistics"""
+    try:
+        stats = get_report_stats()
 
-    if not stats:
-        bot.reply_to(message, "❌ Failed to generate report.")
-        return
-
-    report = f"""
+        report = f"""
 📊 AHAD AI PERFORMANCE REPORT
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1930,54 +2054,68 @@ def report_command(message):
 🎯 Win Rate : {stats['win_rate']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v20.7.0
+🤖 AHAD AI v21.0.0
+🗄 PostgreSQL
+🔒 SSL
 """
+        bot.reply_to(message, report)
 
-    bot.reply_to(message, report)
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error generating report: {e}")
 
 
 @bot.message_handler(commands=['open'])
 def open_trades_command(message):
-    """عرض الصفقات المفتوحة"""
+    """Show open trades"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
-        
+
         cur.execute("""
         SELECT id, symbol, side, entry, tp1, tp2, tp3, sl, signal_time
         FROM trades
         WHERE status = 'OPEN'
         ORDER BY id DESC
         """)
-        
+
         rows = cur.fetchall()
-        conn.close()
-        
+
         if not rows:
             bot.reply_to(message, "📭 No open trades.")
             return
-        
+
         msg = "📂 OPEN TRADES\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
+
         for row in rows[:10]:
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
             msg += f"Entry: {row[3]} | SL: {row[7]}\n"
             msg += f"TP1: {row[4]} | TP2: {row[5]} | TP3: {row[6]}\n"
-            msg += f"🕐 {row[8][:16]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
+            msg += f"🕐 {row[8]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
         bot.reply_to(message, msg)
-        
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 @bot.message_handler(commands=['history'])
 def history_command(message):
-    """عرض آخر 10 صفقات مغلقة"""
+    """Show last 10 closed trades"""
+    conn = None
+    cur = None
+    
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         cur = conn.cursor()
-        
+
         cur.execute("""
         SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
         FROM trades
@@ -1985,28 +2123,32 @@ def history_command(message):
         ORDER BY id DESC
         LIMIT 10
         """)
-        
+
         rows = cur.fetchall()
-        conn.close()
-        
+
         if not rows:
             bot.reply_to(message, "📭 No closed trades yet.")
             return
-        
+
         msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
+
         for row in rows:
             result_icon = "✅" if "WIN" in row[4] else "❌"
             msg += f"{result_icon} #{row[0]} {row[1]} | {row[2]}\n"
             msg += f"Entry: {row[3]} | Result: {row[4]}\n"
             msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
-            msg += f"🕐 {row[7][:16] if row[7] else 'N/A'}\n"
+            msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
             msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
+
         bot.reply_to(message, msg)
-        
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # ================================================
@@ -2053,7 +2195,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v20.7.0 - Dual Direction Engine ONLINE 🐋")
+print("🔥 AHAD AI v21.0.0 – PostgreSQL Production Edition ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -2064,14 +2206,19 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v2 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ Database Foundation ACTIVE")
+print("🗄️ PostgreSQL Database ACTIVE")
+print("📊 Indexes: status, result, signal_time, symbol, status_symbol")
+print("🔒 SSL Connection: ENABLED")
+print("⏰ TIMESTAMP Support ACTIVE")
+print("🔄 Duplicate Trade Protection ACTIVE")
 print("💾 Trade Recorder ACTIVE")
 print("📈 Trade Tracker ACTIVE")
 print("📊 Performance Analytics ACTIVE")
-print("🔄 Dual Direction Engine ACTIVE (v20.7.0)")
+print("🔄 Dual Direction Engine ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
-print("✅ SYSTEM READY")
+print("✅ SYSTEM READY FOR PRODUCTION")
+print("🚀 PostgreSQL Production Edition v21.0.0")
 
 while True:
     time.sleep(60)

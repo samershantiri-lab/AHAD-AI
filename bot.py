@@ -372,7 +372,7 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             cur.close()
         if conn:
             conn.close()
-            def update_open_trades():
+def update_open_trades():
     """Monitor open trades every 5 minutes using HIGH/LOW for accuracy"""
     print("📈 Trade Tracker STARTED (v21.1.1)")
 

@@ -131,7 +131,7 @@ def init_database():
         ALTER TABLE trades ADD COLUMN IF NOT EXISTS compression_status TEXT
         """)
         
-        cur.execute(""""
+        cur.execute("""
         ALTER TABLE trades ADD COLUMN IF NOT EXISTS momentum_weight DOUBLE PRECISION
         """)
         

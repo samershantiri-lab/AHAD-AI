@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.4 – Production Stable
+# 🚀 AHAD AI v21.1.5 – Dashboard Bug Fix
 # ================================================
 
 # ================================================
@@ -175,7 +175,7 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.4)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.5)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
         print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration")
 
@@ -268,7 +268,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.4'),
+            trade_data.get('version', 'v21.1.5'),
             'OPEN',
             'PENDING',
             0.0,
@@ -683,7 +683,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.4 – Production Stable ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -856,7 +856,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.4 – Production Stable CORE READY 🐋")
+print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix CORE READY 🐋")
 
 
 # ================================================
@@ -1417,7 +1417,7 @@ def ai_brain(candles):
         "short_score": short_score
     }
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.4)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.5)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1985,7 +1985,7 @@ def analyze(symbol, sector, debug=None):
                 tp3 = tp2 - move * 0.5
 
             rr = (entry_high - tp1) / risk
-                    # ================================================
+            # ================================================
         # 🛡️ VALIDATION LAYER
         # ================================================
 
@@ -2267,7 +2267,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.4',
+            'version': 'v21.1.5',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2331,15 +2331,15 @@ def analyze(symbol, sector, debug=None):
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.4)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.5)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.4 – Production Stable 🚀
+🐋 AHAD AI v21.1.5 – Dashboard Bug Fix 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.4)
+🗄 PostgreSQL Database ACTIVE (v21.1.5)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
@@ -2374,6 +2374,7 @@ def start(message):
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE
 📦 Caching System ACTIVE
+🐞 Dashboard Bug Fix ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2386,13 +2387,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v21.1.4)
+# 🔎 SMART SCANNER (v21.1.5)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.4 – Production Stable SCANNING...
+🐋 AHAD AI v21.1.5 – Dashboard Bug Fix SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2416,9 +2417,10 @@ def scan(message):
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.4)
+🗄 PostgreSQL Production Ready (v21.1.5)
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE
+🐞 Dashboard Bug Fix ACTIVE
 
 Please wait ⏳
 """)
@@ -2624,23 +2626,34 @@ Please wait ⏳
         # ====== CALCULATE AVERAGE METRICS ======
     all_results = long_results + short_results
     
+    # ====== FIX: Average Flow & Brain from ALL analyzed coins ======
+    if market_flows:
+        avg_flow = round(sum(market_flows) / len(market_flows), 2)
+    else:
+        avg_flow = 0
+
+    if market_brain_scores:
+        avg_brain = round(sum(market_brain_scores) / len(market_brain_scores), 1)
+    else:
+        avg_brain = 0
+
+    # Keep these for backward compatibility
     if all_results:
         avg_score = round(sum(r["score"] for r in all_results) / len(all_results), 2)
-        avg_flow = round(sum(r["liquidity"] for r in all_results) / len(all_results), 2)
         avg_rr = round(sum(r["rr"] for r in all_results) / len(all_results), 2)
         avg_momentum = round(sum(r["momentum_score"] for r in all_results) / len(all_results), 2)
-        
-        debug["avg_score"] = avg_score
-        debug["avg_flow"] = avg_flow
-        debug["avg_rr"] = avg_rr
-        debug["avg_momentum"] = avg_momentum
     else:
-        debug["avg_score"] = "N/A"
-        debug["avg_flow"] = "N/A"
-        debug["avg_rr"] = "N/A"
-        debug["avg_momentum"] = "N/A"
+        avg_score = "N/A"
+        avg_rr = "N/A"
+        avg_momentum = "N/A"
 
-    # ====== MARKET HEALTH REPORT (FIXED - ALL COINS) ======
+    debug["avg_flow"] = avg_flow
+    debug["avg_brain"] = avg_brain
+    debug["avg_score"] = avg_score
+    debug["avg_rr"] = avg_rr
+    debug["avg_momentum"] = avg_momentum
+
+    # ====== MARKET HEALTH REPORT ======
     total_checked = debug.get('checked', 0)
     
     if total_checked > 0:
@@ -2655,14 +2668,10 @@ Please wait ⏳
         high_compression = sum(1 for s in market_compression_status if "SPRING LOADED" in s or "BUILDING" in s)
         compression_high_pct = round((high_compression / len(market_compression_status)) * 100, 1) if market_compression_status else 0
         
-        # Average metrics - from ALL checked coins
-        avg_market_flow = round(sum(market_flows) / len(market_flows), 2) if market_flows else 0
-        avg_market_brain = round(sum(market_brain_scores) / len(market_brain_scores), 1) if market_brain_scores else 0
-        
         # Market Quality
-        if bull_pct > 50 and avg_market_brain > 70:
+        if bull_pct > 50 and avg_brain > 70:
             market_quality = "🔥 EXCELLENT"
-        elif bull_pct > 30 and avg_market_brain > 60:
+        elif bull_pct > 30 and avg_brain > 60:
             market_quality = "✅ GOOD"
         elif bear_pct > 50:
             market_quality = "⚠️ CAUTION"
@@ -2670,8 +2679,7 @@ Please wait ⏳
             market_quality = "📊 NEUTRAL"
         
         # ====== MARKET TEMPERATURE ======
-        avg_momentum_all = sum(market_brain_scores) / len(market_brain_scores) if market_brain_scores else 0
-        temp_score = (avg_market_flow * 20) + (avg_market_brain * 0.3) + (compression_high_pct * 0.2)
+        temp_score = (avg_flow * 20) + (avg_brain * 0.3) + (compression_high_pct * 0.2)
         
         if temp_score > 80:
             market_temp = "🔴 OVERHEATED"
@@ -2691,8 +2699,8 @@ Please wait ⏳
 🔄 Mixed       : {mixed_pct}%
 🔥 Compression : {compression_high_pct}%
 
-📊 Average Flow    : {avg_market_flow}X
-🧠 Average Brain   : {avg_market_brain}
+📊 Average Flow    : {avg_flow}X
+🧠 Average Brain   : {avg_brain}
 🏆 Market Quality  : {market_quality}
 🌡️ Market Temp     : {market_temp}
 """
@@ -2711,7 +2719,7 @@ Please wait ⏳
         
         bot.send_message(message.chat.id, sector_msg)
 
-    # ====== REGIME DISTRIBUTION (FIXED - ALL COINS) ======
+    # ====== REGIME DISTRIBUTION (FIXED - ALWAYS SHOW IF DATA EXISTS) ======
     if debug.get("regimes"):
         debug["regime_distribution"] = "\n".join(
             f"{k}: {v}"
@@ -2724,7 +2732,7 @@ Please wait ⏳
     else:
         debug["regime_distribution"] = "N/A"
 
-    # ====== COMPRESSION DISTRIBUTION (FIXED - ALL COINS) ======
+    # ====== COMPRESSION DISTRIBUTION (FIXED - ALWAYS SHOW IF DATA EXISTS) ======
     if debug.get("compressions"):
         debug["compression_distribution"] = "\n".join(
             f"{k}: {v}"
@@ -2737,7 +2745,7 @@ Please wait ⏳
     else:
         debug["compression_distribution"] = "N/A"
 
-    # ====== TOP REJECT REASONS (FIXED) ======
+    # ====== TOP REJECT REASONS (FIXED - ALWAYS SHOW IF DATA EXISTS) ======
     if debug.get("reject_reasons"):
         top_rejects_list = sorted(
             debug["reject_reasons"].items(),
@@ -2809,9 +2817,10 @@ SHORT Signals: {len(short_results)}
 
 📊 METRICS
 Avg Final Score: {debug.get('avg_score', 'N/A')}
-Avg Flow: {debug.get('avg_flow', 'N/A')}
+Avg Flow: {debug.get('avg_flow', 0)}
 Avg Momentum: {debug.get('avg_momentum', 'N/A')}
 Avg RR: {debug.get('avg_rr', 'N/A')}
+Avg Brain: {debug.get('avg_brain', 0)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2946,7 +2955,7 @@ Flow Score  : {round(s['liquidity'] * 35, 0)}
 """
 
         msg = f"""
-🚨 AHAD AI v21.1.4 – Production Stable 🐋
+🚨 AHAD AI v21.1.5 – Dashboard Bug Fix 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -3055,17 +3064,15 @@ Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.4
+🤖 AHAD AI v21.1.5
 🗄 PostgreSQL | 🔒 SSL
-🏦 Production Stable
+🏦 Dashboard Bug Fix
 """
         bot.reply_to(message, report)
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error generating report: {e}")
-
-
-@bot.message_handler(commands=['open'])
+        @bot.message_handler(commands=['open'])
 def open_trades_command(message):
     """Show open trades"""
     conn = None
@@ -3150,7 +3157,9 @@ def history_command(message):
             cur.close()
         if conn:
             conn.close()
-            # ================================================
+
+
+# ================================================
 # 🚀 SECTION 5: SYSTEM
 # ================================================
 
@@ -3194,7 +3203,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.4 – Production Stable ONLINE 🐋")
+print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3205,7 +3214,7 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.4)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.5)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3230,10 +3239,11 @@ print("📦 Caching System ACTIVE")
 print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
+print("🐞 Dashboard Bug Fix ACTIVE (Passed=0 Fixed)")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Production Stable v21.1.4")
+print("🚀 Dashboard Bug Fix v21.1.5")
 
 while True:
     time.sleep(60)

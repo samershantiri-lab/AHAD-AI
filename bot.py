@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.2 – Institutional Dashboard Edition
+# 🚀 AHAD AI v21.1.3 – Institutional Dashboard Edition
 # ================================================
 
 # ================================================
@@ -175,7 +175,7 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.2)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.3)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
         print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration")
 
@@ -268,7 +268,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.2'),
+            trade_data.get('version', 'v21.1.3'),
             'OPEN',
             'PENDING',
             0.0,
@@ -397,7 +397,7 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
 
 
 def update_open_trades():
-    """Monitor open trades every 5 minutes"""
+    """Monitor open trades every 5 minutes using HIGH/LOW for accuracy"""
     print("📈 Trade Tracker STARTED")
 
     while True:
@@ -412,14 +412,19 @@ def update_open_trades():
 
             for trade in open_trades:
                 try:
-                    # Get current price
+                    # ==========================================
+                    # CURRENT CANDLE PRICES
+                    # ==========================================
                     candles = get_candles(trade['symbol'], "15m")
                     if not candles:
                         continue
 
                     current_price = candles[-1]['close']
+                    current_high = candles[-1]['high']
+                    current_low = candles[-1]['low']
+                    # ==========================================
 
-                    # Calculate current profit/loss
+                    # Calculate current profit/loss using CLOSE
                     if trade['side'] == 'LONG':
                         profit_percent = ((current_price - trade['entry']) / trade['entry']) * 100
                     else:  # SHORT
@@ -449,38 +454,49 @@ def update_open_trades():
                         if profit_percent < trade["max_drawdown"]:
                             trade["max_drawdown"] = profit_percent
 
-                    # Check TP/SL
+                    # ==========================================
+                    # HIGH / LOW ACCURACY TP/SL CHECK
+                    # ==========================================
+
                     new_status = None
                     result = None
                     close_time = datetime.now()
 
-                    if trade['side'] == 'LONG':
-                        if current_price >= trade['tp3']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP3'
-                        elif current_price >= trade['tp2']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP2'
-                        elif current_price >= trade['tp1']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP1'
-                        elif current_price <= trade['sl']:
-                            new_status = 'CLOSED'
-                            result = 'LOSS_SL'
+                    if trade['side'] == "LONG":
+
+                        if current_high >= trade['tp3']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP3"
+
+                        elif current_high >= trade['tp2']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP2"
+
+                        elif current_high >= trade['tp1']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP1"
+
+                        elif current_low <= trade['sl']:
+                            new_status = "CLOSED"
+                            result = "LOSS_SL"
 
                     else:  # SHORT
-                        if current_price <= trade['tp3']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP3'
-                        elif current_price <= trade['tp2']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP2'
-                        elif current_price <= trade['tp1']:
-                            new_status = 'CLOSED'
-                            result = 'WIN_TP1'
-                        elif current_price >= trade['sl']:
-                            new_status = 'CLOSED'
-                            result = 'LOSS_SL'
+
+                        if current_low <= trade['tp3']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP3"
+
+                        elif current_low <= trade['tp2']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP2"
+
+                        elif current_low <= trade['tp1']:
+                            new_status = "CLOSED"
+                            result = "WIN_TP1"
+
+                        elif current_high >= trade['sl']:
+                            new_status = "CLOSED"
+                            result = "LOSS_SL"
 
                     # Update database if closed
                     if new_status:
@@ -637,7 +653,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.2 – Institutional Dashboard Edition ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.3 – Institutional Dashboard Edition ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -810,7 +826,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.2 – Institutional Dashboard Edition CORE READY 🐋")
+print("🔥 AHAD AI v21.1.3 – Institutional Dashboard Edition CORE READY 🐋")
 
 
 # ================================================
@@ -1371,7 +1387,7 @@ def ai_brain(candles):
         "short_score": short_score
     }
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.2)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.3)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1868,85 +1884,6 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
-        # 💎 PROFESSIONAL QUALITY ENGINE v2.0
-        # ================================================
-
-        brain_conf = brain["confidence"]
-
-        if (
-            score >= 95
-            and brain_conf >= 80
-            and rr >= 3.0
-            and momentum_score >= 85
-            and flow >= 2.0
-        ):
-            quality = "💎 ELITE SETUP"
-
-        elif (
-            score >= 90
-            and brain_conf >= 70
-            and rr >= 2.5
-        ):
-            quality = "🔥 PREMIUM SETUP"
-
-        elif (
-            score >= 80
-            and brain_conf >= 60
-        ):
-            quality = "✅ HIGH QUALITY"
-
-        elif (
-            score >= 70
-        ):
-            quality = "⚡ GOOD SETUP"
-
-        else:
-            quality = "👀 WATCHLIST"
-            reject_reason = "Watchlist Only"
-            if debug is not None:
-                debug["watchlist"] = debug.get("watchlist", 0) + 1
-            return None
-
-        # ================================================
-        # 🧠 CONFIDENCE LEVEL
-        # ================================================
-
-        if score >= 85:
-            confidence_level = "🔥 HIGH"
-        elif score >= 70:
-            confidence_level = "⚡ MEDIUM"
-        else:
-            confidence_level = "⏳ LOW"
-
-        # ================================================
-        # 🐋 MONEY STATUS
-        # ================================================
-
-        if flow >= 3:
-            money_status = "🚀 HIGH WHALE FLOW"
-        elif flow >= 2:
-            money_status = "🐋 INSTITUTIONAL FLOW"
-        elif flow >= 1.2:
-            money_status = "💧 HEALTHY FLOW"
-        else:
-            money_status = "NORMAL"
-
-        # ================================================
-        # 🎯 EARLY ENTRY CHECK
-        # ================================================
-
-        if direction_clean == "LONG":
-            if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
-                early_text = "🐋 EARLY ENTRY AREA"
-            else:
-                early_text = "⏳ WAIT FOR ENTRY"
-        else:  # SHORT
-            if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
-                early_text = "🐻 EARLY ENTRY AREA"
-            else:
-                early_text = "⏳ WAIT FOR ENTRY"
-
-        # ================================================
         # 🎯 ENTRY ZONE & TARGETS
         # ================================================
 
@@ -2073,6 +2010,85 @@ def analyze(symbol, sector, debug=None):
             return None
 
         # ================================================
+        # 💎 PROFESSIONAL QUALITY ENGINE v2.0
+        # ================================================
+
+        brain_conf = brain["confidence"]
+
+        if (
+            score >= 95
+            and brain_conf >= 80
+            and rr >= 3.0
+            and momentum_score >= 85
+            and flow >= 2.0
+        ):
+            quality = "💎 ELITE SETUP"
+
+        elif (
+            score >= 90
+            and brain_conf >= 70
+            and rr >= 2.5
+        ):
+            quality = "🔥 PREMIUM SETUP"
+
+        elif (
+            score >= 80
+            and brain_conf >= 60
+        ):
+            quality = "✅ HIGH QUALITY"
+
+        elif (
+            score >= 70
+        ):
+            quality = "⚡ GOOD SETUP"
+
+        else:
+            quality = "👀 WATCHLIST"
+            reject_reason = "Watchlist Only"
+            if debug is not None:
+                debug["watchlist"] = debug.get("watchlist", 0) + 1
+            return None
+
+        # ================================================
+        # 🧠 CONFIDENCE LEVEL
+        # ================================================
+
+        if score >= 85:
+            confidence_level = "🔥 HIGH"
+        elif score >= 70:
+            confidence_level = "⚡ MEDIUM"
+        else:
+            confidence_level = "⏳ LOW"
+
+        # ================================================
+        # 🐋 MONEY STATUS
+        # ================================================
+
+        if flow >= 3:
+            money_status = "🚀 HIGH WHALE FLOW"
+        elif flow >= 2:
+            money_status = "🐋 INSTITUTIONAL FLOW"
+        elif flow >= 1.2:
+            money_status = "💧 HEALTHY FLOW"
+        else:
+            money_status = "NORMAL"
+
+        # ================================================
+        # 🎯 EARLY ENTRY CHECK
+        # ================================================
+
+        if direction_clean == "LONG":
+            if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
+                early_text = "🐋 EARLY ENTRY AREA"
+            else:
+                early_text = "⏳ WAIT FOR ENTRY"
+        else:  # SHORT
+            if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
+                early_text = "🐻 EARLY ENTRY AREA"
+            else:
+                early_text = "⏳ WAIT FOR ENTRY"
+
+        # ================================================
         # 🐞 DEBUG REASON
         # ================================================
 
@@ -2182,7 +2198,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.2',
+            'version': 'v21.1.3',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2246,17 +2262,17 @@ def analyze(symbol, sector, debug=None):
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.3)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.2 – Institutional Dashboard Edition 🚀
+🐋 AHAD AI v21.1.3 – Institutional Dashboard Edition 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.2)
+🗄 PostgreSQL Database ACTIVE (v21.1.3)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
-📈 Trade Tracker ACTIVE
+📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
 🧠 AI Brain v2.0 ACTIVE
 🐋 Smart Money ACTIVE
@@ -2286,6 +2302,8 @@ def start(message):
 📈 Professional Analytics ACTIVE
 📊 Market Regime & Compression Tracking
 🏦 Institutional Dashboard ACTIVE
+💎 Professional Quality Engine v2.0 ACTIVE
+🏆 Professional Ranking Engine ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2298,13 +2316,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v21.1.2)
+# 🔎 SMART SCANNER (v21.1.3)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.2 – Institutional Dashboard Edition SCANNING...
+🐋 AHAD AI v21.1.3 – Institutional Dashboard Edition SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2325,21 +2343,21 @@ def scan(message):
 🎯 Dynamic Late Entry v3 ACTIVE
 🐞 Debug Reason ACTIVE
 💾 Trade Recorder ACTIVE (Duplicate Protection)
-📈 Trade Tracker ACTIVE
+📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.2)
+🗄 PostgreSQL Production Ready (v21.1.3)
 🏦 Institutional Dashboard ACTIVE
 
 Please wait ⏳
 """)
-
-    # ====== CLEAR CACHE BEFORE SCAN ======
+        # ====== CLEAR CACHE BEFORE SCAN ======
     global _candle_cache
     _candle_cache.clear()
     # ====================================
 
     debug = {}
+    debug["reject_reasons"] = {}
 
     long_results = []
     short_results = []
@@ -2421,11 +2439,16 @@ Please wait ⏳
                     print(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
-                    debug["reject_reason"] = (
+                    reason = (
                         "Not Long"
                         if not result.get("debug_reason")
                         else " | ".join(result["debug_reason"])
                     )
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reason] = (
+                        debug["reject_reasons"].get(reason, 0) + 1
+                    )
+                    debug["reject_reason"] = reason
                     print(
                         f"❌ LONG REJECTED | "
                         f"{result['coin']} | "
@@ -2449,11 +2472,16 @@ Please wait ⏳
                     print(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
-                    debug["reject_reason"] = (
+                    reason = (
                         "Not Short"
                         if not result.get("debug_reason")
                         else " | ".join(result["debug_reason"])
                     )
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reason] = (
+                        debug["reject_reasons"].get(reason, 0) + 1
+                    )
+                    debug["reject_reason"] = reason
                     print(
                         f"❌ SHORT REJECTED | "
                         f"{result['coin']} | "
@@ -2467,11 +2495,16 @@ Please wait ⏳
 
             else:
                 debug["not_long"] = debug.get("not_long", 0) + 1
-                debug["reject_reason"] = (
+                reason = (
                     "Not Long/Short"
                     if not result.get("debug_reason")
                     else " | ".join(result["debug_reason"])
                 )
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reason] = (
+                    debug["reject_reasons"].get(reason, 0) + 1
+                )
+                debug["reject_reason"] = reason
 
                 print(
                     f"⏳ WAIT SIGNAL | "
@@ -2481,7 +2514,8 @@ Please wait ⏳
                 )
 
         time.sleep(0.03)
-            # ====== CALCULATE AVERAGE METRICS ======
+
+    # ====== CALCULATE AVERAGE METRICS ======
     all_results = long_results + short_results
     
     if all_results:
@@ -2570,6 +2604,19 @@ Please wait ⏳
     else:
         debug["compression_distribution"] = "N/A"
 
+    # ====== TOP REJECT REASONS ======
+    if debug.get("reject_reasons"):
+        top_rejects = "\n".join(
+            f"{k}: {v}"
+            for k, v in sorted(
+                debug["reject_reasons"].items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:10]
+        )
+    else:
+        top_rejects = "N/A"
+
     checked_count = debug.get('checked', 0)
 
     debug_msg = f"""
@@ -2630,7 +2677,8 @@ Avg RR: {debug.get('avg_rr', 'N/A')}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-Reject Reason: {debug.get('reject_reason', 'NONE')}
+Top Reject Reasons:
+{top_rejects}
 """
     bot.send_message(message.chat.id, debug_msg)
 
@@ -2742,7 +2790,7 @@ Flow Score  : {round(s['liquidity'] * 35, 0)}
 """
 
         msg = f"""
-🚨 AHAD AI v21.1.2 – Institutional Dashboard 🐋
+🚨 AHAD AI v21.1.3 – Institutional Dashboard 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -2849,7 +2897,7 @@ Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.2
+🤖 AHAD AI v21.1.3
 🗄 PostgreSQL | 🔒 SSL
 🏦 Institutional Dashboard
 """
@@ -2990,7 +3038,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.2 – Institutional Dashboard Edition ONLINE 🐋")
+print("🔥 AHAD AI v21.1.3 – Institutional Dashboard Edition ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3001,12 +3049,12 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.2)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.3)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
 print("🔄 Duplicate Trade Protection ACTIVE")
-print("📈 Trade Tracker ACTIVE")
+print("📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)")
 print("📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)")
 print("📊 Market Regime Engine ACTIVE (Fixed EMA100)")
 print("🔥 Volatility Compression Integration ACTIVE")
@@ -3021,10 +3069,11 @@ print("🛡️ Risk Grade System ACTIVE")
 print("🧠 AI Decision Summary ACTIVE")
 print("🐘 Market Health Report ACTIVE")
 print("🏦 Institutional Dashboard ACTIVE")
+print("🐞 Enhanced Debug Report with Top Reject Reasons")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Institutional Dashboard Edition v21.1.2")
+print("🚀 Institutional Dashboard Edition v21.1.3")
 
 while True:
     time.sleep(60)

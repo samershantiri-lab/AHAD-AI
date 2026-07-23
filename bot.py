@@ -1,6 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.3 – Production Stable
-# Institutional Dashboard UI Improvements
+# 🚀 AHAD AI v21.1.4 – Production Stable
 # ================================================
 
 # ================================================
@@ -176,7 +175,7 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.3)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.4)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
         print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration")
 
@@ -269,7 +268,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.3'),
+            trade_data.get('version', 'v21.1.4'),
             'OPEN',
             'PENDING',
             0.0,
@@ -398,7 +397,7 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
 
 
 # ================================================
-# 📦 TRADE TRACKER CACHE (PATCH #2)
+# 📦 TRADE TRACKER CACHE
 # ================================================
 
 _trade_tracker_cache = {}
@@ -684,7 +683,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.3 – Production Stable ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.4 – Production Stable ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -857,7 +856,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.3 – Production Stable CORE READY 🐋")
+print("🔥 AHAD AI v21.1.4 – Production Stable CORE READY 🐋")
 
 
 # ================================================
@@ -1418,7 +1417,7 @@ def ai_brain(candles):
         "short_score": short_score
     }
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.3)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.4)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1447,7 +1446,7 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Blocked Asset"
             return None
 
-        # ====== PATCH #3: CACHED CANDLES ======
+        # ====== CACHED CANDLES ======
         c15 = get_candles_cached(symbol, "15m")
         c1h = get_candles_cached(symbol, "1h")
         c4h = get_candles_cached(symbol, "4h")
@@ -1914,7 +1913,8 @@ def analyze(symbol, sector, debug=None):
             if debug is not None:
                 debug["score"] = debug.get("score", 0) + 1
             return None
-                    # ================================================
+
+        # ================================================
         # 🎯 ENTRY ZONE & TARGETS
         # ================================================
 
@@ -1985,8 +1985,7 @@ def analyze(symbol, sector, debug=None):
                 tp3 = tp2 - move * 0.5
 
             rr = (entry_high - tp1) / risk
-
-        # ================================================
+                    # ================================================
         # 🛡️ VALIDATION LAYER
         # ================================================
 
@@ -2180,33 +2179,71 @@ def analyze(symbol, sector, debug=None):
             risk_icon = "🔴"
 
         # ================================================
-        # 🧠 AI DECISION SUMMARY
+        # 🧠 AI DECISION SUMMARY (IMPROVED)
         # ================================================
 
         decision_reasons = []
 
+        # Market Structure
         if regime["regime"] in ["TRENDING", "COMPRESSION"]:
             decision_reasons.append("✅ Strong Market Structure")
+        else:
+            decision_reasons.append("📊 Neutral Market Structure")
 
+        # Momentum
         if momentum_score >= 70:
             decision_reasons.append("✅ Strong Momentum")
+        elif momentum_score >= 50:
+            decision_reasons.append("⚡ Moderate Momentum")
+        else:
+            decision_reasons.append("📉 Weak Momentum")
 
+        # Institutional Flow
         if flow >= 1.5:
             decision_reasons.append("✅ Institutional Flow")
+        else:
+            decision_reasons.append("📊 Normal Flow")
 
+        # Risk/Reward
         if rr >= 2.5:
             decision_reasons.append("✅ High Risk/Reward")
+        else:
+            decision_reasons.append("📊 Standard RR")
 
+        # Brain Confidence
         if brain["confidence"] >= 60:
             decision_reasons.append("✅ High Brain Confidence")
+        else:
+            decision_reasons.append("📊 Moderate Brain Confidence")
 
+        # Compression Setup
         if vol["status"] in ["🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"]:
             decision_reasons.append("✅ Compression Setup")
+        else:
+            decision_reasons.append("📊 Normal Volatility")
+
+        # Trap Detection
+        if trap == "✅ NO TRAP":
+            decision_reasons.append("✅ No Trap Detected")
+
+        # Sector Strength
+        if sector not in ["UNKNOWN", "RWA"]:
+            decision_reasons.append("✅ Strong Sector")
+        else:
+            decision_reasons.append("📊 Neutral Sector")
+
+        # Late Entry Score
+        if late_score < 20:
+            decision_reasons.append("✅ Early Entry Zone")
+        elif late_score < 30:
+            decision_reasons.append("⚡ Moderate Entry Zone")
+        else:
+            decision_reasons.append("⏳ Late Entry Warning")
 
         if len(decision_reasons) == 0:
             decision_reasons.append("⏳ Standard Setup")
 
-        decision_summary = "\n".join(decision_reasons[:6])
+        decision_summary = "\n".join(decision_reasons[:10])
 
         # ================================================
         # 📦 TRADE DATA
@@ -2230,7 +2267,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.3',
+            'version': 'v21.1.4',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2294,15 +2331,15 @@ def analyze(symbol, sector, debug=None):
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.3)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.4)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.3 – Production Stable 🚀
+🐋 AHAD AI v21.1.4 – Production Stable 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.3)
+🗄 PostgreSQL Database ACTIVE (v21.1.4)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
@@ -2349,13 +2386,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v21.1.3)
+# 🔎 SMART SCANNER (v21.1.4)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.3 – Production Stable SCANNING...
+🐋 AHAD AI v21.1.4 – Production Stable SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2379,13 +2416,14 @@ def scan(message):
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.3)
+🗄 PostgreSQL Production Ready (v21.1.4)
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE
 
 Please wait ⏳
 """)
-        # ====== CLEAR CACHE BEFORE SCAN ======
+
+    # ====== CLEAR CACHE BEFORE SCAN ======
     global _candle_cache
     _candle_cache.clear()
     # ====================================
@@ -2583,8 +2621,7 @@ Please wait ⏳
                 "avg_score": avg_score
             })
     sector_summary.sort(key=lambda x: x["avg_flow"], reverse=True)
-
-    # ====== CALCULATE AVERAGE METRICS ======
+        # ====== CALCULATE AVERAGE METRICS ======
     all_results = long_results + short_results
     
     if all_results:
@@ -2632,7 +2669,7 @@ Please wait ⏳
         else:
             market_quality = "📊 NEUTRAL"
         
-        # ====== MARKET TEMPERATURE (NEW) ======
+        # ====== MARKET TEMPERATURE ======
         avg_momentum_all = sum(market_brain_scores) / len(market_brain_scores) if market_brain_scores else 0
         temp_score = (avg_market_flow * 20) + (avg_market_brain * 0.3) + (compression_high_pct * 0.2)
         
@@ -2661,7 +2698,7 @@ Please wait ⏳
 """
         bot.send_message(message.chat.id, health_report)
 
-    # ====== SECTOR SUMMARY (NEW) ======
+    # ====== SECTOR SUMMARY ======
     if sector_summary:
         sector_msg = "🏦 SECTOR SUMMARY\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
@@ -2716,7 +2753,7 @@ Please wait ⏳
     else:
         top_rejects = "N/A"
 
-    # ====== SCAN EFFICIENCY (NEW) ======
+    # ====== SCAN EFFICIENCY ======
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
     
@@ -2800,7 +2837,8 @@ Cache Hits     : {cache_hits}
 Cache Saved    : {cache_saved_pct}%
 """
     bot.send_message(message.chat.id, debug_msg)
-        # ==========================================================
+
+    # ==========================================================
     # 🏆 PROFESSIONAL SIGNAL RANKING
     # ==========================================================
 
@@ -2908,7 +2946,7 @@ Flow Score  : {round(s['liquidity'] * 35, 0)}
 """
 
         msg = f"""
-🚨 AHAD AI v21.1.3 – Production Stable 🐋
+🚨 AHAD AI v21.1.4 – Production Stable 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -3017,7 +3055,7 @@ Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.3
+🤖 AHAD AI v21.1.4
 🗄 PostgreSQL | 🔒 SSL
 🏦 Production Stable
 """
@@ -3025,9 +3063,7 @@ Avg RR        : {stats['short_avg_rr']}
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error generating report: {e}")
-
-
-@bot.message_handler(commands=['open'])
+        @bot.message_handler(commands=['open'])
 def open_trades_command(message):
     """Show open trades"""
     conn = None
@@ -3158,7 +3194,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.3 – Production Stable ONLINE 🐋")
+print("🔥 AHAD AI v21.1.4 – Production Stable ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3169,7 +3205,7 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.3)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.4)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3186,7 +3222,7 @@ print("🏆 Professional Ranking Engine ACTIVE")
 print("💎 Professional Quality Engine v2.0 ACTIVE")
 print("📊 Institutional Flow Rating ACTIVE")
 print("🛡️ Risk Grade System ACTIVE")
-print("🧠 AI Decision Summary ACTIVE")
+print("🧠 AI Decision Summary ACTIVE (Enhanced)")
 print("🐘 Market Health Report ACTIVE")
 print("🏦 Institutional Dashboard ACTIVE")
 print("🐞 Enhanced Debug Report with Top Reject Reasons")
@@ -3197,8 +3233,7 @@ print("🏦 Sector Summary ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Production Stable v21.1.3")
+print("🚀 Production Stable v21.1.4")
 
 while True:
     time.sleep(60)
-    

@@ -3063,7 +3063,9 @@ Avg RR        : {stats['short_avg_rr']}
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error generating report: {e}")
-        @bot.message_handler(commands=['open'])
+
+
+@bot.message_handler(commands=['open'])
 def open_trades_command(message):
     """Show open trades"""
     conn = None
@@ -3148,9 +3150,7 @@ def history_command(message):
             cur.close()
         if conn:
             conn.close()
-
-
-# ================================================
+            # ================================================
 # 🚀 SECTION 5: SYSTEM
 # ================================================
 

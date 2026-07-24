@@ -1690,8 +1690,8 @@ def analyze(symbol, sector, debug=None):
         macd_value = macd_simple(closes15)
         macd_score = 3 if macd_value > 0 else 0
         # ================================================
-# 🔥 MULTI TIMEFRAME VALIDATOR
-# ================================================
+        # 🔥 MULTI TIMEFRAME VALIDATOR
+        # ================================================
 
 tf_score = 0
 tf_alignment = True

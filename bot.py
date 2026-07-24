@@ -2334,10 +2334,21 @@ def analyze(symbol, sector, debug=None):
 # 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.5)
 # ================================================
 
-@bot.message_handler(commands=["start"])
+
+
+
+# ================================================
+# 🔎 SMART SCANNER (v21.1.5)
+# ================================================
+
+@bot.message_handler(commands=["scan"])
+def scan(message):
+    bot.reply_to(message, """
+🐋 AHAD AI v21.1.5 – Dashboard Bug Fix SCANNING...
+@bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.5 – Dashboard Bug Fix 🚀
+🐋 AHAD AI v21.1.5 – Final Dashboard Polish 🚀
 
 🗄 PostgreSQL Database ACTIVE (v21.1.5)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
@@ -2384,16 +2395,6 @@ Commands:
 /open – Open trades list
 /history – Last 10 closed trades
 """)
-
-
-# ================================================
-# 🔎 SMART SCANNER (v21.1.5)
-# ================================================
-
-@bot.message_handler(commands=["scan"])
-def scan(message):
-    bot.reply_to(message, """
-🐋 AHAD AI v21.1.5 – Dashboard Bug Fix SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)

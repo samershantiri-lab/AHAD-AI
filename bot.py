@@ -2757,7 +2757,7 @@ Temperature : {s.get('market_temperature', 'N/A')}
 {s['decision_summary']}
 ━━━━━━━━━━━━━━━━━━━━━━
 """
-                if s.get('trade_data'):
+        if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
                 if trade_id:
@@ -2884,6 +2884,155 @@ def open_trades_command(message):
 
 
 @bot.message_handler(commands=['history'])
+def history_command(message):
+    conn = None
+    cur = None
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
+        FROM trades
+        WHERE status = 'CLOSED'
+        ORDER BY id DESC
+        LIMIT 10
+        """)
+
+        rows = cur.fetchall()
+
+        if not rows:
+            bot.reply_to(message, "📭 No closed trades yet.")
+            return
+
+        msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        for row in rows:
+            result_icon = "✅" if "WIN" in row[4] else "❌"
+            msg += f"{result_icon} #{row[0]} {row[1]} | {row[2]}\n"
+            msg += f"Entry: {row[3]} | Result: {row[4]}\n"
+            msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
+            msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        bot.reply_to(message, msg)
+
+    except Exception as e:
+        log_error("history_command", "N/A", e)
+        bot.reply_to(message, f"❌ Error: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            release_db_connection(conn)
+
+
+# ================================================
+# 🚀 SECTION 5: SYSTEM
+# ================================================
+
+def keep_alive():
+    while True:
+        try:
+            url = os.environ.get("RENDER_URL")
+            if url:
+                urllib.request.urlopen(url, timeout=10)
+                log_debug("🐋 KEEP ALIVE ACTIVE")
+        except Exception as e:
+            log_error("keep_alive", "N/A", e)
+        time.sleep(300)
+
+
+def telegram_engine():
+    backoff = 5
+    while True:
+        try:
+            log_debug("🐋 TELEGRAM ENGINE STARTED")
+            bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            backoff = 5
+        except Exception as e:
+            log_error("telegram_engine", "N/A", e)
+            print(traceback.format_exc())
+            log_debug(f"🔄 Restarting Telegram in {backoff}s...")
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 30)
+
+
+# ✅ PATCH #8: CACHE CLEANUP THREAD
+def cache_cleanup_thread():
+    """قم بتنظيف الكاش المنتهي صلاحيته كل دقيقة"""
+    while True:
+        try:
+            clear_expired_cache()
+        except Exception as e:
+            log_error("cache_cleanup_thread", "N/A", e)
+        time.sleep(60)
+
+
+# ✅ PATCH #6: تهيئة Connection Pool
+init_db_pool()
+
+# ✅ PATCH #8: تشغيل خيط تنظيف الكاش
+threading.Thread(target=cache_cleanup_thread, daemon=True).start()
+
+threading.Thread(target=run_web, daemon=True).start()
+threading.Thread(target=telegram_engine, daemon=True).start()
+threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=update_open_trades, daemon=True).start()
+
+log_debug("🔥 AHAD AI v21.3 – Stability & Optimization Update ONLINE 🐋")
+log_debug(f"📅 Started at: {time.ctime()}")
+log_debug(f"🐍 Python Version: {os.sys.version}")
+log_debug(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
+log_debug(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
+log_debug(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
+log_debug(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
+log_debug(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
+log_debug(f"🐞 DEBUG_MODE: {DEBUG_MODE}")
+log_debug("🛡️ Validation Layer ACTIVE")
+log_debug("🗑️ Cache TTL-based with Thread Safety")
+log_debug("🗄️ Connection Pool ACTIVE (min=1, max=20)")
+log_debug("📝 Error Logger ACTIVE")
+log_debug("🧠 Brain v2.0 ACTIVE")
+log_debug("🎯 Dynamic Late Entry v3 ACTIVE")
+log_debug("🐞 Debug Reason ACTIVE")
+log_debug("🗄️ PostgreSQL Database ACTIVE (v21.3)")
+log_debug("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
+log_debug("🔒 SSL Connection: ENABLED")
+log_debug("⏰ TIMESTAMP Support ACTIVE")
+log_debug("🔄 Duplicate Trade Protection ACTIVE")
+log_debug("📈 Trade Tracker ACTIVE (With Backoff)")
+log_debug("📊 Performance Analytics ACTIVE (Enhanced)")
+log_debug("📊 Market Regime Engine ACTIVE (Fixed)")
+log_debug("🔥 Volatility Compression Integration ACTIVE")
+log_debug("🚀 Dynamic Momentum Weight ACTIVE")
+log_debug("🎯 Dynamic RR Engine ACTIVE")
+log_debug("🔄 Dual Direction Engine ACTIVE")
+log_debug("📊 Trade Data Expansion ACTIVE (10 New Fields)")
+log_debug("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
+log_debug("💎 Professional Quality Engine v2.0 ACTIVE")
+log_debug("📊 Institutional Flow Rating ACTIVE")
+log_debug("🛡️ Risk Grade System ACTIVE")
+log_debug("🧠 AI Decision Summary ACTIVE")
+log_debug("🐘 Market Health Report ACTIVE (FIXED)")
+log_debug("🏦 Institutional Dashboard ACTIVE")
+log_debug("🐞 Enhanced Debug Report with Top Reject Reasons")
+log_debug("📦 Caching System ACTIVE (With TTL + Thread Safe)")
+log_debug("⚡ Scan Efficiency Tracking ACTIVE")
+log_debug("🌡️ Market Temperature ACTIVE")
+log_debug("🏦 Sector Summary ACTIVE")
+log_debug("🏷️ Quality Grade System ACTIVE")
+log_debug("🔐 Stability & Optimization Update ACTIVE")
+log_debug("⚡ Scan Performance Report ACTIVE")
+log_debug("📋 Commands: /scan | /report | /open | /history")
+log_debug("🎯 Best 2 LONG + Best 1 SHORT")
+log_debug("✅ SYSTEM READY FOR PRODUCTION")
+log_debug("🚀 v21.3 – Stability & Optimization Update")
+
+while True:
+    time.sleep(60)
+    @bot.message_handler(commands=['history'])
 def history_command(message):
     conn = None
     cur = None

@@ -60,7 +60,6 @@ def log_error(function_name, symbol, error, extra_info=None):
 """
     error_logger.error(log_message)
     
-    # ✅ PATCH #5: استخدام DEBUG_MODE
     if DEBUG_MODE:
         print(f"⚠️ ERROR: {function_name} | {symbol} | {str(error)}")
 
@@ -212,7 +211,9 @@ def init_database():
             cur.close()
         if conn:
             release_db_connection(conn)
-            # ================================================
+
+
+# ================================================
 # 💾 TRADE RECORDER (محسّن مع Connection Pool)
 # ================================================
 
@@ -427,9 +428,7 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             cur.close()
         if conn:
             release_db_connection(conn)
-
-
-# ================================================
+            # ================================================
 # 📦 TRADE TRACKER CACHE (مع TTL)
 # ================================================
 
@@ -562,7 +561,9 @@ def update_open_trades():
             log_error("update_open_trades_main", "N/A", e)
             time.sleep(backoff)
             backoff = min(backoff * 2, max_backoff)
-            # ================================================
+
+
+# ================================================
 # 📊 PERFORMANCE ANALYTICS (محسّن مع Connection Pool)
 # ================================================
 
@@ -1171,7 +1172,9 @@ def volatility_engine(candles):
             "atr_old": 0,
             "bonus": 0
         }
-        # ================================================
+
+
+# ================================================
 # 📊 MARKET REGIME ENGINE (محسّن)
 # ================================================
 
@@ -2219,13 +2222,12 @@ Please wait ⏳
     market_flows = []
     market_brain_scores = []
     market_compression_status = []
-    all_analyzed_coins = []  # تتبع جميع العملات المحللة
+    all_analyzed_coins = []
 
     scan_start_time = time.time()
     api_calls = 0
     cache_hits = 0
-    coin_times = []  # ✅ PATCH #9: تتبع أوقات التحليل
-    api_response_times = []
+    coin_times = []
 
     for symbol in symbols:
         coin_start = time.time()
@@ -2254,18 +2256,15 @@ Please wait ⏳
 
         log_debug(f"END: {symbol}")
 
-        # ✅ PATCH #1: جمع البيانات الصحية من كل عملة تم تحليلها
         if result:
             all_analyzed_coins.append(symbol)
             
-            # جمع بيانات السوق من الإشارات المقبولة
             regime_name = result["regime"]["regime"]
             market_regimes[regime_name] = market_regimes.get(regime_name, 0) + 1
             market_flows.append(result["liquidity"])
             market_brain_scores.append(result["brain_confidence"])
             market_compression_status.append(result["volatility"]["status"])
             
-            # تحديث sector_data
             if coin_sector in sector_data:
                 sector_data[coin_sector]["coins"] += 1
                 sector_data[coin_sector]["flows"].append(result.get("liquidity", 0))
@@ -2363,18 +2362,12 @@ Please wait ⏳
 
         time.sleep(0.03)
 
-    # ✅ PATCH #1: MARKET HEALTH FIX - تضمين جميع العملات المحللة
-    # حتى لو لم تصل إلى مرحلة الإشارات المقبولة
     total_analyzed = debug.get('checked', 0)
     
-    # إذا كانت market_regimes فارغة ولكن لدينا عملات محللة،
-    # نضيف بيانات افتراضية من debug
     if not market_regimes and total_analyzed > 0:
-        # استخدام بيانات من debug كبديل
         if debug.get("regimes"):
             market_regimes = debug.get("regimes", {})
         else:
-            # بيانات افتراضية
             market_regimes = {"UNKNOWN": total_analyzed}
 
     sector_summary = []
@@ -2420,9 +2413,7 @@ Please wait ⏳
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
-    # ✅ PATCH #1: تحسين عرض Market Health
     if total_checked > 0:
-        # استخدام data من debug إذا كانت market_regimes فارغة
         if not market_regimes and debug.get("regimes"):
             market_regimes = debug.get("regimes", {})
         
@@ -2550,7 +2541,6 @@ Please wait ⏳
     debug["cache_hits"] = cache_hits
     debug["cache_saved_pct"] = cache_saved_pct
 
-    # ✅ PATCH #9: SCAN PERFORMANCE REPORT
     if coin_times:
         avg_time = round(sum(t[1] for t in coin_times) / len(coin_times), 2)
         slowest = max(coin_times, key=lambda x: x[1])
@@ -2670,11 +2660,9 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 🐋 Smart Money not ready
 ⏳ Waiting next liquidity wave
 """)
-        # ✅ PATCH #2 & #8: استخدام clear_expired_cache بدلاً من clear()
         clear_expired_cache()
         return
-
-    for s in results:
+            for s in results:
         brain_conf = s["brain_confidence"]
 
         if brain_conf >= 80:
@@ -2757,6 +2745,7 @@ Temperature : {s.get('market_temperature', 'N/A')}
 {s['decision_summary']}
 ━━━━━━━━━━━━━━━━━━━━━━
 """
+
         if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
@@ -3032,92 +3021,9 @@ log_debug("🚀 v21.3 – Stability & Optimization Update")
 
 while True:
     time.sleep(60)
-    @bot.message_handler(commands=['history'])
-def history_command(message):
-    conn = None
-    cur = None
-    
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
-        FROM trades
-        WHERE status = 'CLOSED'
-        ORDER BY id DESC
-        LIMIT 10
-        """)
-
-        rows = cur.fetchall()
-
-        if not rows:
-            bot.reply_to(message, "📭 No closed trades yet.")
-            return
-
-        msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        for row in rows:
-            result_icon = "✅" if "WIN" in row[4] else "❌"
-            msg += f"{result_icon} #{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {row[3]} | Result: {row[4]}\n"
-            msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
-            msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
-            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        bot.reply_to(message, msg)
-
-    except Exception as e:
-        log_error("history_command", "N/A", e)
-        bot.reply_to(message, f"❌ Error: {e}")
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            release_db_connection(conn)
-
-
+    # ================================================
+# 🚀 SECTION 5: SYSTEM (تابع)
 # ================================================
-# 🚀 SECTION 5: SYSTEM
-# ================================================
-
-def keep_alive():
-    while True:
-        try:
-            url = os.environ.get("RENDER_URL")
-            if url:
-                urllib.request.urlopen(url, timeout=10)
-                log_debug("🐋 KEEP ALIVE ACTIVE")
-        except Exception as e:
-            log_error("keep_alive", "N/A", e)
-        time.sleep(300)
-
-
-def telegram_engine():
-    backoff = 5
-    while True:
-        try:
-            log_debug("🐋 TELEGRAM ENGINE STARTED")
-            bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-            backoff = 5
-        except Exception as e:
-            log_error("telegram_engine", "N/A", e)
-            print(traceback.format_exc())
-            log_debug(f"🔄 Restarting Telegram in {backoff}s...")
-            time.sleep(backoff)
-            backoff = min(backoff * 2, 30)
-
-
-# ✅ PATCH #8: CACHE CLEANUP THREAD
-def cache_cleanup_thread():
-    """قم بتنظيف الكاش المنتهي صلاحيته كل دقيقة"""
-    while True:
-        try:
-            clear_expired_cache()
-        except Exception as e:
-            log_error("cache_cleanup_thread", "N/A", e)
-        time.sleep(60)
-
 
 # ✅ PATCH #6: تهيئة Connection Pool
 init_db_pool()

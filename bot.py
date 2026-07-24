@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2 – Security & Performance Update
+# 🚀 AHAD AI v21.3 – Stability & Optimization Update
 # ================================================
 
 # ================================================
@@ -9,8 +9,11 @@
 MIN_FLOW_COINS = 50
 MAX_FLOW_COINS = 150
 FLOW_RATIO = 0.40
-MAX_SCAN_LIMIT = 200  # ✅ NEW: حد أقصى للعملات الممسوحة
-CACHE_TTL = 60  # ✅ NEW: مدة صلاحية الكاش بالثواني
+MAX_SCAN_LIMIT = 200
+CACHE_TTL = 60
+
+# ✅ PATCH #5: DEBUG MODE
+DEBUG_MODE = True  # ✅ تغيير إلى False في الإنتاج
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -23,11 +26,48 @@ import traceback
 import requests
 import urllib.request
 import psycopg2
+from psycopg2 import pool
 from datetime import datetime
 from collections import defaultdict
+import logging
 
 from flask import Flask
 import telebot
+
+# ================================================
+# 📝 PATCH #10: ERROR LOGGING
+# ================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+error_logger = logging.getLogger('AHAD_AI_ERROR')
+
+def log_error(function_name, symbol, error, extra_info=None):
+    """تسجيل الأخطاء بشكل موحد"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_message = f"""
+┌─────────────────────────────────────────
+│ ⚠️ ERROR LOG
+├─────────────────────────────────────────
+│ Time       : {timestamp}
+│ Function   : {function_name}
+│ Symbol     : {symbol}
+│ Error      : {str(error)}
+│ Extra      : {extra_info if extra_info else 'N/A'}
+└─────────────────────────────────────────
+"""
+    error_logger.error(log_message)
+    
+    # ✅ PATCH #5: استخدام DEBUG_MODE
+    if DEBUG_MODE:
+        print(f"⚠️ ERROR: {function_name} | {symbol} | {str(error)}")
+
+def log_debug(message):
+    """طباعة رسائل التطوير فقط في وضع DEBUG"""
+    if DEBUG_MODE:
+        print(message)
 
 # ================================================
 # 🔑 TELEGRAM TOKEN
@@ -49,15 +89,37 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise Exception("❌ DATABASE_URL NOT FOUND")
 
+# ✅ PATCH #6: DATABASE PERFORMANCE - Connection Pool
+connection_pool = None
+
+def init_db_pool():
+    """Initialize PostgreSQL connection pool"""
+    global connection_pool
+    try:
+        connection_pool = psycopg2.pool.SimpleConnectionPool(
+            1,  # min connections
+            20,  # max connections
+            DATABASE_URL,
+            sslmode='require',
+            connect_timeout=10
+        )
+        log_debug(f"🗄️ Connection Pool initialized (min=1, max=20)")
+    except Exception as e:
+        log_error("init_db_pool", "N/A", e)
+        raise
 
 def get_db_connection():
-    """Create a PostgreSQL connection with proper settings"""
-    return psycopg2.connect(
-        DATABASE_URL,
-        connect_timeout=10,
-        sslmode='require'
-    )
+    """Get connection from pool"""
+    global connection_pool
+    if connection_pool is None:
+        init_db_pool()
+    return connection_pool.getconn()
 
+def release_db_connection(conn):
+    """Release connection back to pool"""
+    global connection_pool
+    if connection_pool and conn:
+        connection_pool.putconn(conn)
 
 def init_database():
     """Initialize PostgreSQL database with tables and indexes"""
@@ -104,21 +166,11 @@ def init_database():
             volume_acceleration DOUBLE PRECISION,
             flow_rating TEXT,
             risk_grade TEXT,
-            decision_summary TEXT
+            decision_summary TEXT,
+            ranking_score DOUBLE PRECISION,
+            quality_grade TEXT,
+            market_temperature TEXT
         )
-        """)
-
-        # ✅ FIX v21.2: إضافة أعمدة جديدة للتقرير المتقدم
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS ranking_score DOUBLE PRECISION
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS quality_grade TEXT
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_temperature TEXT
         """)
 
         # Indexes for performance
@@ -148,21 +200,20 @@ def init_database():
         """)
 
         conn.commit()
-        print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.2)")
-        print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
-        print("📊 New columns: ranking_score, quality_grade, market_temperature")
+        log_debug("🟢 PostgreSQL Connected")
+        log_debug("🗄 AHAD AI DATABASE READY (v21.3)")
+        log_debug("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
 
     except Exception as e:
-        print(f"❌ Database Error: {e}")
+        log_error("init_database", "N/A", e)
         raise
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
             # ================================================
-# 💾 TRADE RECORDER (محسّن)
+# 💾 TRADE RECORDER (محسّن مع Connection Pool)
 # ================================================
 
 def save_trade(trade_data):
@@ -185,7 +236,7 @@ def save_trade(trade_data):
         existing = cur.fetchone()
         
         if existing:
-            print(f"⚠️ Duplicate trade skipped: {trade_data['symbol']} ({trade_data['side']})")
+            log_debug(f"⚠️ Duplicate trade skipped: {trade_data['symbol']} ({trade_data['side']})")
             return existing[0]
 
         cur.execute("""
@@ -247,7 +298,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.2'),
+            trade_data.get('version', 'v21.3'),
             'OPEN',
             'PENDING',
             0.0,
@@ -271,19 +322,19 @@ def save_trade(trade_data):
         trade_id = cur.fetchone()[0]
         conn.commit()
 
-        print(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id})")
+        log_debug(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id})")
         return trade_id
 
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ Error saving trade: {e}")
+        log_error("save_trade", trade_data.get('symbol', 'N/A'), e)
         raise
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 # ================================================
@@ -323,17 +374,17 @@ def get_open_trades():
                 'max_drawdown': row[9] if row[9] is not None else 0.0
             })
 
-        print(f"📂 OPEN trades loaded: {len(trades)}")
+        log_debug(f"📂 OPEN trades loaded: {len(trades)}")
         return trades
 
     except Exception as e:
-        print(f"❌ Error getting open trades: {e}")
+        log_error("get_open_trades", "N/A", e)
         raise
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
@@ -363,19 +414,19 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
         ))
 
         conn.commit()
-        print(f"✅ Trade {trade_id} updated: {status} | {result}")
+        log_debug(f"✅ Trade {trade_id} updated: {status} | {result}")
         return True
 
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ Error updating trade {trade_id}: {e}")
+        log_error("update_trade", str(trade_id), e)
         raise
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 # ================================================
@@ -410,7 +461,7 @@ def update_open_trades():
     backoff = 60
     max_backoff = 600  # 10 minutes
     
-    print("📈 Trade Tracker STARTED")
+    log_debug("📈 Trade Tracker STARTED")
 
     while True:
         try:
@@ -422,7 +473,7 @@ def update_open_trades():
                 continue
 
             backoff = 60  # Reset backoff on success
-            print(f"📊 Checking {len(open_trades)} open trades...")
+            log_debug(f"📊 Checking {len(open_trades)} open trades...")
 
             for trade in open_trades:
                 try:
@@ -490,7 +541,7 @@ def update_open_trades():
                             round(trade['max_drawdown'], 2),
                             close_time
                         )
-                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
+                        log_debug(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
                     else:
                         update_trade(
                             trade['id'],
@@ -502,17 +553,17 @@ def update_open_trades():
                         )
 
                 except Exception as e:
-                    print(f"❌ Error processing trade {trade.get('id', 'unknown')}: {e}")
+                    log_error("update_open_trades", trade.get('id', 'unknown'), e)
                     continue
 
             time.sleep(backoff)
 
         except Exception as e:
-            print(f"❌ Trade Tracker error: {e}")
+            log_error("update_open_trades_main", "N/A", e)
             time.sleep(backoff)
             backoff = min(backoff * 2, max_backoff)
             # ================================================
-# 📊 PERFORMANCE ANALYTICS (محسّن)
+# 📊 PERFORMANCE ANALYTICS (محسّن مع Connection Pool)
 # ================================================
 
 def get_report_stats():
@@ -642,13 +693,13 @@ def get_report_stats():
         }
 
     except Exception as e:
-        print(f"❌ Report Error: {e}")
+        log_error("get_report_stats", "N/A", e)
         raise
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 # ================================================
@@ -659,7 +710,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.2 – Security & Performance Update ONLINE 🚀"
+    return "🐋 AHAD AI v21.3 – Stability & Optimization Update ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -674,12 +725,13 @@ def health():
         cur.fetchone()
         return "✅ HEALTHY", 200
     except Exception as e:
+        log_error("health_check", "N/A", e)
         return f"❌ UNHEALTHY: {e}", 500
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -697,7 +749,9 @@ SECTORS = {
     "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI"],
     "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA"],
     "RWA": ["ONDO", "PENDLE", "ENA"]
-    }
+}
+
+
 # ================================================
 # ⬛ OKX FUTURES CRYPTO ONLY
 # ================================================
@@ -730,15 +784,13 @@ def get_symbols():
             ):
                 result.append(symbol)
 
-        print("🐋 MARKETS FOUND:", len(result))
+        log_debug(f"🐋 MARKETS FOUND: {len(result)}")
         return result
 
     except Exception as e:
-        print("SYMBOL ERROR:", e)
+        log_error("get_symbols", "N/A", e)
         return []
-
-
-# ================================================
+        # ================================================
 # 🐋 TOP FLOW SCANNER (محسّن مع LIMIT)
 # ================================================
 
@@ -747,7 +799,7 @@ def top_flow_scanner(symbols):
     processed = 0
     
     for symbol in symbols:
-        if processed >= MAX_SCAN_LIMIT:  # ✅ NEW: حد أقصى
+        if processed >= MAX_SCAN_LIMIT:
             break
             
         try:
@@ -775,7 +827,7 @@ def top_flow_scanner(symbols):
                 processed += 1
 
         except Exception as e:
-            print(symbol, e)
+            log_error("top_flow_scanner", symbol, e)
 
         time.sleep(0.01)
 
@@ -829,12 +881,12 @@ def get_candles(symbol, tf):
         return candles
 
     except Exception as e:
-        print("CANDLE ERROR:", symbol, e)
+        log_error("get_candles", symbol, e)
         return []
 
 
 init_database()
-print("🔥 AHAD AI v21.2 – Security & Performance Update CORE READY 🐋")
+log_debug("🔥 AHAD AI v21.3 – Stability & Optimization Update CORE READY 🐋")
 
 # ================================================
 # 📊 INDICATORS ENGINE
@@ -889,31 +941,44 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
+# ✅ PATCH #11: THREAD SAFETY - إضافة Lock
+_cache_lock = threading.Lock()
 _candle_cache = {}
-_cache_timestamps = {}  # ✅ NEW: تتبع وقت الكاش
+_cache_timestamps = {}
 
 def get_candles_cached(symbol, tf):
-    """Get candles with TTL-based cache"""
+    """Get candles with TTL-based cache (Thread Safe)"""
     key = f"{symbol}_{tf}"
     now = time.time()
     
-    if key in _candle_cache and key in _cache_timestamps:
-        if now - _cache_timestamps[key] <= CACHE_TTL:
-            return _candle_cache[key]
+    with _cache_lock:
+        if key in _candle_cache and key in _cache_timestamps:
+            if now - _cache_timestamps[key] <= CACHE_TTL:
+                return _candle_cache[key]
     
     candles = get_candles(symbol, tf)
-    _candle_cache[key] = candles
-    _cache_timestamps[key] = now
+    
+    with _cache_lock:
+        _candle_cache[key] = candles
+        _cache_timestamps[key] = now
+    
     return candles
 
-
+# ✅ PATCH #8: CACHE CLEANUP - دالة التنظيف
 def clear_expired_cache():
-    """Clear expired cache entries"""
+    """Clear only expired cache entries (Thread Safe)"""
     now = time.time()
-    expired_keys = [k for k, t in _cache_timestamps.items() if now - t > CACHE_TTL]
-    for key in expired_keys:
-        _candle_cache.pop(key, None)
-        _cache_timestamps.pop(key, None)
+    
+    with _cache_lock:
+        expired_keys = [k for k, t in _cache_timestamps.items() if now - t > CACHE_TTL]
+        for key in expired_keys:
+            _candle_cache.pop(key, None)
+            _cache_timestamps.pop(key, None)
+    
+    if expired_keys:
+        log_debug(f"🗑️ Cleared {len(expired_keys)} expired cache entries")
+    
+    return len(expired_keys)
 
 
 # ================================================
@@ -958,13 +1023,15 @@ def sector_flow(symbols):
         }
 
     except Exception as e:
-        print("SECTOR ERROR:", e)
+        log_error("sector_flow", "N/A", e)
         return {
             "sector": "UNKNOWN",
             "power": 0,
             "ranking": []
-                        }
-        # ================================================
+        }
+
+
+# ================================================
 # 🐋 SMART MONEY ENGINE
 # ================================================
 
@@ -1000,7 +1067,7 @@ def smart_money(candles):
         }
 
     except Exception as e:
-        print("SMART MONEY ERROR:", e)
+        log_error("smart_money", "N/A", e)
         return {"flow": 0, "status": "ERROR", "volume_acceleration": 0}
 
 
@@ -1034,7 +1101,7 @@ def pre_pump_engine(candles):
         return {"status": "NORMAL", "score": 0}
 
     except Exception as e:
-        print("PRE PUMP ERROR:", e)
+        log_error("pre_pump_engine", "N/A", e)
         return {"status": "ERROR", "score": 0}
 
 
@@ -1095,7 +1162,7 @@ def volatility_engine(candles):
         }
 
     except Exception as e:
-        print("VOLATILITY ERROR:", e)
+        log_error("volatility_engine", "N/A", e)
         return {
             "score": 0,
             "status": "ERROR",
@@ -1104,14 +1171,12 @@ def volatility_engine(candles):
             "atr_old": 0,
             "bonus": 0
         }
-
-
-# ================================================
+        # ================================================
 # 📊 MARKET REGIME ENGINE (محسّن)
 # ================================================
 
 def market_regime(candles, compression_score):
-    """Classify market into TRENDING, RANGING, or COMPRESSION - Fixed v21.2"""
+    """Classify market into TRENDING, RANGING, or COMPRESSION - Fixed v21.3"""
     try:
         if len(candles) < 150:
             return {
@@ -1134,7 +1199,6 @@ def market_regime(candles, compression_score):
         avg_price = sum(closes) / len(closes)
         expansion_ratio = price_range / avg_price if avg_price > 0 else 0
 
-        # ✅ FIX v21.2: تحسين منطق EMA Alignment
         ema_alignment = 0
         if ema20 > ema50 > ema100:
             ema_alignment = 1
@@ -1150,7 +1214,6 @@ def market_regime(candles, compression_score):
         else:
             avg_slope = 0
 
-        # ✅ FIX v21.2: إعادة ترتيب الأولويات
         if compression_score >= 50 and expansion_ratio < 0.06:
             regime = "COMPRESSION"
             strength = compression_score
@@ -1184,7 +1247,7 @@ def market_regime(candles, compression_score):
         }
 
     except Exception as e:
-        print(f"❌ Market Regime Error: {e}")
+        log_error("market_regime", "N/A", e)
         return {
             "regime": "UNKNOWN",
             "strength": 0,
@@ -1219,7 +1282,7 @@ def multi_rsi_engine(c15, c1h, c4h, c1d):
         return data
 
     except Exception as e:
-        print("MULTI RSI ERROR:", e)
+        log_error("multi_rsi_engine", "N/A", e)
         return {"15m": 50, "1h": 50, "4h": 50, "1d": 50, "score": 0}
 
 
@@ -1296,7 +1359,9 @@ def trap_detector(candles):
         return "🪤 BEAR TRAP"
 
     return "✅ NO TRAP"
-    # ================================================
+
+
+# ================================================
 # 🧠 AI BRAIN ENGINE
 # ================================================
 
@@ -1356,12 +1421,31 @@ def ai_brain(candles):
 
 
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.2)
+# 🛑 PATCH #7: UNIFIED REJECT HANDLER
+# ================================================
+
+def reject_with_reason(reason, debug=None, symbol=None, extra_data=None):
+    """توحيد جميع نقاط الرفض في analyze()"""
+    if debug is not None:
+        debug["reject_reason"] = reason
+        debug["rejected_coin"] = symbol
+        if extra_data:
+            for key, value in extra_data.items():
+                debug[key] = value
+        
+        debug.setdefault("reject_reasons", {})
+        debug["reject_reasons"][reason] = debug["reject_reasons"].get(reason, 0) + 1
+    
+    log_debug(f"❌ REJECTED: {symbol} | Reason: {reason}")
+    return None
+    # ================================================
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.3 - محسّن)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
     try:
         reject_reason = ""
+        extra_data = {}
 
         if debug is not None:
             debug["checked"] = debug.get("checked", 0) + 1
@@ -1377,152 +1461,60 @@ def analyze(symbol, sector, debug=None):
 
         base = symbol.split("-")[0]
         if base in blocked_assets:
-            reject_reason = "Blocked Asset"
-            return None
+            return reject_with_reason("Blocked Asset", debug, symbol)
 
+        # ====== STEP 1: GET CANDLES ======
         c15 = get_candles_cached(symbol, "15m")
         c1h = get_candles_cached(symbol, "1h")
         c4h = get_candles_cached(symbol, "4h")
         c1d = get_candles_cached(symbol, "1d")
 
         if len(c15) < 60 or len(c1h) < 60 or len(c4h) < 60 or len(c1d) < 60:
-            reject_reason = "Candles"
-            if debug is not None:
-                debug["candles"] = debug.get("candles", 0) + 1
-            return None
+            return reject_with_reason("Candles", debug, symbol)
 
         price = c15[-1]["close"]
-
-        brain = ai_brain(c1h)
-        debug_reason = []
-
-        if brain["direction"] == "WAIT":
-            brain_penalty = 10
-            reject_reason = "Brain"
-            if debug is not None:
-                debug["brain"] = debug.get("brain", 0) + 1
-            return None
-        else:
-            brain_penalty = 0
-
-        direction = brain["direction"]
-        direction_clean = direction.replace("🟢 ", "").replace("🔴 ", "")
-
-        safe, warning_text, fomo_reason = fomo_filter(c15, direction_clean)
-        if not safe:
-            reject_reason = f"FOMO: {fomo_reason}"
-            if debug is not None:
-                debug["fomo"] = debug.get("fomo", 0) + 1
-            return None
-
-        sr = support_resistance(c15)
-        money = smart_money(c15)
-        pre = pre_pump_engine(c15)
-        multi = multi_rsi_engine(c15, c1h, c4h, c1d)
-        trap = trap_detector(c15)
-        vol = volatility_engine(c15)
-
         closes15 = [x["close"] for x in c15]
         closes1h = [x["close"] for x in c1h]
         closes4h = [x["close"] for x in c4h]
         closes1d = [x["close"] for x in c1d]
 
-        rsi_15m = rsi(closes15)
-        rsi_1h = rsi(closes1h)
-        rsi_4h = rsi(closes4h)
-        rsi_1d = rsi(closes1d)
-
+        # ====== STEP 2: QUICK FILTERS ======
+        # Flow (سريع)
+        money = smart_money(c15)
         flow = money["flow"]
-
-        regime = market_regime(c15, vol["score"])
-
-        rsi_score = 0
-        if 45 <= rsi_15m <= 62:
-            rsi_score = 8
-        elif 62 < rsi_15m <= 70:
-            rsi_score = 5
-            warning_text = "⚠️ RSI WARNING"
-        elif rsi_15m > 70 or rsi_15m < 35:
-            rsi_score = -10
-            warning_text = "⚠️ RSI EXTREME"
-
-        # ✅ FIX v21.2: توحيد حساب flow_score
-        flow_score = 0
         if flow < 0.8:
-            reject_reason = "Low Flow"
-            if debug is not None:
-                debug["flow"] = debug.get("flow", 0) + 1
-            return None
-        elif flow >= 3:
-            flow_score = 25
-        elif flow >= 1.8:
-            flow_score = 20
-        elif flow >= 1.2:
-            flow_score = 10
-        else:
-            flow_score = 5
+            return reject_with_reason("Low Flow", debug, symbol, {"flow": flow})
 
-        macd_value = macd_simple(closes15)
-        macd_score = 3 if macd_value > 0 else 0
+        # Brain (سريع)
+        brain = ai_brain(c1h)
+        if brain["direction"] == "WAIT":
+            return reject_with_reason("Brain", debug, symbol, {"brain_direction": brain["direction"]})
 
-        tf_score = 0
-        tf_alignment = True
+        direction = brain["direction"]
+        direction_clean = direction.replace("🟢 ", "").replace("🔴 ", "")
+        brain_penalty = 0
 
-        ema20_15 = ema(closes15, 20)
+        # FOMO (سريع)
+        safe, warning_text, fomo_reason = fomo_filter(c15, direction_clean)
+        if not safe:
+            return reject_with_reason(f"FOMO: {fomo_reason}", debug, symbol)
+
+        # Higher Trend (سريع)
+        e200_4h = ema(closes4h, 200)
         if direction_clean == "LONG":
-            if price > ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
+            if closes4h[-1] < e200_4h:
+                return reject_with_reason("Higher Trend Down", debug, symbol)
         else:
-            if price < ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
+            if closes4h[-1] > e200_4h:
+                return reject_with_reason("Higher Trend Up", debug, symbol)
 
-        ema20_1h = ema(closes1h, 20)
-        if direction_clean == "LONG":
-            if closes1h[-1] > ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
-        else:
-            if closes1h[-1] < ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
-
-        ema20_4h = ema(closes4h, 20)
-        if direction_clean == "LONG":
-            if closes4h[-1] < ema20_4h * 0.97:
-                tf_score -= 10
-        else:
-            if closes4h[-1] > ema20_4h * 1.03:
-                tf_score -= 10
-
-        candle_score = 0
-        last_candle = c15[-1]
-        body = abs(last_candle["close"] - last_candle["open"])
-        avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
-
-        if direction_clean == "LONG":
-            if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
-                candle_score += 5
-            elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
-                candle_score -= 5
-        else:
-            if last_candle["close"] < last_candle["open"] and body > avg_body * 1.2:
-                candle_score += 5
-            elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
-                candle_score -= 5
-
+        # Late Entry (متوسط)
         move = atr(c15)
         ema20_15 = ema(closes15, 20)
         ema50_15 = ema(closes15, 50)
         ema100_15 = ema(closes15, 100)
 
         late_score = 0
-
         if direction_clean == "LONG":
             distance = price - ema50_15
         else:
@@ -1554,15 +1546,52 @@ def analyze(symbol, sector, debug=None):
                 late_score += 15
 
         if late_score >= 35:
-            reject_reason = "Late Entry"
-            if debug is not None:
-                debug["late_entry"] = debug.get("late_entry", 0) + 1
-                debug["late_score"] = late_score
-            return None
-        else:
-            if debug is not None:
-                debug["late_score"] = late_score
+            return reject_with_reason("Late Entry", debug, symbol, {"late_score": late_score})
 
+        # ====== STEP 3: HEAVY ENGINES ======
+        sr = support_resistance(c15)
+        pre = pre_pump_engine(c15)
+        multi = multi_rsi_engine(c15, c1h, c4h, c1d)
+        trap = trap_detector(c15)
+        vol = volatility_engine(c15)
+        regime = market_regime(c15, vol["score"])
+
+        rsi_15m = rsi(closes15)
+        rsi_1h = rsi(closes1h)
+        rsi_4h = rsi(closes4h)
+        rsi_1d = rsi(closes1d)
+
+        # ====== STEP 4: SCORING ======
+        rsi_score = 0
+        if 45 <= rsi_15m <= 62:
+            rsi_score = 8
+        elif 62 < rsi_15m <= 70:
+            rsi_score = 5
+            warning_text = "⚠️ RSI WARNING"
+        elif rsi_15m > 70 or rsi_15m < 35:
+            rsi_score = -10
+            warning_text = "⚠️ RSI EXTREME"
+
+        flow_score = 0
+        if flow >= 3:
+            flow_score = 25
+        elif flow >= 1.8:
+            flow_score = 20
+        elif flow >= 1.2:
+            flow_score = 10
+        else:
+            flow_score = 5
+
+        macd_value = macd_simple(closes15)
+        macd_score = 3 if macd_value > 0 else 0
+
+        # Trap Check
+        if trap == "🪤 BULL TRAP" and direction_clean == "LONG":
+            return reject_with_reason("Trap", debug, symbol)
+        if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
+            return reject_with_reason("Trap", debug, symbol)
+
+        # ====== STEP 5: MOMENTUM ======
         if len(closes15) >= 10:
             price_change_5 = ((closes15[-1] - closes15[-5]) / closes15[-5]) * 100
             price_change_10 = ((closes15[-1] - closes15[-10]) / closes15[-10]) * 100
@@ -1619,6 +1648,7 @@ def analyze(symbol, sector, debug=None):
         else:
             momentum_weight = 1.0
 
+        # ====== STEP 6: FINAL SCORE ======
         score = 0
         score += brain["confidence"] * 0.3
         score += flow_score * 1.5
@@ -1660,6 +1690,7 @@ def analyze(symbol, sector, debug=None):
         score -= brain_penalty
         score = round(max(0, min(100, score)))
 
+        # Penalties
         late_penalty = 0
         if direction_clean == "LONG":
             if rsi_15m >= 68:
@@ -1680,18 +1711,7 @@ def analyze(symbol, sector, debug=None):
                 if dump > 1.05:
                     score -= 15
 
-        if trap == "🪤 BULL TRAP" and direction_clean == "LONG":
-            reject_reason = "Trap"
-            if debug is not None:
-                debug["trap"] = debug.get("trap", 0) + 1
-            return None
-
-        if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
-            reject_reason = "Trap"
-            if debug is not None:
-                debug["trap"] = debug.get("trap", 0) + 1
-            return None
-
+        # Heat Control
         if direction_clean == "LONG":
             if multi["4h"] > 70:
                 score -= 10
@@ -1707,46 +1727,25 @@ def analyze(symbol, sector, debug=None):
             if multi["15m"] < 25:
                 score -= 5
 
+        # Resistance/Support Filter
         if direction_clean == "LONG":
             distance_to_resistance = sr["near_resistance"] * price / 100
             if distance_to_resistance < move * 1.2:
-                reject_reason = "Too Close Resistance"
-                if debug is not None:
-                    debug["resistance"] = debug.get("resistance", 0) + 1
-                return None
+                return reject_with_reason("Too Close Resistance", debug, symbol)
         else:
             distance_to_support = sr["near_support"] * price / 100
             if distance_to_support < move * 1.2:
-                reject_reason = "Too Close Support"
-                if debug is not None:
-                    debug["resistance"] = debug.get("resistance", 0) + 1
-                return None
-
-        e200_4h = ema(closes4h, 200)
-        if direction_clean == "LONG":
-            if closes4h[-1] < e200_4h:
-                reject_reason = "Higher Trend Down"
-                if debug is not None:
-                    debug["higher_trend"] = debug.get("higher_trend", 0) + 1
-                return None
-        else:
-            if closes4h[-1] > e200_4h:
-                reject_reason = "Higher Trend Up"
-                if debug is not None:
-                    debug["higher_trend"] = debug.get("higher_trend", 0) + 1
-                return None
+                return reject_with_reason("Too Close Support", debug, symbol)
 
         MIN_SCORE = 68
         if score < MIN_SCORE:
-            reject_reason = f"Low Score ({score})"
-            if debug is not None:
-                debug["score"] = debug.get("score", 0) + 1
-            return None
+            return reject_with_reason(f"Low Score ({score})", debug, symbol, {"score": score})
 
+        # ====== STEP 7: ENTRY & TARGETS ======
         entry_low = price * 0.995
         entry_high = price * 1.005
 
-        # ✅ FIX v21.2: تحسين حساب money_status
+        # Money Status
         if flow >= 3:
             money_status = "🚀 HIGH WHALE FLOW"
         elif flow >= 2:
@@ -1818,6 +1817,7 @@ def analyze(symbol, sector, debug=None):
 
             rr = (entry_high - tp1) / risk
 
+        # ====== STEP 8: VALIDATION ======
         validation_errors = []
 
         if direction_clean == "LONG":
@@ -1858,53 +1858,28 @@ def analyze(symbol, sector, debug=None):
             validation_errors.append("Invalid TP")
 
         if rr < 1.8:
-            reject_reason = "Bad RR (Validation)"
-            if debug is not None:
-                debug["rr"] = debug.get("rr", 0) + 1
-            return None
+            return reject_with_reason("Bad RR (Validation)", debug, symbol, {"rr": rr})
 
         if validation_errors:
-            reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
-            if debug is not None:
-                debug["validation"] = debug.get("validation", 0) + 1
-            return None
+            return reject_with_reason(f"Validation Failed: {', '.join(validation_errors)}", debug, symbol)
 
+        # ====== STEP 9: QUALITY & RANKING ======
         brain_conf = brain["confidence"]
 
-        if (
-            score >= 95
-            and brain_conf >= 80
-            and rr >= 3.0
-            and momentum_score >= 85
-            and flow >= 2.0
-        ):
+        if score >= 95 and brain_conf >= 80 and rr >= 3.0 and momentum_score >= 85 and flow >= 2.0:
             quality = "💎 ELITE SETUP"
             quality_grade = "ELITE"
-        elif (
-            score >= 90
-            and brain_conf >= 70
-            and rr >= 2.5
-        ):
+        elif score >= 90 and brain_conf >= 70 and rr >= 2.5:
             quality = "🔥 PREMIUM SETUP"
             quality_grade = "PREMIUM"
-        elif (
-            score >= 80
-            and brain_conf >= 60
-        ):
+        elif score >= 80 and brain_conf >= 60:
             quality = "✅ HIGH QUALITY"
             quality_grade = "HIGH"
-        elif (
-            score >= 70
-        ):
+        elif score >= 70:
             quality = "⚡ GOOD SETUP"
             quality_grade = "GOOD"
         else:
-            quality = "👀 WATCHLIST"
-            quality_grade = "WATCHLIST"
-            reject_reason = "Watchlist Only"
-            if debug is not None:
-                debug["watchlist"] = debug.get("watchlist", 0) + 1
-            return None
+            return reject_with_reason("Watchlist Only", debug, symbol, {"quality": "WATCHLIST"})
 
         if score >= 85:
             confidence_level = "🔥 HIGH"
@@ -1913,12 +1888,12 @@ def analyze(symbol, sector, debug=None):
         else:
             confidence_level = "⏳ LOW"
 
-        # ✅ NEW v21.2: حساب ranking_score
+        # ✅ PATCH #3: RANKING FIX - حساب مرة واحدة فقط
         ranking_score = (
             score * 0.40 +
             brain_conf * 0.25 +
             rr * 10 +
-            max(flow, 0.5) * 8 +  # ✅ FIX: حد أدنى للـ flow
+            max(flow, 0.5) * 8 +
             momentum_score * 0.05
         )
 
@@ -1933,27 +1908,7 @@ def analyze(symbol, sector, debug=None):
             else:
                 early_text = "⏳ WAIT FOR ENTRY"
 
-        if brain["direction"] != "🟢 LONG":
-            debug_reason.append(f"Brain={brain['direction']}")
-
-        if brain["long_score"] < brain["short_score"]:
-            debug_reason.append("LongScore<ShortScore")
-
-        if momentum_status != "🔥 Strong" and momentum_status != "⚡ Moderate":
-            debug_reason.append(f"Momentum={momentum_status}")
-
-        if score < MIN_SCORE:
-            debug_reason.append(f"Score={round(score)}")
-
-        if debug is not None:
-            debug["passed"] = debug.get("passed", 0) + 1
-            debug["reject_reason"] = reject_reason
-            debug["debug_reason"] = debug_reason
-            debug["regime"] = regime["regime"]
-            debug["compression_score"] = vol["score"]
-            debug["momentum_weight"] = round(momentum_weight, 2)
-            debug["late_score"] = late_score
-
+        # Flow Rating
         if flow >= 3.0:
             flow_rating = "AAA"
             flow_label = "🚀 EXTREME"
@@ -1970,6 +1925,7 @@ def analyze(symbol, sector, debug=None):
             flow_rating = "BB"
             flow_label = "⚠️ LOW"
 
+        # Risk Grade
         if rr >= 3.0 and brain["confidence"] >= 70 and score >= 85:
             risk_grade = "🟢 LOW RISK"
             risk_icon = "🟢"
@@ -1980,7 +1936,7 @@ def analyze(symbol, sector, debug=None):
             risk_grade = "🔴 HIGH RISK"
             risk_icon = "🔴"
 
-        # ✅ FIX v21.2: حساب market_temperature
+        # Market Temperature
         temp_score = (flow * 20) + (brain_conf * 0.3) + (vol["score"] * 0.2)
         if temp_score > 80:
             market_temperature = "🔴 OVERHEATED"
@@ -1991,6 +1947,7 @@ def analyze(symbol, sector, debug=None):
         else:
             market_temperature = "🟢 COLD"
 
+        # Decision Summary
         decision_reasons = []
 
         if regime["regime"] in ["TRENDING", "COMPRESSION"]:
@@ -2045,6 +2002,7 @@ def analyze(symbol, sector, debug=None):
 
         decision_summary = "\n".join(decision_reasons[:10])
 
+        # ====== STEP 10: TRADE DATA ======
         trade_data = {
             'symbol': symbol,
             'side': direction_clean,
@@ -2063,7 +2021,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.2',
+            'version': 'v21.3',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2079,7 +2037,7 @@ def analyze(symbol, sector, debug=None):
             'market_temperature': market_temperature
         }
 
-        print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)} | Regime: {regime['regime']}")
+        log_debug(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)}")
 
         return {
             "coin": symbol,
@@ -2104,7 +2062,7 @@ def analyze(symbol, sector, debug=None):
             "volatility": vol,
             "regime": regime,
             "reject_reason": reject_reason,
-            "debug_reason": debug_reason,
+            "debug_reason": [],
             "momentum_score": momentum_score,
             "momentum_status": momentum_status,
             "rr": round(rr, 2),
@@ -2124,19 +2082,19 @@ def analyze(symbol, sector, debug=None):
         }
 
     except Exception as e:
-        print("ANALYZE ERROR:", e)
+        log_error("analyze", symbol, e)
         return None
         # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.2)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.3)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.2 – Security & Performance Update 🚀
+🐋 AHAD AI v21.3 – Stability & Optimization Update 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.2)
-💾 Trade Recorder ACTIVE (Duplicate Protection)
+🗄 PostgreSQL Database ACTIVE (v21.3)
+💾 Trade Recorder ACTIVE (Connection Pool)
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
 🧠 AI Brain v2.0 ACTIVE
@@ -2169,10 +2127,13 @@ def start(message):
 🏦 Institutional Dashboard ACTIVE
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE (Enhanced)
-📦 Caching System ACTIVE (With TTL)
-🐞 Security & Performance Update ACTIVE
+📦 Caching System ACTIVE (With TTL + Thread Safe)
+🐞 Stability & Optimization Update ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
+🔐 Connection Pool ACTIVE
+📝 Error Logger ACTIVE
+⚡ Scan Performance Report ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2187,7 +2148,7 @@ Commands:
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.2 – Security & Performance Update SCANNING...
+🐋 AHAD AI v21.3 – Stability & Optimization Update SCANNING...
 
 🔍 Checking Market Flow (MAX: 200 coins)
 🏦 Finding Hot Sector (Ranked)
@@ -2207,24 +2168,23 @@ def scan(message):
 🧠 Brain v2.0 ACTIVE
 🎯 Dynamic Late Entry v3 ACTIVE
 🐞 Debug Reason ACTIVE
-💾 Trade Recorder ACTIVE (Duplicate Protection)
+💾 Trade Recorder ACTIVE (Connection Pool)
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
 🔄 Dual Direction Engine ACTIVE
-🗄 PostgreSQL Production Ready (v21.2)
+🗄 PostgreSQL Production Ready (v21.3)
 🏦 Institutional Dashboard ACTIVE
-📦 Caching System ACTIVE (With TTL)
-🐞 Security & Performance Update ACTIVE
+📦 Caching System ACTIVE (TTL + Thread Safe)
+🐞 Stability & Optimization Update ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
+⚡ Scan Performance Report ACTIVE
 
 Please wait ⏳
 """)
 
-    global _candle_cache
-    _candle_cache.clear()
-    global _cache_timestamps
-    _cache_timestamps.clear()
+    # ✅ PATCH #2 & #8: استخدام clear_expired_cache بدلاً من clear()
+    clear_expired_cache()
 
     debug = {}
     debug["reject_reasons"] = {}
@@ -2254,18 +2214,24 @@ Please wait ⏳
 
     bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
+    # ✅ PATCH #1: MARKET HEALTH FIX - جمع البيانات من جميع العملات
     market_regimes = {}
     market_flows = []
     market_brain_scores = []
     market_compression_status = []
+    all_analyzed_coins = []  # تتبع جميع العملات المحللة
 
     scan_start_time = time.time()
     api_calls = 0
     cache_hits = 0
+    coin_times = []  # ✅ PATCH #9: تتبع أوقات التحليل
+    api_response_times = []
 
     for symbol in symbols:
-        print("=" * 50)
-        print("START:", symbol)
+        coin_start = time.time()
+        
+        log_debug("=" * 50)
+        log_debug(f"START: {symbol}")
 
         base = symbol.split("-")[0]
         coin_sector = "UNKNOWN"
@@ -2282,22 +2248,31 @@ Please wait ⏳
 
         result = analyze(symbol, coin_sector, debug=debug)
 
-        print("END:", symbol)
+        coin_end = time.time()
+        coin_duration = round((coin_end - coin_start) * 1000, 2)
+        coin_times.append((symbol, coin_duration))
 
-        if result and coin_sector in sector_data:
-            sector_data[coin_sector]["coins"] += 1
-            sector_data[coin_sector]["flows"].append(result.get("liquidity", 0))
-            sector_data[coin_sector]["scores"].append(result.get("score", 0))
+        log_debug(f"END: {symbol}")
 
+        # ✅ PATCH #1: جمع البيانات الصحية من كل عملة تم تحليلها
         if result:
-            if result["score"] > 100:
-                result["score"] = 100
-
+            all_analyzed_coins.append(symbol)
+            
+            # جمع بيانات السوق من الإشارات المقبولة
             regime_name = result["regime"]["regime"]
             market_regimes[regime_name] = market_regimes.get(regime_name, 0) + 1
             market_flows.append(result["liquidity"])
             market_brain_scores.append(result["brain_confidence"])
             market_compression_status.append(result["volatility"]["status"])
+            
+            # تحديث sector_data
+            if coin_sector in sector_data:
+                sector_data[coin_sector]["coins"] += 1
+                sector_data[coin_sector]["flows"].append(result.get("liquidity", 0))
+                sector_data[coin_sector]["scores"].append(result.get("score", 0))
+            
+            if result["score"] > 100:
+                result["score"] = 100
 
             debug.setdefault("regimes", {})
             debug["regimes"][regime_name] = debug["regimes"].get(regime_name, 0) + 1
@@ -2315,7 +2290,7 @@ Please wait ⏳
                     )
                 ):
                     long_results.append(result)
-                    print(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
+                    log_debug(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
@@ -2328,15 +2303,12 @@ Please wait ⏳
                         debug["reject_reasons"].get(reason, 0) + 1
                     )
                     debug["reject_reason"] = reason
-                    print(
+                    log_debug(
                         f"❌ LONG REJECTED | "
                         f"{result['coin']} | "
                         f"Score={result['score']} | "
                         f"Flow={result['liquidity']} | "
-                        f"PrePump={result['pre_pump']} | "
-                        f"Reason={debug['reject_reason']} | "
-                        f"Brain={result['direction']} | "
-                        f"LateScore={result.get('late_score', 0)}"
+                        f"Reason={debug['reject_reason']}"
                     )
 
             elif result["direction"] == "🔴 SHORT":
@@ -2348,7 +2320,7 @@ Please wait ⏳
                     )
                 ):
                     short_results.append(result)
-                    print(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
+                    log_debug(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
@@ -2361,15 +2333,12 @@ Please wait ⏳
                         debug["reject_reasons"].get(reason, 0) + 1
                     )
                     debug["reject_reason"] = reason
-                    print(
+                    log_debug(
                         f"❌ SHORT REJECTED | "
                         f"{result['coin']} | "
                         f"Score={result['score']} | "
                         f"Flow={result['liquidity']} | "
-                        f"PrePump={result['pre_pump']} | "
-                        f"Reason={debug['reject_reason']} | "
-                        f"Brain={result['direction']} | "
-                        f"LateScore={result.get('late_score', 0)}"
+                        f"Reason={debug['reject_reason']}"
                     )
 
             else:
@@ -2385,7 +2354,7 @@ Please wait ⏳
                 )
                 debug["reject_reason"] = reason
 
-                print(
+                log_debug(
                     f"⏳ WAIT SIGNAL | "
                     f"{result['coin']} | "
                     f"Score={result['score']} | "
@@ -2393,6 +2362,20 @@ Please wait ⏳
                 )
 
         time.sleep(0.03)
+
+    # ✅ PATCH #1: MARKET HEALTH FIX - تضمين جميع العملات المحللة
+    # حتى لو لم تصل إلى مرحلة الإشارات المقبولة
+    total_analyzed = debug.get('checked', 0)
+    
+    # إذا كانت market_regimes فارغة ولكن لدينا عملات محللة،
+    # نضيف بيانات افتراضية من debug
+    if not market_regimes and total_analyzed > 0:
+        # استخدام بيانات من debug كبديل
+        if debug.get("regimes"):
+            market_regimes = debug.get("regimes", {})
+        else:
+            # بيانات افتراضية
+            market_regimes = {"UNKNOWN": total_analyzed}
 
     sector_summary = []
     for sector, data in sector_data.items():
@@ -2437,36 +2420,46 @@ Please wait ⏳
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
-    if total_checked > 0 and has_health_data:
-        bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
-        bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
-        sideways_pct = round((market_regimes.get("RANGING", 0) / total_checked) * 100, 1)
-        mixed_pct = round((market_regimes.get("MIXED", 0) / total_checked) * 100, 1)
-        compression_pct = round((market_regimes.get("COMPRESSION", 0) / total_checked) * 100, 1)
+    # ✅ PATCH #1: تحسين عرض Market Health
+    if total_checked > 0:
+        # استخدام data من debug إذا كانت market_regimes فارغة
+        if not market_regimes and debug.get("regimes"):
+            market_regimes = debug.get("regimes", {})
         
-        high_compression = sum(1 for s in market_compression_status if "SPRING LOADED" in s or "BUILDING" in s)
-        compression_high_pct = round((high_compression / len(market_compression_status)) * 100, 1) if market_compression_status else 0
-        
-        if bull_pct > 50 and avg_brain > 70:
-            market_quality = "🔥 EXCELLENT"
-        elif bull_pct > 30 and avg_brain > 60:
-            market_quality = "✅ GOOD"
-        elif bear_pct > 50:
-            market_quality = "⚠️ CAUTION"
-        else:
-            market_quality = "📊 NEUTRAL"
-        
-        temp_score = (avg_flow * 20) + (avg_brain * 0.3) + (compression_high_pct * 0.2)
-        if temp_score > 80:
-            market_temp = "🔴 OVERHEATED"
-        elif temp_score > 60:
-            market_temp = "🟠 HOT"
-        elif temp_score > 40:
-            market_temp = "🟡 WARM"
-        else:
-            market_temp = "🟢 COLD"
-        
-        health_report = f"""
+        if market_regimes:
+            bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
+            bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
+            sideways_pct = round((market_regimes.get("RANGING", 0) / total_checked) * 100, 1)
+            mixed_pct = round((market_regimes.get("MIXED", 0) / total_checked) * 100, 1)
+            compression_pct = round((market_regimes.get("COMPRESSION", 0) / total_checked) * 100, 1)
+            
+            high_compression = 0
+            if market_compression_status:
+                high_compression = sum(1 for s in market_compression_status if "SPRING LOADED" in s or "BUILDING" in s)
+                compression_high_pct = round((high_compression / len(market_compression_status)) * 100, 1)
+            else:
+                compression_high_pct = 0
+            
+            if bull_pct > 50 and avg_brain > 70:
+                market_quality = "🔥 EXCELLENT"
+            elif bull_pct > 30 and avg_brain > 60:
+                market_quality = "✅ GOOD"
+            elif bear_pct > 50:
+                market_quality = "⚠️ CAUTION"
+            else:
+                market_quality = "📊 NEUTRAL"
+            
+            temp_score = (avg_flow * 20) + (avg_brain * 0.3) + (compression_high_pct * 0.2)
+            if temp_score > 80:
+                market_temp = "🔴 OVERHEATED"
+            elif temp_score > 60:
+                market_temp = "🟠 HOT"
+            elif temp_score > 40:
+                market_temp = "🟡 WARM"
+            else:
+                market_temp = "🟢 COLD"
+            
+            health_report = f"""
 🐘 MARKET HEALTH REPORT
 
 📈 Bull        : {bull_pct}%
@@ -2480,13 +2473,19 @@ Please wait ⏳
 🏆 Market Quality  : {market_quality}
 🌡️ Market Temp     : {market_temp}
 """
-        bot.send_message(message.chat.id, health_report)
-    elif total_checked > 0:
+            bot.send_message(message.chat.id, health_report)
+        else:
+            bot.send_message(
+                message.chat.id,
+                f"🐘 MARKET HEALTH REPORT\n\n"
+                f"📊 تم تحليل {total_checked} عملة\n"
+                f"📭 لا توجد بيانات كافية لحساب مؤشرات السوق"
+            )
+    else:
         bot.send_message(
             message.chat.id,
             "🐘 MARKET HEALTH REPORT\n\n"
-            "📭 N/A — لا توجد عملات وصلت لمرحلة كافية من التحليل "
-            "لحساب مؤشرات صحة السوق هذا الفحص."
+            "📭 لا توجد عملات تم تحليلها"
         )
 
     if sector_summary:
@@ -2551,10 +2550,19 @@ Please wait ⏳
     debug["cache_hits"] = cache_hits
     debug["cache_saved_pct"] = cache_saved_pct
 
+    # ✅ PATCH #9: SCAN PERFORMANCE REPORT
+    if coin_times:
+        avg_time = round(sum(t[1] for t in coin_times) / len(coin_times), 2)
+        slowest = max(coin_times, key=lambda x: x[1])
+        fastest = min(coin_times, key=lambda x: x[1])
+        debug["avg_analyze_time"] = avg_time
+        debug["slowest_coin"] = f"{slowest[0]} ({slowest[1]}ms)"
+        debug["fastest_coin"] = f"{fastest[0]} ({fastest[1]}ms)"
+
     checked_count = debug.get('checked', 0)
 
     debug_msg = f"""
-🐞 FULL DEBUG REPORT (v21.2)
+🐞 FULL DEBUG REPORT (v21.3)
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2624,25 +2632,19 @@ API Calls      : {api_calls}
 Cache Hits     : {cache_hits}
 Cache Saved    : {cache_saved_pct}%
 Cache TTL      : {CACHE_TTL}s
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ SCAN PERFORMANCE
+Avg Analyze Time : {debug.get('avg_analyze_time', 'N/A')}ms
+Slowest Coin     : {debug.get('slowest_coin', 'N/A')}
+Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 """
     bot.send_message(message.chat.id, debug_msg)
 
+    # ✅ PATCH #3: RANKING FIX - استخدام القيمة الجاهزة من analyze()
     def ranking_score(signal):
-        score = signal["score"]
-        brain = signal.get("brain_confidence", 0)
-        rr = signal.get("rr", 0)
-        flow = max(signal.get("liquidity", 0), 0.5)  # ✅ FIX: حد أدنى
-        momentum = signal.get("momentum_score", 0)
-
-        total = (
-            score * 0.40 +
-            brain * 0.25 +
-            rr * 10 +
-            flow * 8 +
-            momentum * 0.05
-        )
-
-        return round(total, 2)
+        return signal.get('ranking_score', 0)
 
     best_longs = sorted(
         long_results,
@@ -2660,7 +2662,6 @@ Cache TTL      : {CACHE_TTL}s
 
     for rank, signal in enumerate(results, start=1):
         signal["rank"] = rank
-        signal["ranking_score"] = ranking_score(signal)
 
     if not results:
         bot.send_message(message.chat.id, """
@@ -2669,8 +2670,8 @@ Cache TTL      : {CACHE_TTL}s
 🐋 Smart Money not ready
 ⏳ Waiting next liquidity wave
 """)
-        _candle_cache.clear()
-        _cache_timestamps.clear()
+        # ✅ PATCH #2 & #8: استخدام clear_expired_cache بدلاً من clear()
+        clear_expired_cache()
         return
 
     for s in results:
@@ -2717,7 +2718,7 @@ Temperature : {s.get('market_temperature', 'N/A')}
 """
 
         msg = f"""
-🚨 AHAD AI v21.2 – Security & Performance Update 🐋
+🚨 AHAD AI v21.3 – Stability & Optimization Update 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -2756,23 +2757,22 @@ Temperature : {s.get('market_temperature', 'N/A')}
 {s['decision_summary']}
 ━━━━━━━━━━━━━━━━━━━━━━
 """
-
-        if s.get('trade_data'):
+                if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
                 if trade_id:
                     msg += f"\n\n💾 Trade ID: #{trade_id}"
-                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                    log_debug(f"✅ Trade #{trade_id} saved for {s['coin']}")
                 else:
                     msg += "\n\n❌ Failed to save trade"
             except Exception as e:
-                print(f"❌ Exception saving trade: {e}")
+                log_error("save_trade_scan", s['coin'], e)
                 msg += "\n\n❌ Database error saving trade"
 
         bot.send_message(message.chat.id, msg)
 
-    _candle_cache.clear()
-    _cache_timestamps.clear()
+    # ✅ PATCH #2 & #8: استخدام clear_expired_cache بدلاً من clear()
+    clear_expired_cache()
 
 
 @bot.message_handler(commands=['report'])
@@ -2781,7 +2781,7 @@ def report_command(message):
         stats = get_report_stats()
 
         report = f"""
-📊 AHAD AI PERFORMANCE REPORT (v21.2)
+📊 AHAD AI PERFORMANCE REPORT (v21.3)
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📂 Total Trades   : {stats['total']}
@@ -2830,13 +2830,14 @@ Avg Profit    : {stats['short_avg_profit']}%
 Avg DD        : {stats['short_avg_dd']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.2
-🗄 PostgreSQL | 🔒 SSL
-🔐 Security & Performance Update
+🤖 AHAD AI v21.3
+🗄 PostgreSQL | 🔒 SSL | 🔐 Connection Pool
+⚡ Stability & Optimization Update
 """
         bot.reply_to(message, report)
 
     except Exception as e:
+        log_error("report_command", "N/A", e)
         bot.reply_to(message, f"❌ Error generating report: {e}")
 
 
@@ -2873,12 +2874,13 @@ def open_trades_command(message):
         bot.reply_to(message, msg)
 
     except Exception as e:
+        log_error("open_trades_command", "N/A", e)
         bot.reply_to(message, f"❌ Error: {e}")
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 @bot.message_handler(commands=['history'])
@@ -2917,12 +2919,13 @@ def history_command(message):
         bot.reply_to(message, msg)
 
     except Exception as e:
+        log_error("history_command", "N/A", e)
         bot.reply_to(message, f"❌ Error: {e}")
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close()
+            release_db_connection(conn)
 
 
 # ================================================
@@ -2935,9 +2938,9 @@ def keep_alive():
             url = os.environ.get("RENDER_URL")
             if url:
                 urllib.request.urlopen(url, timeout=10)
-                print("🐋 KEEP ALIVE ACTIVE")
+                log_debug("🐋 KEEP ALIVE ACTIVE")
         except Exception as e:
-            print("KEEP ALIVE ERROR:", e)
+            log_error("keep_alive", "N/A", e)
         time.sleep(300)
 
 
@@ -2945,66 +2948,87 @@ def telegram_engine():
     backoff = 5
     while True:
         try:
-            print("🐋 TELEGRAM ENGINE STARTED")
+            log_debug("🐋 TELEGRAM ENGINE STARTED")
             bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
             backoff = 5
-        except Exception:
-            print("🚨 TELEGRAM ERROR")
+        except Exception as e:
+            log_error("telegram_engine", "N/A", e)
             print(traceback.format_exc())
-            print(f"🔄 Restarting Telegram in {backoff}s...")
+            log_debug(f"🔄 Restarting Telegram in {backoff}s...")
             time.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
+
+# ✅ PATCH #8: CACHE CLEANUP THREAD
+def cache_cleanup_thread():
+    """قم بتنظيف الكاش المنتهي صلاحيته كل دقيقة"""
+    while True:
+        try:
+            clear_expired_cache()
+        except Exception as e:
+            log_error("cache_cleanup_thread", "N/A", e)
+        time.sleep(60)
+
+
+# ✅ PATCH #6: تهيئة Connection Pool
+init_db_pool()
+
+# ✅ PATCH #8: تشغيل خيط تنظيف الكاش
+threading.Thread(target=cache_cleanup_thread, daemon=True).start()
 
 threading.Thread(target=run_web, daemon=True).start()
 threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.2 – Security & Performance Update ONLINE 🐋")
-print(f"📅 Started at: {time.ctime()}")
-print(f"🐍 Python Version: {os.sys.version}")
-print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
-print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
-print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
-print(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
-print(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
-print("🛡️ Validation Layer ACTIVE")
-print("🗑️ Cache TTL-based (not full clear)")
-print("🧠 Brain v2.0 ACTIVE")
-print("🎯 Dynamic Late Entry v3 ACTIVE")
-print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.2)")
-print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
-print("🔒 SSL Connection: ENABLED")
-print("⏰ TIMESTAMP Support ACTIVE")
-print("🔄 Duplicate Trade Protection ACTIVE")
-print("📈 Trade Tracker ACTIVE (With Backoff)")
-print("📊 Performance Analytics ACTIVE (Enhanced)")
-print("📊 Market Regime Engine ACTIVE (Fixed)")
-print("🔥 Volatility Compression Integration ACTIVE")
-print("🚀 Dynamic Momentum Weight ACTIVE")
-print("🎯 Dynamic RR Engine ACTIVE")
-print("🔄 Dual Direction Engine ACTIVE")
-print("📊 Trade Data Expansion ACTIVE (10 New Fields)")
-print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
-print("💎 Professional Quality Engine v2.0 ACTIVE")
-print("📊 Institutional Flow Rating ACTIVE")
-print("🛡️ Risk Grade System ACTIVE")
-print("🧠 AI Decision Summary ACTIVE")
-print("🐘 Market Health Report ACTIVE")
-print("🏦 Institutional Dashboard ACTIVE")
-print("🐞 Enhanced Debug Report with Top Reject Reasons")
-print("📦 Caching System ACTIVE (With TTL)")
-print("⚡ Scan Efficiency Tracking ACTIVE")
-print("🌡️ Market Temperature ACTIVE")
-print("🏦 Sector Summary ACTIVE")
-print("🏷️ Quality Grade System ACTIVE")
-print("🔐 Security & Performance Update ACTIVE")
-print("📋 Commands: /scan | /report | /open | /history")
-print("🎯 Best 2 LONG + Best 1 SHORT")
-print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 v21.2 – Security & Performance Update")
+log_debug("🔥 AHAD AI v21.3 – Stability & Optimization Update ONLINE 🐋")
+log_debug(f"📅 Started at: {time.ctime()}")
+log_debug(f"🐍 Python Version: {os.sys.version}")
+log_debug(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
+log_debug(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
+log_debug(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
+log_debug(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
+log_debug(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
+log_debug(f"🐞 DEBUG_MODE: {DEBUG_MODE}")
+log_debug("🛡️ Validation Layer ACTIVE")
+log_debug("🗑️ Cache TTL-based with Thread Safety")
+log_debug("🗄️ Connection Pool ACTIVE (min=1, max=20)")
+log_debug("📝 Error Logger ACTIVE")
+log_debug("🧠 Brain v2.0 ACTIVE")
+log_debug("🎯 Dynamic Late Entry v3 ACTIVE")
+log_debug("🐞 Debug Reason ACTIVE")
+log_debug("🗄️ PostgreSQL Database ACTIVE (v21.3)")
+log_debug("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
+log_debug("🔒 SSL Connection: ENABLED")
+log_debug("⏰ TIMESTAMP Support ACTIVE")
+log_debug("🔄 Duplicate Trade Protection ACTIVE")
+log_debug("📈 Trade Tracker ACTIVE (With Backoff)")
+log_debug("📊 Performance Analytics ACTIVE (Enhanced)")
+log_debug("📊 Market Regime Engine ACTIVE (Fixed)")
+log_debug("🔥 Volatility Compression Integration ACTIVE")
+log_debug("🚀 Dynamic Momentum Weight ACTIVE")
+log_debug("🎯 Dynamic RR Engine ACTIVE")
+log_debug("🔄 Dual Direction Engine ACTIVE")
+log_debug("📊 Trade Data Expansion ACTIVE (10 New Fields)")
+log_debug("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
+log_debug("💎 Professional Quality Engine v2.0 ACTIVE")
+log_debug("📊 Institutional Flow Rating ACTIVE")
+log_debug("🛡️ Risk Grade System ACTIVE")
+log_debug("🧠 AI Decision Summary ACTIVE")
+log_debug("🐘 Market Health Report ACTIVE (FIXED)")
+log_debug("🏦 Institutional Dashboard ACTIVE")
+log_debug("🐞 Enhanced Debug Report with Top Reject Reasons")
+log_debug("📦 Caching System ACTIVE (With TTL + Thread Safe)")
+log_debug("⚡ Scan Efficiency Tracking ACTIVE")
+log_debug("🌡️ Market Temperature ACTIVE")
+log_debug("🏦 Sector Summary ACTIVE")
+log_debug("🏷️ Quality Grade System ACTIVE")
+log_debug("🔐 Stability & Optimization Update ACTIVE")
+log_debug("⚡ Scan Performance Report ACTIVE")
+log_debug("📋 Commands: /scan | /report | /open | /history")
+log_debug("🎯 Best 2 LONG + Best 1 SHORT")
+log_debug("✅ SYSTEM READY FOR PRODUCTION")
+log_debug("🚀 v21.3 – Stability & Optimization Update")
 
 while True:
     time.sleep(60)

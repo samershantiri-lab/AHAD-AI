@@ -1665,31 +1665,32 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         flow_score = 0
-        if flow < 0.8:
-            reject_reason = "Low Flow"
-            if debug is not None:
-                debug["flow"] = debug.get("flow", 0) + 1
-            return None
-        elif flow >= 3:
-            flow_score = 25
-            money_status = "🚀 HIGH WHALE FLOW"
-        elif flow >= 1.8:
-            flow_score = 20
-            money_status = "🐋 INSTITUTIONAL FLOW"
-        elif flow >= 1.2:
-            flow_score = 10
-            money_status = "💧 HEALTHY FLOW"
-        else:
-            flow_score = 5
-            money_status = "NORMAL"
+if flow < 0.8:
+    reject_reason = "Low Flow"
+    if debug is not None:
+        debug["flow"] = debug.get("flow", 0) + 1
+    return None
+elif flow >= 3:
+    flow_score = 25
+    money_status = "🚀 HIGH WHALE FLOW"
+elif flow >= 1.8:
+    flow_score = 20
+    money_status = "🐋 INSTITUTIONAL FLOW"
+elif flow >= 1.2:
+    flow_score = 10
+    money_status = "💧 HEALTHY FLOW"
+else:
+    flow_score = 5
+    money_status = "NORMAL"
 
-        # ================================================
-        # 📈 MACD MOMENTUM
-        # ================================================
+# ================================================
+# 📈 MACD MOMENTUM
+# ================================================
 
-        macd_value = macd_simple(closes15)
-        macd_score = 3 if macd_value > 0 else 0
-        # ================================================
+macd_value = macd_simple(closes15)
+macd_score = 3 if macd_value > 0 else 0
+
+# ================================================
 # 🔥 MULTI TIMEFRAME VALIDATOR
 # ================================================
 

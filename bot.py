@@ -1693,8 +1693,8 @@ def analyze(symbol, sector, debug=None):
         # 🔥 MULTI TIMEFRAME VALIDATOR
         # ================================================
 
-tf_score = 0
-tf_alignment = True
+        tf_score = 0
+        tf_alignment = True
 
 ema20_15 = ema(closes15, 20)
 if direction_clean == "LONG":

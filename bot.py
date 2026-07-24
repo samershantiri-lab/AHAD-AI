@@ -1571,7 +1571,6 @@ else:  # SHORT
         candle_score += 5
     elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
         candle_score -= 5
-
 # ================================================
 # 📊 DYNAMIC LATE ENTRY v3
 # ================================================

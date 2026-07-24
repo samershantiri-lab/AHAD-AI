@@ -1239,7 +1239,7 @@ def volatility_engine(candles):
             "atr_now": 0,
             "atr_old": 0,
             "bonus": 0
-}
+    }
         # ================================================
 # 📊 MARKET REGIME ENGINE (FIXED)
 # ================================================
@@ -1690,11 +1690,11 @@ def analyze(symbol, sector, debug=None):
         macd_value = macd_simple(closes15)
         macd_score = 3 if macd_value > 0 else 0
         # ================================================
-        # 🔥 MULTI TIMEFRAME VALIDATOR
-        # ================================================
+# 🔥 MULTI TIMEFRAME VALIDATOR
+# ================================================
 
-        tf_score = 0
-        tf_alignment = True
+tf_score = 0
+tf_alignment = True
 
 ema20_15 = ema(closes15, 20)
 if direction_clean == "LONG":
@@ -3423,4 +3423,3 @@ print("🚀 Production Analytics v21.1.7")
 
 while True:
     time.sleep(60)
-    

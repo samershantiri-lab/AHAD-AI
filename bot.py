@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.5 – Dashboard Bug Fix
+# 🚀 AHAD AI v21.1.6 – Production Stable
 # ================================================
 
 # ================================================
@@ -109,7 +109,22 @@ def init_database():
             max_profit DOUBLE PRECISION,
             max_drawdown DOUBLE PRECISION,
 
-            close_time TIMESTAMP
+            close_time TIMESTAMP,
+
+            -- NEW FIELDS v21.1.6
+            brain_confidence INTEGER,
+            market_regime TEXT,
+            compression_score INTEGER,
+            compression_status TEXT,
+            momentum_weight DOUBLE PRECISION,
+            flow_score INTEGER,
+            volume_acceleration DOUBLE PRECISION,
+            flow_rating TEXT,
+            risk_grade TEXT,
+            decision_summary TEXT,
+            result_pct DOUBLE PRECISION,
+            trade_duration INTEGER,
+            max_profit_pct DOUBLE PRECISION
 
         )
         """)
@@ -142,6 +157,30 @@ def init_database():
         cur.execute("""
         ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume_acceleration DOUBLE PRECISION
         """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS flow_rating TEXT
+        """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS risk_grade TEXT
+        """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_summary TEXT
+        """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS result_pct DOUBLE PRECISION
+        """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_duration INTEGER
+        """)
+        
+        cur.execute("""
+        ALTER TABLE trades ADD COLUMN IF NOT EXISTS max_profit_pct DOUBLE PRECISION
+        """)
 
         # Indexes for performance
         cur.execute("""
@@ -164,7 +203,6 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_trades_status_symbol ON trades(status, symbol)
         """)
 
-        # New indexes for v21.1.0+
         cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_trades_market_regime ON trades(market_regime)
         """)
@@ -175,9 +213,9 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.5)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.6)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
-        print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration")
+        print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration, flow_rating, risk_grade, decision_summary, result_pct, trade_duration, max_profit_pct")
 
     except Exception as e:
         print(f"❌ Database Error: {e}")
@@ -190,7 +228,7 @@ def init_database():
 
 
 # ================================================
-# 💾 TRADE RECORDER
+# 💾 TRADE RECORDER (v21.1.6)
 # ================================================
 
 def save_trade(trade_data):
@@ -235,7 +273,13 @@ def save_trade(trade_data):
             compression_status,
             momentum_weight,
             flow_score,
-            volume_acceleration
+            volume_acceleration,
+            flow_rating,
+            risk_grade,
+            decision_summary,
+            result_pct,
+            trade_duration,
+            max_profit_pct
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -247,7 +291,9 @@ def save_trade(trade_data):
             %s, %s,
             %s, %s,
             %s,
-            %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s,
+            %s, %s, %s
         )
         RETURNING id
         """, (
@@ -268,7 +314,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.5'),
+            trade_data.get('version', 'v21.1.6'),
             'OPEN',
             'PENDING',
             0.0,
@@ -280,7 +326,13 @@ def save_trade(trade_data):
             trade_data.get('compression_status', 'UNKNOWN'),
             trade_data.get('momentum_weight', 1.0),
             trade_data.get('flow_score', 0),
-            trade_data.get('volume_acceleration', 0.0)
+            trade_data.get('volume_acceleration', 0.0),
+            trade_data.get('flow_rating', 'N/A'),
+            trade_data.get('risk_grade', 'N/A'),
+            trade_data.get('decision_summary', ''),
+            0.0,
+            0,
+            0.0
         ))
 
         trade_id = cur.fetchone()[0]
@@ -317,7 +369,7 @@ def get_open_trades():
 
         cur.execute("""
         SELECT id, symbol, side, entry, sl, tp1, tp2, tp3,
-               max_profit, max_drawdown
+               max_profit, max_drawdown, signal_time
         FROM trades
         WHERE status = 'OPEN'
         """)
@@ -337,7 +389,8 @@ def get_open_trades():
                 'tp2': row[6],
                 'tp3': row[7],
                 'max_profit': row[8] if row[8] is not None else 0.0,
-                'max_drawdown': row[9] if row[9] is not None else 0.0
+                'max_drawdown': row[9] if row[9] is not None else 0.0,
+                'signal_time': row[10]
             })
 
         print(f"📂 OPEN trades loaded: {len(trades)}")
@@ -353,7 +406,7 @@ def get_open_trades():
             conn.close()
 
 
-def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
+def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None, result_pct=None, trade_duration=None, max_profit_pct=None):
     """Update trade data in PostgreSQL"""
     conn = None
     cur = None
@@ -368,7 +421,10 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             result = %s,
             max_profit = %s,
             max_drawdown = %s,
-            close_time = %s
+            close_time = %s,
+            result_pct = %s,
+            trade_duration = %s,
+            max_profit_pct = %s
         WHERE id = %s
         """, (
             status,
@@ -376,6 +432,9 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             max_profit,
             max_drawdown,
             close_time,
+            result_pct,
+            trade_duration,
+            max_profit_pct,
             trade_id
         ))
 
@@ -530,15 +589,23 @@ def update_open_trades():
 
                     # Update database if closed
                     if new_status:
+                        # Calculate result_pct and trade_duration
+                        result_pct = round(profit_percent, 2)
+                        trade_duration = int((close_time - trade['signal_time']).total_seconds())
+                        max_profit_pct = round(trade['max_profit'], 2)
+
                         update_trade(
                             trade['id'],
                             new_status,
                             result,
                             round(trade['max_profit'], 2),
                             round(trade['max_drawdown'], 2),
-                            close_time
+                            close_time,
+                            result_pct,
+                            trade_duration,
+                            max_profit_pct
                         )
-                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
+                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result} | Profit: {result_pct}% | Duration: {trade_duration}s")
                     else:
                         # Update max_profit and max_drawdown only
                         update_trade(
@@ -547,6 +614,9 @@ def update_open_trades():
                             'PENDING',
                             round(trade['max_profit'], 2),
                             round(trade['max_drawdown'], 2),
+                            None,
+                            None,
+                            None,
                             None
                         )
 
@@ -559,9 +629,7 @@ def update_open_trades():
         except Exception as e:
             print(f"❌ Trade Tracker error: {e}")
             time.sleep(60)
-
-
-# ================================================
+            # ================================================
 # 📊 PERFORMANCE ANALYTICS
 # ================================================
 
@@ -584,7 +652,8 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
-            AVG(rr) AS avg_rr
+            AVG(rr) AS avg_rr,
+            AVG(result_pct) AS avg_result_pct
         FROM trades
         """)
 
@@ -598,6 +667,7 @@ def get_report_stats():
         tp3 = row[5] or 0
         sl = row[6] or 0
         avg_rr = round(row[7] or 0, 2)
+        avg_result_pct = round(row[8] or 0, 2)
 
         wins = tp1 + tp2 + tp3
 
@@ -612,7 +682,8 @@ def get_report_stats():
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
-            AVG(rr) AS avg_rr
+            AVG(rr) AS avg_rr,
+            AVG(result_pct) AS avg_result_pct
         FROM trades
         WHERE side = 'LONG'
         """)
@@ -622,6 +693,7 @@ def get_report_stats():
         long_wins = long_row[1] or 0
         long_losses = long_row[2] or 0
         long_avg_rr = round(long_row[3] or 0, 2)
+        long_avg_result_pct = round(long_row[4] or 0, 2)
         long_closed = long_wins + long_losses
         long_win_rate = round((long_wins / long_closed) * 100, 2) if long_closed > 0 else 0
 
@@ -631,7 +703,8 @@ def get_report_stats():
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
-            AVG(rr) AS avg_rr
+            AVG(rr) AS avg_rr,
+            AVG(result_pct) AS avg_result_pct
         FROM trades
         WHERE side = 'SHORT'
         """)
@@ -641,6 +714,7 @@ def get_report_stats():
         short_wins = short_row[1] or 0
         short_losses = short_row[2] or 0
         short_avg_rr = round(short_row[3] or 0, 2)
+        short_avg_result_pct = round(short_row[4] or 0, 2)
         short_closed = short_wins + short_losses
         short_win_rate = round((short_wins / short_closed) * 100, 2) if short_closed > 0 else 0
 
@@ -655,16 +729,19 @@ def get_report_stats():
             "wins": wins,
             "win_rate": win_rate,
             "avg_rr": avg_rr,
+            "avg_result_pct": avg_result_pct,
             "long_total": long_total,
             "long_wins": long_wins,
             "long_losses": long_losses,
             "long_win_rate": long_win_rate,
             "long_avg_rr": long_avg_rr,
+            "long_avg_result_pct": long_avg_result_pct,
             "short_total": short_total,
             "short_wins": short_wins,
             "short_losses": short_losses,
             "short_win_rate": short_win_rate,
-            "short_avg_rr": short_avg_rr
+            "short_avg_rr": short_avg_rr,
+            "short_avg_result_pct": short_avg_result_pct
         }
 
     except Exception as e:
@@ -675,7 +752,9 @@ def get_report_stats():
             cur.close()
         if conn:
             conn.close()
-            # ================================================
+
+
+# ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -683,7 +762,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.6 – Production Stable ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -856,7 +935,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix CORE READY 🐋")
+print("🔥 AHAD AI v21.1.6 – Production Stable CORE READY 🐋")
 
 
 # ================================================
@@ -1114,9 +1193,7 @@ def volatility_engine(candles):
             "atr_old": 0,
             "bonus": 0
         }
-
-
-# ================================================
+        # ================================================
 # 📊 MARKET REGIME ENGINE (FIXED)
 # ================================================
 
@@ -1416,8 +1493,10 @@ def ai_brain(candles):
         "long_score": long_score,
         "short_score": short_score
     }
+
+
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.5)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.6)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1535,7 +1614,7 @@ def analyze(symbol, sector, debug=None):
             warning_text = "⚠️ RSI EXTREME"
 
         # ================================================
-        # 💧 DYNAMIC FLOW
+        # 💧 DYNAMIC FLOW (SINGLE SOURCE - FIXED)
         # ================================================
 
         flow_score = 0
@@ -1563,428 +1642,427 @@ def analyze(symbol, sector, debug=None):
 
         macd_value = macd_simple(closes15)
         macd_score = 3 if macd_value > 0 else 0
-
         # ================================================
-        # 🔥 MULTI TIMEFRAME VALIDATOR
-        # ================================================
-
-        tf_score = 0
-        tf_alignment = True
-
-        ema20_15 = ema(closes15, 20)
-        if direction_clean == "LONG":
-            if price > ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
-        else:  # SHORT
-            if price < ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
-
-        ema20_1h = ema(closes1h, 20)
-        if direction_clean == "LONG":
-            if closes1h[-1] > ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
-        else:  # SHORT
-            if closes1h[-1] < ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
-
-        ema20_4h = ema(closes4h, 20)
-        if direction_clean == "LONG":
-            if closes4h[-1] < ema20_4h * 0.97:
-                tf_score -= 10
-        else:  # SHORT
-            if closes4h[-1] > ema20_4h * 1.03:
-                tf_score -= 10
-
-        # ================================================
-        # 🔥 STRONG CANDLE CHECK
-        # ================================================
-
-        candle_score = 0
-        last_candle = c15[-1]
-        body = abs(last_candle["close"] - last_candle["open"])
-        avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
-
-        if direction_clean == "LONG":
-            if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
-                candle_score += 5
-            elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
-                candle_score -= 5
-        else:  # SHORT
-            if last_candle["close"] < last_candle["open"] and body > avg_body * 1.2:
-                candle_score += 5
-            elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
-                candle_score -= 5
-
-        # ================================================
-        # 📊 DYNAMIC LATE ENTRY v3
-        # ================================================
-
-        move = atr(c15)
-
-        ema20_15 = ema(closes15, 20)
-        ema50_15 = ema(closes15, 50)
-        ema100_15 = ema(closes15, 100)
-
-        late_score = 0
-
-        # Symmetric distance calculation
-        if direction_clean == "LONG":
-            # Measure distance ABOVE EMA50 for LONG
-            distance = price - ema50_15
-        else:  # SHORT
-            # Measure distance BELOW EMA50 for SHORT
-            distance = ema50_15 - price
-
-        if distance > move * 0.5:
-            late_score += 20
-
-        if distance > move * 1.0:
-            late_score += 20
-
-        # Symmetric trend bonus
-        if direction_clean == "LONG":
-            if ema20_15 > ema50_15 > ema100_15:
-                late_score -= 10
-            if price > ema20_15:
-                late_score -= 5
-        else:  # SHORT
-            if ema20_15 < ema50_15 < ema100_15:
-                late_score -= 10
-            if price < ema20_15:
-                late_score -= 5
-
-        # Symmetric momentum penalty
-        if direction_clean == "LONG":
-            last3_gain = ((closes15[-1] - closes15[-4]) / closes15[-4])
-            if last3_gain > 0.06:
-                late_score += 15
-        else:  # SHORT
-            last3_loss = ((closes15[-4] - closes15[-1]) / closes15[-4])
-            if last3_loss > 0.06:
-                late_score += 15
-
-        # Decision
-        if late_score >= 35:
-            reject_reason = "Late Entry"
-            if debug is not None:
-                debug["late_entry"] = debug.get("late_entry", 0) + 1
-                debug["late_score"] = late_score
-            return None
-        else:
-            if debug is not None:
-                debug["late_score"] = late_score
-
-        # ================================================
-        # 🚀 ENHANCED MOMENTUM ENGINE
-        # ================================================
-
-        if len(closes15) >= 10:
-            price_change_5 = ((closes15[-1] - closes15[-5]) / closes15[-5]) * 100
-            price_change_10 = ((closes15[-1] - closes15[-10]) / closes15[-10]) * 100
-            price_velocity = (price_change_5 * 0.6) + (price_change_10 * 0.4)
-        else:
-            price_velocity = 0
-
-        volume_acceleration = money.get("volume_acceleration", 0)
-
-        recent_high = max([x["high"] for x in c15[-20:]])
-        recent_low = min([x["low"] for x in c15[-20:]])
-        range_width = recent_high - recent_low
-        if range_width > 0:
-            breakout_strength = ((price - recent_low) / range_width) * 100
-        else:
-            breakout_strength = 50
-
-        momentum_score = 0
-
-        if abs(price_velocity) > 3:
-            momentum_score += 40
-        elif abs(price_velocity) > 1:
-            momentum_score += 25
-        elif abs(price_velocity) > 0:
-            momentum_score += 10
-
-        if volume_acceleration > 2:
-            momentum_score += 30
-        elif volume_acceleration > 1.5:
-            momentum_score += 20
-        elif volume_acceleration > 1.2:
-            momentum_score += 10
-
-        if breakout_strength > 80 or breakout_strength < 20:
-            momentum_score += 30
-        elif breakout_strength > 60 or breakout_strength < 40:
-            momentum_score += 20
-        elif breakout_strength > 50 or breakout_strength < 50:
-            momentum_score += 10
-
-        momentum_score = min(100, momentum_score)
-
-        if momentum_score >= 70:
-            momentum_status = "🔥 Strong"
-        elif momentum_score >= 50:
-            momentum_status = "⚡ Moderate"
-        else:
-            momentum_status = "⚠️ Weak"
-
-        # ================================================
-        # 📊 DYNAMIC MOMENTUM WEIGHT
-        # ================================================
-
-        if regime["regime"] == "TRENDING":
-            momentum_weight = 1.5
-        elif regime["regime"] == "COMPRESSION":
-            momentum_weight = 0.8
-        else:  # RANGING or MIXED
-            momentum_weight = 1.0
-
-        # ================================================
-        # 🧠 REBALANCED SCORE ENGINE
-        # ================================================
-
-        score = 0
-
-        # Brain confidence
-        score += brain["confidence"] * 0.3
-
-        # Flow score
-        score += flow_score * 1.5
-
-        # Momentum with dynamic weight
-        score += (momentum_score * 0.2) * momentum_weight
-
-        # Compression bonus
-        score += vol["bonus"]
-
-        # Support/Resistance
-        if direction_clean == "LONG":
-            if sr["near_resistance"] > 5:
-                score += 10
-            elif sr["near_resistance"] > 3:
-                score += 5
-        else:  # SHORT
-            if sr["near_support"] > 5:
-                score += 10
-            elif sr["near_support"] > 3:
-                score += 5
-
-        # Trap detection
-        if trap == "✅ NO TRAP":
-            score += 10
-
-        # Multi timeframe
-        score += multi["score"] * 0.1
-
-        # RSI
-        if direction_clean == "LONG":
-            score += rsi_score * 0.5
-        else:  # SHORT
-            # RSI scoring symmetric for SHORT
-            if 35 <= rsi_15m <= 55:
-                score += 8
-            elif 25 <= rsi_15m < 35:
-                score += 5
-            elif rsi_15m < 25 or rsi_15m > 65:
-                score -= 10
-
-        # MACD
-        if direction_clean == "LONG":
-            score += macd_score * 0.5
-        else:  # SHORT
-            macd_short_score = 3 if macd_value < 0 else 0
-            score += macd_short_score * 0.5
-
-        # Brain penalty
-        score -= brain_penalty
-
-        score = round(max(0, min(100, score)))
-
-        # ================================================
-        # 🔥 PENALTIES
-        # ================================================
-
-        late_penalty = 0
-        if direction_clean == "LONG":
-            if rsi_15m >= 68:
-                late_penalty += 20
-        else:  # SHORT
-            if rsi_15m <= 32:
-                late_penalty += 20
-        score -= late_penalty
-        score = max(0, score)
-
-        if len(c15) >= 6:
-            if direction_clean == "LONG":
-                pump = c15[-1]["close"] / c15[-6]["close"]
-                if pump > 1.05:
-                    score -= 15
-            else:  # SHORT
-                dump = c15[-6]["close"] / c15[-1]["close"]
-                if dump > 1.05:
-                    score -= 15
-
-        # ================================================
-        # 🔥 TRAP CHECK
-        # ================================================
-
-        if trap == "🪤 BULL TRAP" and direction_clean == "LONG":
-            reject_reason = "Trap"
-            if debug is not None:
-                debug["trap"] = debug.get("trap", 0) + 1
-            return None
-
-        if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
-            reject_reason = "Trap"
-            if debug is not None:
-                debug["trap"] = debug.get("trap", 0) + 1
-            return None
-
-        # ================================================
-        # 🔥 HEAT CONTROL
-        # ================================================
-
-        if direction_clean == "LONG":
-            if multi["4h"] > 70:
-                score -= 10
-            if multi["1d"] > 70:
-                score -= 10
-            if multi["15m"] > 75:
-                score -= 5
-        else:  # SHORT
-            if multi["4h"] < 30:
-                score -= 10
-            if multi["1d"] < 30:
-                score -= 10
-            if multi["15m"] < 25:
-                score -= 5
-
-        # ================================================
-        # 🔥 RESISTANCE/SUPPORT FILTER
-        # ================================================
-
-        if direction_clean == "LONG":
-            distance_to_resistance = sr["near_resistance"] * price / 100
-            if distance_to_resistance < move * 1.2:
-                reject_reason = "Too Close Resistance"
-                if debug is not None:
-                    debug["resistance"] = debug.get("resistance", 0) + 1
-                return None
-        else:  # SHORT
-            distance_to_support = sr["near_support"] * price / 100
-            if distance_to_support < move * 1.2:
-                reject_reason = "Too Close Support"
-                if debug is not None:
-                    debug["resistance"] = debug.get("resistance", 0) + 1
-                return None
-
-        # ================================================
-        # 🔥 HIGHER TIMEFRAME TREND FILTER v2
-        # ================================================
-
-        e200_4h = ema(closes4h, 200)
-        if direction_clean == "LONG":
-            if closes4h[-1] < e200_4h:
-                reject_reason = "Higher Trend Down"
-                if debug is not None:
-                    debug["higher_trend"] = debug.get("higher_trend", 0) + 1
-                return None
-        else:  # SHORT
-            if closes4h[-1] > e200_4h:
-                reject_reason = "Higher Trend Up"
-                if debug is not None:
-                    debug["higher_trend"] = debug.get("higher_trend", 0) + 1
-                return None
-
-        # ================================================
-        # 🔥 MINIMUM SCORE FILTER
-        # ================================================
-
-        MIN_SCORE = 68
-        if score < MIN_SCORE:
-            reject_reason = f"Low Score ({score})"
-            if debug is not None:
-                debug["score"] = debug.get("score", 0) + 1
-            return None
-
-        # ================================================
-        # 🎯 ENTRY ZONE & TARGETS
-        # ================================================
-
-        entry_low = price * 0.995
-        entry_high = price * 1.005
-
-        # Dynamic RR based on market conditions
-        if regime["regime"] == "TRENDING":
-            rr_multiplier = 1.8
-        elif regime["regime"] == "COMPRESSION":
-            rr_multiplier = 2.2
-        else:
-            rr_multiplier = 1.5
-
-        if flow >= 2:
-            rr_multiplier += 0.3
-        if momentum_score >= 70:
-            rr_multiplier += 0.2
-
-        if direction_clean == "LONG":
-            base_multiplier = 1.5
-            if flow >= 2:
-                base_multiplier += 0.3
-            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-                base_multiplier += 0.3
-            if momentum_score >= 70:
-                base_multiplier += 0.2
-
-            sl = entry_low - move * base_multiplier
-            risk = entry_low - sl
-
-            tp1 = entry_low + risk * rr_multiplier
-            tp2 = entry_low + risk * (rr_multiplier * 2)
-            tp3 = entry_low + risk * (rr_multiplier * 3.3)
-
-            if tp1 <= entry_high:
-                tp1 = entry_high + move * 0.8
-
-            if tp2 <= tp1:
-                tp2 = tp1 + move * 0.5
-            if tp3 <= tp2:
-                tp3 = tp2 + move * 0.5
-
-            rr = (tp1 - entry_low) / risk
-
-        else:  # SHORT
-            base_multiplier = 1.5
-            if flow >= 2:
-                base_multiplier += 0.3
-            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-                base_multiplier += 0.3
-            if momentum_score >= 70:
-                base_multiplier += 0.2
-
-            sl = entry_high + move * base_multiplier
-            risk = sl - entry_high
-
-            tp1 = entry_high - risk * rr_multiplier
-            tp2 = entry_high - risk * (rr_multiplier * 2)
-            tp3 = entry_high - risk * (rr_multiplier * 3.3)
-
-            if tp1 >= entry_low:
-                tp1 = entry_low - move * 0.8
-
-            if tp2 >= tp1:
-                tp2 = tp1 - move * 0.5
-            if tp3 >= tp2:
-                tp3 = tp2 - move * 0.5
-
-            rr = (entry_high - tp1) / risk
+# 🔥 MULTI TIMEFRAME VALIDATOR
+# ================================================
+
+tf_score = 0
+tf_alignment = True
+
+ema20_15 = ema(closes15, 20)
+if direction_clean == "LONG":
+    if price > ema20_15:
+        tf_score += 5
+    else:
+        tf_alignment = False
+else:  # SHORT
+    if price < ema20_15:
+        tf_score += 5
+    else:
+        tf_alignment = False
+
+ema20_1h = ema(closes1h, 20)
+if direction_clean == "LONG":
+    if closes1h[-1] > ema20_1h:
+        tf_score += 5
+    else:
+        tf_alignment = False
+else:  # SHORT
+    if closes1h[-1] < ema20_1h:
+        tf_score += 5
+    else:
+        tf_alignment = False
+
+ema20_4h = ema(closes4h, 20)
+if direction_clean == "LONG":
+    if closes4h[-1] < ema20_4h * 0.97:
+        tf_score -= 10
+else:  # SHORT
+    if closes4h[-1] > ema20_4h * 1.03:
+        tf_score -= 10
+
+# ================================================
+# 🔥 STRONG CANDLE CHECK
+# ================================================
+
+candle_score = 0
+last_candle = c15[-1]
+body = abs(last_candle["close"] - last_candle["open"])
+avg_body = sum([abs(c["close"] - c["open"]) for c in c15[-20:]]) / 20
+
+if direction_clean == "LONG":
+    if last_candle["close"] > last_candle["open"] and body > avg_body * 1.2:
+        candle_score += 5
+    elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
+        candle_score -= 5
+else:  # SHORT
+    if last_candle["close"] < last_candle["open"] and body > avg_body * 1.2:
+        candle_score += 5
+    elif body < (last_candle["high"] - last_candle["low"]) * 0.1:
+        candle_score -= 5
+
+# ================================================
+# 📊 DYNAMIC LATE ENTRY v3
+# ================================================
+
+move = atr(c15)
+
+ema20_15 = ema(closes15, 20)
+ema50_15 = ema(closes15, 50)
+ema100_15 = ema(closes15, 100)
+
+late_score = 0
+
+# Symmetric distance calculation
+if direction_clean == "LONG":
+    # Measure distance ABOVE EMA50 for LONG
+    distance = price - ema50_15
+else:  # SHORT
+    # Measure distance BELOW EMA50 for SHORT
+    distance = ema50_15 - price
+
+if distance > move * 0.5:
+    late_score += 20
+
+if distance > move * 1.0:
+    late_score += 20
+
+# Symmetric trend bonus
+if direction_clean == "LONG":
+    if ema20_15 > ema50_15 > ema100_15:
+        late_score -= 10
+    if price > ema20_15:
+        late_score -= 5
+else:  # SHORT
+    if ema20_15 < ema50_15 < ema100_15:
+        late_score -= 10
+    if price < ema20_15:
+        late_score -= 5
+
+# Symmetric momentum penalty
+if direction_clean == "LONG":
+    last3_gain = ((closes15[-1] - closes15[-4]) / closes15[-4])
+    if last3_gain > 0.06:
+        late_score += 15
+else:  # SHORT
+    last3_loss = ((closes15[-4] - closes15[-1]) / closes15[-4])
+    if last3_loss > 0.06:
+        late_score += 15
+
+# Decision
+if late_score >= 35:
+    reject_reason = "Late Entry"
+    if debug is not None:
+        debug["late_entry"] = debug.get("late_entry", 0) + 1
+        debug["late_score"] = late_score
+    return None
+else:
+    if debug is not None:
+        debug["late_score"] = late_score
+
+# ================================================
+# 🚀 ENHANCED MOMENTUM ENGINE
+# ================================================
+
+if len(closes15) >= 10:
+    price_change_5 = ((closes15[-1] - closes15[-5]) / closes15[-5]) * 100
+    price_change_10 = ((closes15[-1] - closes15[-10]) / closes15[-10]) * 100
+    price_velocity = (price_change_5 * 0.6) + (price_change_10 * 0.4)
+else:
+    price_velocity = 0
+
+volume_acceleration = money.get("volume_acceleration", 0)
+
+recent_high = max([x["high"] for x in c15[-20:]])
+recent_low = min([x["low"] for x in c15[-20:]])
+range_width = recent_high - recent_low
+if range_width > 0:
+    breakout_strength = ((price - recent_low) / range_width) * 100
+else:
+    breakout_strength = 50
+
+momentum_score = 0
+
+if abs(price_velocity) > 3:
+    momentum_score += 40
+elif abs(price_velocity) > 1:
+    momentum_score += 25
+elif abs(price_velocity) > 0:
+    momentum_score += 10
+
+if volume_acceleration > 2:
+    momentum_score += 30
+elif volume_acceleration > 1.5:
+    momentum_score += 20
+elif volume_acceleration > 1.2:
+    momentum_score += 10
+
+if breakout_strength > 80 or breakout_strength < 20:
+    momentum_score += 30
+elif breakout_strength > 60 or breakout_strength < 40:
+    momentum_score += 20
+elif breakout_strength > 50 or breakout_strength < 50:
+    momentum_score += 10
+
+momentum_score = min(100, momentum_score)
+
+if momentum_score >= 70:
+    momentum_status = "🔥 Strong"
+elif momentum_score >= 50:
+    momentum_status = "⚡ Moderate"
+else:
+    momentum_status = "⚠️ Weak"
+
+# ================================================
+# 📊 DYNAMIC MOMENTUM WEIGHT
+# ================================================
+
+if regime["regime"] == "TRENDING":
+    momentum_weight = 1.5
+elif regime["regime"] == "COMPRESSION":
+    momentum_weight = 0.8
+else:  # RANGING or MIXED
+    momentum_weight = 1.0
+
+# ================================================
+# 🧠 REBALANCED SCORE ENGINE
+# ================================================
+
+score = 0
+
+# Brain confidence
+score += brain["confidence"] * 0.3
+
+# Flow score
+score += flow_score * 1.5
+
+# Momentum with dynamic weight
+score += (momentum_score * 0.2) * momentum_weight
+
+# Compression bonus
+score += vol["bonus"]
+
+# Support/Resistance
+if direction_clean == "LONG":
+    if sr["near_resistance"] > 5:
+        score += 10
+    elif sr["near_resistance"] > 3:
+        score += 5
+else:  # SHORT
+    if sr["near_support"] > 5:
+        score += 10
+    elif sr["near_support"] > 3:
+        score += 5
+
+# Trap detection
+if trap == "✅ NO TRAP":
+    score += 10
+
+# Multi timeframe
+score += multi["score"] * 0.1
+
+# RSI
+if direction_clean == "LONG":
+    score += rsi_score * 0.5
+else:  # SHORT
+    # RSI scoring symmetric for SHORT
+    if 35 <= rsi_15m <= 55:
+        score += 8
+    elif 25 <= rsi_15m < 35:
+        score += 5
+    elif rsi_15m < 25 or rsi_15m > 65:
+        score -= 10
+
+# MACD
+if direction_clean == "LONG":
+    score += macd_score * 0.5
+else:  # SHORT
+    macd_short_score = 3 if macd_value < 0 else 0
+    score += macd_short_score * 0.5
+
+# Brain penalty
+score -= brain_penalty
+
+score = round(max(0, min(100, score)))
+
+# ================================================
+# 🔥 PENALTIES
+# ================================================
+
+late_penalty = 0
+if direction_clean == "LONG":
+    if rsi_15m >= 68:
+        late_penalty += 20
+else:  # SHORT
+    if rsi_15m <= 32:
+        late_penalty += 20
+score -= late_penalty
+score = max(0, score)
+
+if len(c15) >= 6:
+    if direction_clean == "LONG":
+        pump = c15[-1]["close"] / c15[-6]["close"]
+        if pump > 1.05:
+            score -= 15
+    else:  # SHORT
+        dump = c15[-6]["close"] / c15[-1]["close"]
+        if dump > 1.05:
+            score -= 15
+
+# ================================================
+# 🔥 TRAP CHECK
+# ================================================
+
+if trap == "🪤 BULL TRAP" and direction_clean == "LONG":
+    reject_reason = "Trap"
+    if debug is not None:
+        debug["trap"] = debug.get("trap", 0) + 1
+    return None
+
+if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
+    reject_reason = "Trap"
+    if debug is not None:
+        debug["trap"] = debug.get("trap", 0) + 1
+    return None
+
+# ================================================
+# 🔥 HEAT CONTROL
+# ================================================
+
+if direction_clean == "LONG":
+    if multi["4h"] > 70:
+        score -= 10
+    if multi["1d"] > 70:
+        score -= 10
+    if multi["15m"] > 75:
+        score -= 5
+else:  # SHORT
+    if multi["4h"] < 30:
+        score -= 10
+    if multi["1d"] < 30:
+        score -= 10
+    if multi["15m"] < 25:
+        score -= 5
+
+# ================================================
+# 🔥 RESISTANCE/SUPPORT FILTER
+# ================================================
+
+if direction_clean == "LONG":
+    distance_to_resistance = sr["near_resistance"] * price / 100
+    if distance_to_resistance < move * 1.2:
+        reject_reason = "Too Close Resistance"
+        if debug is not None:
+            debug["resistance"] = debug.get("resistance", 0) + 1
+        return None
+else:  # SHORT
+    distance_to_support = sr["near_support"] * price / 100
+    if distance_to_support < move * 1.2:
+        reject_reason = "Too Close Support"
+        if debug is not None:
+            debug["resistance"] = debug.get("resistance", 0) + 1
+        return None
+
+# ================================================
+# 🔥 HIGHER TIMEFRAME TREND FILTER v2
+# ================================================
+
+e200_4h = ema(closes4h, 200)
+if direction_clean == "LONG":
+    if closes4h[-1] < e200_4h:
+        reject_reason = "Higher Trend Down"
+        if debug is not None:
+            debug["higher_trend"] = debug.get("higher_trend", 0) + 1
+        return None
+else:  # SHORT
+    if closes4h[-1] > e200_4h:
+        reject_reason = "Higher Trend Up"
+        if debug is not None:
+            debug["higher_trend"] = debug.get("higher_trend", 0) + 1
+        return None
+
+# ================================================
+# 🔥 MINIMUM SCORE FILTER
+# ================================================
+
+MIN_SCORE = 68
+if score < MIN_SCORE:
+    reject_reason = f"Low Score ({score})"
+    if debug is not None:
+        debug["score"] = debug.get("score", 0) + 1
+    return None
+
+# ================================================
+# 🎯 ENTRY ZONE & TARGETS
+# ================================================
+
+entry_low = price * 0.995
+entry_high = price * 1.005
+
+# Dynamic RR based on market conditions
+if regime["regime"] == "TRENDING":
+    rr_multiplier = 1.8
+elif regime["regime"] == "COMPRESSION":
+    rr_multiplier = 2.2
+else:
+    rr_multiplier = 1.5
+
+if flow >= 2:
+    rr_multiplier += 0.3
+if momentum_score >= 70:
+    rr_multiplier += 0.2
+
+if direction_clean == "LONG":
+    base_multiplier = 1.5
+    if flow >= 2:
+        base_multiplier += 0.3
+    if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+        base_multiplier += 0.3
+    if momentum_score >= 70:
+        base_multiplier += 0.2
+
+    sl = entry_low - move * base_multiplier
+    risk = entry_low - sl
+
+    tp1 = entry_low + risk * rr_multiplier
+    tp2 = entry_low + risk * (rr_multiplier * 2)
+    tp3 = entry_low + risk * (rr_multiplier * 3.3)
+
+    if tp1 <= entry_high:
+        tp1 = entry_high + move * 0.8
+
+    if tp2 <= tp1:
+        tp2 = tp1 + move * 0.5
+    if tp3 <= tp2:
+        tp3 = tp2 + move * 0.5
+
+    rr = (tp1 - entry_low) / risk
+
+else:  # SHORT
+    base_multiplier = 1.5
+    if flow >= 2:
+        base_multiplier += 0.3
+    if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+        base_multiplier += 0.3
+    if momentum_score >= 70:
+        base_multiplier += 0.2
+
+    sl = entry_high + move * base_multiplier
+    risk = sl - entry_high
+
+    tp1 = entry_high - risk * rr_multiplier
+    tp2 = entry_high - risk * (rr_multiplier * 2)
+    tp3 = entry_high - risk * (rr_multiplier * 3.3)
+
+    if tp1 >= entry_low:
+        tp1 = entry_low - move * 0.8
+
+    if tp2 >= tp1:
+        tp2 = tp1 - move * 0.5
+    if tp3 >= tp2:
+        tp3 = tp2 - move * 0.5
+
+    rr = (entry_high - tp1) / risk
             # ================================================
         # 🛡️ VALIDATION LAYER
         # ================================================
@@ -2092,17 +2170,10 @@ def analyze(symbol, sector, debug=None):
             confidence_level = "⏳ LOW"
 
         # ================================================
-        # 🐋 MONEY STATUS
+        # 🐋 MONEY STATUS (SINGLE SOURCE - FIXED)
         # ================================================
 
-        if flow >= 3:
-            money_status = "🚀 HIGH WHALE FLOW"
-        elif flow >= 2:
-            money_status = "🐋 INSTITUTIONAL FLOW"
-        elif flow >= 1.2:
-            money_status = "💧 HEALTHY FLOW"
-        else:
-            money_status = "NORMAL"
+        # Already calculated above in DYNAMIC FLOW section
 
         # ================================================
         # 🎯 EARLY ENTRY CHECK
@@ -2179,7 +2250,7 @@ def analyze(symbol, sector, debug=None):
             risk_icon = "🔴"
 
         # ================================================
-        # 🧠 AI DECISION SUMMARY (IMPROVED)
+        # 🧠 AI DECISION SUMMARY (COMPLETE)
         # ================================================
 
         decision_reasons = []
@@ -2240,13 +2311,17 @@ def analyze(symbol, sector, debug=None):
         else:
             decision_reasons.append("⏳ Late Entry Warning")
 
+        # Validation Passed
+        if not validation_errors:
+            decision_reasons.append("✅ Validation Passed")
+
         if len(decision_reasons) == 0:
             decision_reasons.append("⏳ Standard Setup")
 
-        decision_summary = "\n".join(decision_reasons[:10])
+        decision_summary = "\n".join(decision_reasons[:12])
 
         # ================================================
-        # 📦 TRADE DATA
+        # 📦 TRADE DATA (v21.1.6 - COMPLETE)
         # ================================================
 
         trade_data = {
@@ -2267,7 +2342,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.5',
+            'version': 'v21.1.6',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2331,26 +2406,15 @@ def analyze(symbol, sector, debug=None):
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.5)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.6)
 # ================================================
 
-
-
-
-# ================================================
-# 🔎 SMART SCANNER (v21.1.5)
-# ================================================
-
-@bot.message_handler(commands=["scan"])
-def scan(message):
-    bot.reply_to(message, """
-🐋 AHAD AI v21.1.5 – Dashboard Bug Fix SCANNING...
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.5 – Final Dashboard Polish 🚀
+🐋 AHAD AI v21.1.6 – Production Stable 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.5)
+🗄 PostgreSQL Database ACTIVE (v21.1.6)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
@@ -2385,7 +2449,7 @@ def start(message):
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE
 📦 Caching System ACTIVE
-🐞 Dashboard Bug Fix ACTIVE
+📊 Extended Data Collection ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2395,6 +2459,16 @@ Commands:
 /open – Open trades list
 /history – Last 10 closed trades
 """)
+
+
+# ================================================
+# 🔎 SMART SCANNER (v21.1.6)
+# ================================================
+
+@bot.message_handler(commands=["scan"])
+def scan(message):
+    bot.reply_to(message, """
+🐋 AHAD AI v21.1.6 – Production Stable SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2418,14 +2492,13 @@ Commands:
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.5)
+🗄 PostgreSQL Production Ready (v21.1.6)
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE
-🐞 Dashboard Bug Fix ACTIVE
+📊 Extended Data Collection ACTIVE
 
 Please wait ⏳
 """)
-
     # ====== CLEAR CACHE BEFORE SCAN ======
     global _candle_cache
     _candle_cache.clear()
@@ -2624,7 +2697,8 @@ Please wait ⏳
                 "avg_score": avg_score
             })
     sector_summary.sort(key=lambda x: x["avg_flow"], reverse=True)
-        # ====== CALCULATE AVERAGE METRICS ======
+
+    # ====== CALCULATE AVERAGE METRICS ======
     all_results = long_results + short_results
     
     # ====== FIX: Average Flow & Brain from ALL analyzed coins ======
@@ -2706,6 +2780,13 @@ Please wait ⏳
 🌡️ Market Temp     : {market_temp}
 """
         bot.send_message(message.chat.id, health_report)
+    else:
+        bot.send_message(message.chat.id, """
+🐘 MARKET HEALTH REPORT
+
+No classified coins.
+Run /scan to analyze market.
+""")
 
     # ====== SECTOR SUMMARY ======
     if sector_summary:
@@ -2847,8 +2928,7 @@ Cache Hits     : {cache_hits}
 Cache Saved    : {cache_saved_pct}%
 """
     bot.send_message(message.chat.id, debug_msg)
-
-    # ==========================================================
+        # ==========================================================
     # 🏆 PROFESSIONAL SIGNAL RANKING
     # ==========================================================
 
@@ -2912,6 +2992,28 @@ Cache Saved    : {cache_saved_pct}%
         # ====================================
         return
 
+    # ====== FORMAT PRICE FUNCTION ======
+    def format_price(value):
+        """Format price without scientific notation"""
+        if value is None:
+            return "N/A"
+        if value < 0.00001:
+            return f"{value:.8f}"
+        elif value < 0.0001:
+            return f"{value:.7f}"
+        elif value < 0.001:
+            return f"{value:.6f}"
+        elif value < 0.01:
+            return f"{value:.5f}"
+        elif value < 0.1:
+            return f"{value:.4f}"
+        elif value < 1:
+            return f"{value:.4f}"
+        elif value < 10:
+            return f"{value:.3f}"
+        else:
+            return f"{value:.2f}"
+
     for s in results:
         # ====== AI BRAIN CONFIDENCE RANK ======
         brain_conf = s["brain_confidence"]
@@ -2925,88 +3027,90 @@ Cache Saved    : {cache_saved_pct}%
         else:
             confidence_rank = "⚠ LOW"
 
-        brain_text = f"""
-🧠 AI BRAIN
+        # ====== DIRECTION ICON ======
+        direction_icon = "📈" if s['direction'] == "🟢 LONG" else "📉"
 
-📈 LONG Score : {s['brain_long_score']}
-📉 SHORT Score: {s['brain_short_score']}
+        # ====== FORMAT PRICES ======
+        entry_low_f = format_price(s['entry_low'])
+        entry_high_f = format_price(s['entry_high'])
+        sl_f = format_price(s['sl'])
+        tp1_f = format_price(s['tp1'])
+        tp2_f = format_price(s['tp2'])
+        tp3_f = format_price(s['tp3'])
 
-🎯 Confidence : {brain_conf}/100
-🏆 Level      : {confidence_rank}
-"""
-
-        # ====== INSTITUTIONAL DASHBOARD ======
-        dashboard = f"""
-🏦 INSTITUTIONAL DASHBOARD
-├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
-├─ Smart Money : {s['money_status']}
-├─ Market      : {s['regime']['regime']}
-├─ Momentum    : {s['momentum_score']}/100 ({s['momentum_status']})
-├─ RR          : {s['rr']}
-├─ Quality     : {s['quality']}
-└─ Risk        : {s['risk_grade']}
-"""
-
-        # ====== INSTITUTIONAL FLOW RATING ======
-        flow_display = f"""
-📊 INSTITUTIONAL FLOW
-Flow        : {s['liquidity']}X
-Rating      : {s['flow_rating']}
-Flow Score  : {round(s['liquidity'] * 35, 0)}
-"""
-
+        # ====== BUILD TELEGRAM MESSAGE ======
         msg = f"""
-🚨 AHAD AI v21.1.5 – Dashboard Bug Fix 🐋
+🚨 AHAD AI v21.1.6 – Production Stable 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
 
-{s['direction']} | 🪙 {s['coin']}
+{direction_icon} {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
-{dashboard}
+━━━━━━━━━━━━━━━━━━━━━━
 
-{s['quality']}
-{brain_text}
-{flow_display}
-🔥 Score: {s['score']}/100
-🪤 Trap: {s['trap']}
+💰 Entry      : {entry_low_f} - {entry_high_f}
+🛑 SL         : {sl_f}
 
-📈 Market Regime: {s['regime']['regime']}
-🔥 Compression: {s['volatility']['status']}
-📊 Late Entry Score: {s['late_score']}
+🎯 TP1        : {tp1_f}
+🥈 TP2        : {tp2_f}
+🥉 TP3        : {tp3_f}
 
-🎯 Entry: {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
-🛑 SL: {round(s['sl'],6)}
+━━━━━━━━━━━━━━━━━━━━━━
 
-🥇 TP1: {round(s['tp1'],6)}
-🥈 TP2: {round(s['tp2'],6)}
-🥉 TP3: {round(s['tp3'],6)}
+🏦 INSTITUTIONAL DASHBOARD
 
-📊 RSI:
-15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
-4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
+├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
+├─ Smart Money : {s['money_status']}
+├─ Flow Rating : {s['flow_rating']}
+├─ Final Score : {s['score']}/100
+├─ Risk Grade  : {s['risk_grade']}
+├─ Quality     : {s['quality']}
+├─ Market      : {s['regime']['regime']}
+├─ Compression : {s['volatility']['status']}
+└─ RR          : {s['rr']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 RSI
+
+15m : {s['multi']['15m']}
+1H  : {s['multi']['1h']}
+4H  : {s['multi']['4h']}
+1D  : {s['multi']['1d']}
+
+━━━━━━━━━━━━━━━━━━━━━━
 
 ⚠️ {s['warning']}
 {s['early_text']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-💡 WHY THIS SIGNAL?
+
+✅ WHY THIS SIGNAL?
+
 {s['decision_summary']}
+
 ━━━━━━━━━━━━━━━━━━━━━━
+
+💾 Trade ID: #{trade_id if 'trade_id' in locals() else 'PENDING'}
 """
 
         # ====== SAVE TRADE TO DATABASE ======
+        trade_id = None
         if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
                 if trade_id:
-                    msg += f"\n\n💾 Trade ID: #{trade_id}"
+                    # Update message with actual Trade ID
+                    msg = msg.replace('#PENDING', f'#{trade_id}')
                     print(f"✅ Trade #{trade_id} saved for {s['coin']}")
                 else:
+                    msg = msg.replace('#PENDING', '❌ FAILED')
                     msg += "\n\n❌ Failed to save trade"
             except Exception as e:
                 print(f"❌ Exception saving trade: {e}")
+                msg = msg.replace('#PENDING', '❌ ERROR')
                 msg += "\n\n❌ Database error saving trade"
         # ==================================
 
@@ -3045,6 +3149,7 @@ def report_command(message):
 
 🎯 Overall Win Rate : {stats['win_rate']}%
 📊 Avg RR           : {stats['avg_rr']}
+📊 Avg Result %     : {stats['avg_result_pct']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3054,6 +3159,7 @@ Wins          : {stats['long_wins']}
 Losses        : {stats['long_losses']}
 Win Rate      : {stats['long_win_rate']}%
 Avg RR        : {stats['long_avg_rr']}
+Avg Result %  : {stats['long_avg_result_pct']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3063,17 +3169,19 @@ Wins          : {stats['short_wins']}
 Losses        : {stats['short_losses']}
 Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
+Avg Result %  : {stats['short_avg_result_pct']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.5
+🤖 AHAD AI v21.1.6
 🗄 PostgreSQL | 🔒 SSL
-🏦 Dashboard Bug Fix
+🏦 Production Stable
 """
         bot.reply_to(message, report)
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error generating report: {e}")
-        
+
+
 @bot.message_handler(commands=['open'])
 def open_trades_command(message):
     """Show open trades"""
@@ -3100,10 +3208,12 @@ def open_trades_command(message):
         msg = "📂 OPEN TRADES\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for row in rows[:10]:
+            # Format time without microseconds
+            signal_time = row[8].strftime("%Y-%m-%d %H:%M") if row[8] else "N/A"
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
             msg += f"Entry: {row[3]} | SL: {row[7]}\n"
             msg += f"TP1: {row[4]} | TP2: {row[5]} | TP3: {row[6]}\n"
-            msg += f"🕐 {row[8]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            msg += f"🕐 {signal_time}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         bot.reply_to(message, msg)
 
@@ -3118,7 +3228,7 @@ def open_trades_command(message):
 
 @bot.message_handler(commands=['history'])
 def history_command(message):
-    """Show last 10 closed trades"""
+    """Show last 10 closed trades with improved UI"""
     conn = None
     cur = None
     
@@ -3127,7 +3237,7 @@ def history_command(message):
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
+        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time, result_pct, trade_duration
         FROM trades
         WHERE status = 'CLOSED'
         ORDER BY id DESC
@@ -3142,13 +3252,25 @@ def history_command(message):
 
         msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
+        # Result mapping
+        result_map = {
+            "WIN_TP1": "🥇 TP1 Hit",
+            "WIN_TP2": "🥈 TP2 Hit",
+            "WIN_TP3": "🥉 TP3 Hit",
+            "LOSS_SL": "❌ SL Hit"
+        }
+
         for row in rows:
-            result_icon = "✅" if "WIN" in row[4] else "❌"
-            msg += f"{result_icon} #{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {row[3]} | Result: {row[4]}\n"
-            msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
-            msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
-            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            result_display = result_map.get(row[4], row[4])
+            close_time = row[7].strftime("%Y-%m-%d %H:%M") if row[7] else "N/A"
+            result_pct = f"{row[8]:.2f}%" if row[8] is not None else "N/A"
+            duration = f"{row[9]//60}m {row[9]%60}s" if row[9] else "N/A"
+            
+            msg += f"#{row[0]} {row[1]} | {row[2]}\n"
+            msg += f"Entry: {row[3]} | Result: {result_display}\n"
+            msg += f"Profit: {result_pct} | Duration: {duration}\n"
+            msg += f"Max Profit: {row[5]:.2f}% | Max DD: {row[6]:.2f}%\n"
+            msg += f"🕐 {close_time}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         bot.reply_to(message, msg)
 
@@ -3205,7 +3327,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🐋")
+print("🔥 AHAD AI v21.1.6 – Production Stable ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3216,7 +3338,7 @@ print("🗑️ Cache cleared on each scan")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.5)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.6)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3228,12 +3350,12 @@ print("🔥 Volatility Compression Integration ACTIVE")
 print("🚀 Dynamic Momentum Weight ACTIVE")
 print("🎯 Dynamic RR Engine ACTIVE")
 print("🔄 Dual Direction Engine ACTIVE (Fully Symmetric)")
-print("📊 Trade Data Expansion ACTIVE (7 New Fields)")
+print("📊 Trade Data Expansion ACTIVE (Extended)")
 print("🏆 Professional Ranking Engine ACTIVE")
 print("💎 Professional Quality Engine v2.0 ACTIVE")
 print("📊 Institutional Flow Rating ACTIVE")
 print("🛡️ Risk Grade System ACTIVE")
-print("🧠 AI Decision Summary ACTIVE (Enhanced)")
+print("🧠 AI Decision Summary ACTIVE (Complete)")
 print("🐘 Market Health Report ACTIVE")
 print("🏦 Institutional Dashboard ACTIVE")
 print("🐞 Enhanced Debug Report with Top Reject Reasons")
@@ -3241,11 +3363,11 @@ print("📦 Caching System ACTIVE")
 print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
-print("🐞 Dashboard Bug Fix ACTIVE (Passed=0 Fixed)")
+print("📊 Extended Data Collection ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Dashboard Bug Fix v21.1.5")
+print("🚀 Production Stable v21.1.6")
 
 while True:
     time.sleep(60)

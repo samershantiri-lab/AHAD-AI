@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.6 – Production Stable
+# 🚀 AHAD AI v21.1.7 – Production Analytics
 # ================================================
 
 # ================================================
@@ -111,7 +111,7 @@ def init_database():
 
             close_time TIMESTAMP,
 
-            -- NEW FIELDS v21.1.6
+            -- NEW FIELDS v21.1.7
             brain_confidence INTEGER,
             market_regime TEXT,
             compression_score INTEGER,
@@ -213,7 +213,7 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.6)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.7)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
         print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration, flow_rating, risk_grade, decision_summary, result_pct, trade_duration, max_profit_pct")
 
@@ -228,7 +228,7 @@ def init_database():
 
 
 # ================================================
-# 💾 TRADE RECORDER (v21.1.6)
+# 💾 TRADE RECORDER (v21.1.7)
 # ================================================
 
 def save_trade(trade_data):
@@ -314,7 +314,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.6'),
+            trade_data.get('version', 'v21.1.7'),
             'OPEN',
             'PENDING',
             0.0,
@@ -485,6 +485,32 @@ def get_trade_tracker_candles(symbol, tf="15m", ttl=60):
     return candles
 
 
+# ================================================
+# 🧹 CACHE CLEANUP (v21.1.7)
+# ================================================
+
+def cache_cleanup(ttl=600):
+    """Clean up old cache entries to prevent memory growth"""
+    now = time.time()
+    
+    # Clean _candle_cache
+    keys_to_remove = []
+    for key, value in _candle_cache.items():
+        # _candle_cache stores tuples (candles, timestamp)
+        if isinstance(value, tuple) and len(value) == 2:
+            if now - value[1] > ttl:
+                keys_to_remove.append(key)
+        elif isinstance(value, list):
+            # Old format without timestamp, keep it
+            continue
+    
+    for key in keys_to_remove:
+        del _candle_cache[key]
+    
+    if keys_to_remove:
+        print(f"🧹 Cache cleanup: removed {len(keys_to_remove)} old entries")
+
+
 def update_open_trades():
     """Monitor open trades every 5 minutes using HIGH/LOW for accuracy"""
     print("📈 Trade Tracker STARTED")
@@ -653,7 +679,8 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
             AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct
+            AVG(result_pct) AS avg_result_pct,
+            AVG(trade_duration) AS avg_duration
         FROM trades
         """)
 
@@ -668,6 +695,7 @@ def get_report_stats():
         sl = row[6] or 0
         avg_rr = round(row[7] or 0, 2)
         avg_result_pct = round(row[8] or 0, 2)
+        avg_duration = round(row[9] or 0, 0)
 
         wins = tp1 + tp2 + tp3
 
@@ -683,7 +711,8 @@ def get_report_stats():
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
             AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct
+            AVG(result_pct) AS avg_result_pct,
+            AVG(trade_duration) AS avg_duration
         FROM trades
         WHERE side = 'LONG'
         """)
@@ -694,6 +723,7 @@ def get_report_stats():
         long_losses = long_row[2] or 0
         long_avg_rr = round(long_row[3] or 0, 2)
         long_avg_result_pct = round(long_row[4] or 0, 2)
+        long_avg_duration = round(long_row[5] or 0, 0)
         long_closed = long_wins + long_losses
         long_win_rate = round((long_wins / long_closed) * 100, 2) if long_closed > 0 else 0
 
@@ -704,7 +734,8 @@ def get_report_stats():
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
             AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct
+            AVG(result_pct) AS avg_result_pct,
+            AVG(trade_duration) AS avg_duration
         FROM trades
         WHERE side = 'SHORT'
         """)
@@ -715,6 +746,7 @@ def get_report_stats():
         short_losses = short_row[2] or 0
         short_avg_rr = round(short_row[3] or 0, 2)
         short_avg_result_pct = round(short_row[4] or 0, 2)
+        short_avg_duration = round(short_row[5] or 0, 0)
         short_closed = short_wins + short_losses
         short_win_rate = round((short_wins / short_closed) * 100, 2) if short_closed > 0 else 0
 
@@ -730,18 +762,21 @@ def get_report_stats():
             "win_rate": win_rate,
             "avg_rr": avg_rr,
             "avg_result_pct": avg_result_pct,
+            "avg_duration": avg_duration,
             "long_total": long_total,
             "long_wins": long_wins,
             "long_losses": long_losses,
             "long_win_rate": long_win_rate,
             "long_avg_rr": long_avg_rr,
             "long_avg_result_pct": long_avg_result_pct,
+            "long_avg_duration": long_avg_duration,
             "short_total": short_total,
             "short_wins": short_wins,
             "short_losses": short_losses,
             "short_win_rate": short_win_rate,
             "short_avg_rr": short_avg_rr,
-            "short_avg_result_pct": short_avg_result_pct
+            "short_avg_result_pct": short_avg_result_pct,
+            "short_avg_duration": short_avg_duration
         }
 
     except Exception as e:
@@ -762,7 +797,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.6 – Production Stable ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.7 – Production Analytics ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -935,7 +970,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.6 – Production Stable CORE READY 🐋")
+print("🔥 AHAD AI v21.1.7 – Production Analytics CORE READY 🐋")
 
 
 # ================================================
@@ -995,11 +1030,23 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 _candle_cache = {}
 
 def get_candles_cached(symbol, tf):
+    """Get cached candles with timestamp for TTL cleanup"""
     key = f"{symbol}_{tf}"
+    now = time.time()
+    
     if key in _candle_cache:
-        return _candle_cache[key]
+        cached = _candle_cache[key]
+        # Check if cached data is a tuple (candles, timestamp)
+        if isinstance(cached, tuple) and len(cached) == 2:
+            candles, timestamp = cached
+            # If less than 10 minutes old, return cached data
+            if now - timestamp < 600:
+                return candles
+            # Otherwise, remove old cache and fetch fresh data
+            del _candle_cache[key]
+    
     candles = get_candles(symbol, tf)
-    _candle_cache[key] = candles
+    _candle_cache[key] = (candles, now)
     return candles
 
 
@@ -1192,7 +1239,7 @@ def volatility_engine(candles):
             "atr_now": 0,
             "atr_old": 0,
             "bonus": 0
-        }
+}
         # ================================================
 # 📊 MARKET REGIME ENGINE (FIXED)
 # ================================================
@@ -1496,7 +1543,7 @@ def ai_brain(candles):
 
 
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.6)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.7)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -2321,7 +2368,7 @@ else:  # SHORT
         decision_summary = "\n".join(decision_reasons[:12])
 
         # ================================================
-        # 📦 TRADE DATA (v21.1.6 - COMPLETE)
+        # 📦 TRADE DATA (v21.1.7 - COMPLETE)
         # ================================================
 
         trade_data = {
@@ -2342,7 +2389,7 @@ else:  # SHORT
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.6',
+            'version': 'v21.1.7',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2406,15 +2453,15 @@ else:  # SHORT
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.6)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.7)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.6 – Production Stable 🚀
+🐋 AHAD AI v21.1.7 – Production Analytics 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.6)
+🗄 PostgreSQL Database ACTIVE (v21.1.7)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
@@ -2448,8 +2495,9 @@ def start(message):
 🏦 Institutional Dashboard ACTIVE
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE
-📦 Caching System ACTIVE
+📦 Caching System ACTIVE (TTL=600s)
 📊 Extended Data Collection ACTIVE
+📈 Result % & Duration Tracking ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2462,13 +2510,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v21.1.6)
+# 🔎 SMART SCANNER (v21.1.7)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.6 – Production Stable SCANNING...
+🐋 AHAD AI v21.1.7 – Production Analytics SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2492,10 +2540,11 @@ def scan(message):
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.6)
+🗄 PostgreSQL Production Ready (v21.1.7)
 🏦 Institutional Dashboard ACTIVE
-📦 Caching System ACTIVE
+📦 Caching System ACTIVE (TTL=600s)
 📊 Extended Data Collection ACTIVE
+🧹 Cache Cleanup ACTIVE
 
 Please wait ⏳
 """)
@@ -2575,12 +2624,9 @@ Please wait ⏳
             sector_data[coin_sector]["flows"].append(result.get("liquidity", 0))
             sector_data[coin_sector]["scores"].append(result.get("score", 0))
 
+        # ====== COLLECT DATA FOR EVERY ANALYZED COIN ======
         if result:
-
-            if result["score"] > 100:
-                result["score"] = 100
-
-            # ====== COLLECT MARKET DATA ======
+            # Collect regime, flow, brain, compression for EVERY coin
             regime_name = result["regime"]["regime"]
             market_regimes[regime_name] = market_regimes.get(regime_name, 0) + 1
             market_flows.append(result["liquidity"])
@@ -2596,6 +2642,7 @@ Please wait ⏳
             debug.setdefault("compressions", {})
             debug["compressions"][compression_name] = debug["compressions"].get(compression_name, 0) + 1
 
+            # ====== CHECK IF ACCEPTED ======
             if result["direction"] == "🟢 LONG":
                 if (
                     result["score"] >= 68
@@ -2731,7 +2778,7 @@ Please wait ⏳
     # ====== MARKET HEALTH REPORT ======
     total_checked = debug.get('checked', 0)
     
-    if total_checked > 0:
+    if total_checked > 0 and market_regimes:
         # Market Regime Distribution - from ALL checked coins
         bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
         bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
@@ -3040,7 +3087,7 @@ Cache Saved    : {cache_saved_pct}%
 
         # ====== BUILD TELEGRAM MESSAGE ======
         msg = f"""
-🚨 AHAD AI v21.1.6 – Production Stable 🐋
+🚨 AHAD AI v21.1.7 – Production Analytics 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -3150,6 +3197,7 @@ def report_command(message):
 🎯 Overall Win Rate : {stats['win_rate']}%
 📊 Avg RR           : {stats['avg_rr']}
 📊 Avg Result %     : {stats['avg_result_pct']}%
+⏱️ Avg Duration     : {int(stats['avg_duration']//60)}m {int(stats['avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3160,6 +3208,7 @@ Losses        : {stats['long_losses']}
 Win Rate      : {stats['long_win_rate']}%
 Avg RR        : {stats['long_avg_rr']}
 Avg Result %  : {stats['long_avg_result_pct']}%
+⏱️ Avg Duration : {int(stats['long_avg_duration']//60)}m {int(stats['long_avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3170,11 +3219,12 @@ Losses        : {stats['short_losses']}
 Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
 Avg Result %  : {stats['short_avg_result_pct']}%
+⏱️ Avg Duration : {int(stats['short_avg_duration']//60)}m {int(stats['short_avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.6
+🤖 AHAD AI v21.1.7
 🗄 PostgreSQL | 🔒 SSL
-🏦 Production Stable
+📊 Production Analytics
 """
         bot.reply_to(message, report)
 
@@ -3327,7 +3377,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.6 – Production Stable ONLINE 🐋")
+print("🔥 AHAD AI v21.1.7 – Production Analytics ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3335,10 +3385,11 @@ print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
 print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 print("🛡️ Validation Layer ACTIVE")
 print("🗑️ Cache cleared on each scan")
+print("🧹 Cache TTL Cleanup ACTIVE (600s)")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.6)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.7)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3359,15 +3410,17 @@ print("🧠 AI Decision Summary ACTIVE (Complete)")
 print("🐘 Market Health Report ACTIVE")
 print("🏦 Institutional Dashboard ACTIVE")
 print("🐞 Enhanced Debug Report with Top Reject Reasons")
-print("📦 Caching System ACTIVE")
+print("📦 Caching System ACTIVE (TTL=600s)")
 print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
 print("📊 Extended Data Collection ACTIVE")
+print("📈 Result % & Duration Tracking ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Production Stable v21.1.6")
+print("🚀 Production Analytics v21.1.7")
 
 while True:
     time.sleep(60)
+    

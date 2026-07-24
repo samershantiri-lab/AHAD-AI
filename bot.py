@@ -1506,16 +1506,16 @@ def analyze(symbol, sector, debug=None):
         else:
             flow_score = 5
             money_status = "NORMAL"
-            # ================================================
-# 📈 MACD MOMENTUM
-# ================================================
+         # ================================================
+         # 📈 MACD MOMENTUM
+         # ================================================
 
-macd_value = macd_simple(closes15)
-macd_score = 3 if macd_value > 0 else 0
+        macd_value = macd_simple(closes15)
+        macd_score = 3 if macd_value > 0 else 0
 
-# ================================================
-# 🔥 MULTI TIMEFRAME VALIDATOR
-        # ================================================
+         # ================================================
+         # 🔥 MULTI TIMEFRAME VALIDATOR
+         # ================================================
 
         tf_score = 0
         tf_alignment = True

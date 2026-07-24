@@ -1665,71 +1665,70 @@ def analyze(symbol, sector, debug=None):
         # ================================================
 
         flow_score = 0
-if flow < 0.8:
-    reject_reason = "Low Flow"
-    if debug is not None:
-        debug["flow"] = debug.get("flow", 0) + 1
-    return None
-elif flow >= 3:
-    flow_score = 25
-    money_status = "🚀 HIGH WHALE FLOW"
-elif flow >= 1.8:
-    flow_score = 20
-    money_status = "🐋 INSTITUTIONAL FLOW"
-elif flow >= 1.2:
-    flow_score = 10
-    money_status = "💧 HEALTHY FLOW"
-else:
-    flow_score = 5
-    money_status = "NORMAL"
+        if flow < 0.8:
+            reject_reason = "Low Flow"
+            if debug is not None:
+                debug["flow"] = debug.get("flow", 0) + 1
+            return None
+        elif flow >= 3:
+            flow_score = 25
+            money_status = "🚀 HIGH WHALE FLOW"
+        elif flow >= 1.8:
+            flow_score = 20
+            money_status = "🐋 INSTITUTIONAL FLOW"
+        elif flow >= 1.2:
+            flow_score = 10
+            money_status = "💧 HEALTHY FLOW"
+        else:
+            flow_score = 5
+            money_status = "NORMAL"
 
-# ================================================
-# 📈 MACD MOMENTUM
-# ================================================
+        # ================================================
+        # 📈 MACD MOMENTUM
+        # ================================================
 
-macd_value = macd_simple(closes15)
-macd_score = 3 if macd_value > 0 else 0
+        macd_value = macd_simple(closes15)
+        macd_score = 3 if macd_value > 0 else 0
 
-# ================================================
-# 🔥 MULTI TIMEFRAME VALIDATOR
-# ================================================
+        # ================================================
+        # 🔥 MULTI TIMEFRAME VALIDATOR
+        # ================================================
 
-tf_score = 0
-tf_alignment = True
+        tf_score = 0
+        tf_alignment = True
 
-ema20_15 = ema(closes15, 20)
-if direction_clean == "LONG":
-    if price > ema20_15:
-        tf_score += 5
-    else:
-        tf_alignment = False
-else:  # SHORT
-    if price < ema20_15:
-        tf_score += 5
-    else:
-        tf_alignment = False
+        ema20_15 = ema(closes15, 20)
+        if direction_clean == "LONG":
+            if price > ema20_15:
+                tf_score += 5
+            else:
+                tf_alignment = False
+        else:  # SHORT
+            if price < ema20_15:
+                tf_score += 5
+            else:
+                tf_alignment = False
 
-ema20_1h = ema(closes1h, 20)
-if direction_clean == "LONG":
-    if closes1h[-1] > ema20_1h:
-        tf_score += 5
-    else:
-        tf_alignment = False
-else:  # SHORT
-    if closes1h[-1] < ema20_1h:
-        tf_score += 5
-    else:
-        tf_alignment = False
+        ema20_1h = ema(closes1h, 20)
+        if direction_clean == "LONG":
+            if closes1h[-1] > ema20_1h:
+                tf_score += 5
+            else:
+                tf_alignment = False
+        else:  # SHORT
+            if closes1h[-1] < ema20_1h:
+                tf_score += 5
+            else:
+                tf_alignment = False
 
-ema20_4h = ema(closes4h, 20)
-if direction_clean == "LONG":
-    if closes4h[-1] < ema20_4h * 0.97:
-        tf_score -= 10
-else:  # SHORT
-    if closes4h[-1] > ema20_4h * 1.03:
-        tf_score -= 10
-
-# ================================================
+        ema20_4h = ema(closes4h, 20)
+        if direction_clean == "LONG":
+            if closes4h[-1] < ema20_4h * 0.97:
+                tf_score -= 10
+        else:  # SHORT
+            if closes4h[-1] > ema20_4h * 1.03:
+                tf_score -= 10
+                # ================================================
 # 🔥 STRONG CANDLE CHECK
 # ================================================
 
@@ -2976,7 +2975,8 @@ Cache Hits     : {cache_hits}
 Cache Saved    : {cache_saved_pct}%
 """
     bot.send_message(message.chat.id, debug_msg)
-        # ==========================================================
+
+    # ==========================================================
     # 🏆 PROFESSIONAL SIGNAL RANKING
     # ==========================================================
 

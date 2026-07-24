@@ -1515,42 +1515,42 @@ macd_score = 3 if macd_value > 0 else 0
 
 # ================================================
 # 🔥 MULTI TIMEFRAME VALIDATOR
-# ================================================
+        # ================================================
 
-tf_score = 0
-tf_alignment = True
+        tf_score = 0
+        tf_alignment = True
 
-ema20_15 = ema(closes15, 20)
-if direction_clean == "LONG":
-    if price > ema20_15:
-        tf_score += 5
-    else:
-        tf_alignment = False
-else:  # SHORT
-    if price < ema20_15:
-        tf_score += 5
-    else:
-        tf_alignment = False
+        ema20_15 = ema(closes15, 20)
+        if direction_clean == "LONG":
+            if price > ema20_15:
+                tf_score += 5
+            else:
+                tf_alignment = False
+        else:  # SHORT
+            if price < ema20_15:
+                tf_score += 5
+            else:
+                tf_alignment = False
 
-ema20_1h = ema(closes1h, 20)
-if direction_clean == "LONG":
-    if closes1h[-1] > ema20_1h:
-        tf_score += 5
-    else:
-        tf_alignment = False
-else:  # SHORT
-    if closes1h[-1] < ema20_1h:
-        tf_score += 5
-    else:
-        tf_alignment = False
+        ema20_1h = ema(closes1h, 20)
+        if direction_clean == "LONG":
+            if closes1h[-1] > ema20_1h:
+                tf_score += 5
+            else:
+                tf_alignment = False
+        else:  # SHORT
+            if closes1h[-1] < ema20_1h:
+                tf_score += 5
+            else:
+                tf_alignment = False
 
-ema20_4h = ema(closes4h, 20)
-if direction_clean == "LONG":
-    if closes4h[-1] < ema20_4h * 0.97:
-        tf_score -= 10
-else:  # SHORT
-    if closes4h[-1] > ema20_4h * 1.03:
-        tf_score -= 10
+        ema20_4h = ema(closes4h, 20)
+        if direction_clean == "LONG":
+            if closes4h[-1] < ema20_4h * 0.97:
+                tf_score -= 10
+        else:  # SHORT
+            if closes4h[-1] > ema20_4h * 1.03:
+                tf_score -= 10
 
 # ================================================
 # 🔥 STRONG CANDLE CHECK

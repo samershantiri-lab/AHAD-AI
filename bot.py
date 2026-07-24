@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.1.7 – Production Analytics
+# 🚀 AHAD AI v21.1.5 – Dashboard Bug Fix
 # ================================================
 
 # ================================================
@@ -109,22 +109,7 @@ def init_database():
             max_profit DOUBLE PRECISION,
             max_drawdown DOUBLE PRECISION,
 
-            close_time TIMESTAMP,
-
-            -- NEW FIELDS v21.1.7
-            brain_confidence INTEGER,
-            market_regime TEXT,
-            compression_score INTEGER,
-            compression_status TEXT,
-            momentum_weight DOUBLE PRECISION,
-            flow_score INTEGER,
-            volume_acceleration DOUBLE PRECISION,
-            flow_rating TEXT,
-            risk_grade TEXT,
-            decision_summary TEXT,
-            result_pct DOUBLE PRECISION,
-            trade_duration INTEGER,
-            max_profit_pct DOUBLE PRECISION
+            close_time TIMESTAMP
 
         )
         """)
@@ -157,30 +142,6 @@ def init_database():
         cur.execute("""
         ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume_acceleration DOUBLE PRECISION
         """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS flow_rating TEXT
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS risk_grade TEXT
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_summary TEXT
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS result_pct DOUBLE PRECISION
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_duration INTEGER
-        """)
-        
-        cur.execute("""
-        ALTER TABLE trades ADD COLUMN IF NOT EXISTS max_profit_pct DOUBLE PRECISION
-        """)
 
         # Indexes for performance
         cur.execute("""
@@ -203,6 +164,7 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_trades_status_symbol ON trades(status, symbol)
         """)
 
+        # New indexes for v21.1.0+
         cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_trades_market_regime ON trades(market_regime)
         """)
@@ -213,9 +175,9 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.1.7)")
+        print("🗄 AHAD AI DATABASE READY (v21.1.5)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
-        print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration, flow_rating, risk_grade, decision_summary, result_pct, trade_duration, max_profit_pct")
+        print("📊 New columns: brain_confidence, market_regime, compression_score, compression_status, momentum_weight, flow_score, volume_acceleration")
 
     except Exception as e:
         print(f"❌ Database Error: {e}")
@@ -228,7 +190,7 @@ def init_database():
 
 
 # ================================================
-# 💾 TRADE RECORDER (v21.1.7)
+# 💾 TRADE RECORDER
 # ================================================
 
 def save_trade(trade_data):
@@ -273,13 +235,7 @@ def save_trade(trade_data):
             compression_status,
             momentum_weight,
             flow_score,
-            volume_acceleration,
-            flow_rating,
-            risk_grade,
-            decision_summary,
-            result_pct,
-            trade_duration,
-            max_profit_pct
+            volume_acceleration
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -291,9 +247,7 @@ def save_trade(trade_data):
             %s, %s,
             %s, %s,
             %s,
-            %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s,
-            %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s
         )
         RETURNING id
         """, (
@@ -314,7 +268,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.1.7'),
+            trade_data.get('version', 'v21.1.5'),
             'OPEN',
             'PENDING',
             0.0,
@@ -326,13 +280,7 @@ def save_trade(trade_data):
             trade_data.get('compression_status', 'UNKNOWN'),
             trade_data.get('momentum_weight', 1.0),
             trade_data.get('flow_score', 0),
-            trade_data.get('volume_acceleration', 0.0),
-            trade_data.get('flow_rating', 'N/A'),
-            trade_data.get('risk_grade', 'N/A'),
-            trade_data.get('decision_summary', ''),
-            0.0,
-            0,
-            0.0
+            trade_data.get('volume_acceleration', 0.0)
         ))
 
         trade_id = cur.fetchone()[0]
@@ -369,7 +317,7 @@ def get_open_trades():
 
         cur.execute("""
         SELECT id, symbol, side, entry, sl, tp1, tp2, tp3,
-               max_profit, max_drawdown, signal_time
+               max_profit, max_drawdown
         FROM trades
         WHERE status = 'OPEN'
         """)
@@ -389,8 +337,7 @@ def get_open_trades():
                 'tp2': row[6],
                 'tp3': row[7],
                 'max_profit': row[8] if row[8] is not None else 0.0,
-                'max_drawdown': row[9] if row[9] is not None else 0.0,
-                'signal_time': row[10]
+                'max_drawdown': row[9] if row[9] is not None else 0.0
             })
 
         print(f"📂 OPEN trades loaded: {len(trades)}")
@@ -406,7 +353,7 @@ def get_open_trades():
             conn.close()
 
 
-def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None, result_pct=None, trade_duration=None, max_profit_pct=None):
+def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
     """Update trade data in PostgreSQL"""
     conn = None
     cur = None
@@ -421,10 +368,7 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             result = %s,
             max_profit = %s,
             max_drawdown = %s,
-            close_time = %s,
-            result_pct = %s,
-            trade_duration = %s,
-            max_profit_pct = %s
+            close_time = %s
         WHERE id = %s
         """, (
             status,
@@ -432,9 +376,6 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             max_profit,
             max_drawdown,
             close_time,
-            result_pct,
-            trade_duration,
-            max_profit_pct,
             trade_id
         ))
 
@@ -455,62 +396,6 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             conn.close()
 
 
-# ================================================
-# 📦 TRADE TRACKER CACHE
-# ================================================
-
-_trade_tracker_cache = {}
-
-def get_trade_tracker_candles(symbol, tf="15m", ttl=60):
-    """
-    Cache candles for Trade Tracker.
-    Reuses candle data for 60 seconds to reduce API requests.
-    """
-    now = time.time()
-    key = f"{symbol}_{tf}"
-
-    if key in _trade_tracker_cache:
-        cached = _trade_tracker_cache[key]
-
-        if now - cached["time"] <= ttl:
-            return cached["candles"]
-
-    candles = get_candles(symbol, tf)
-
-    _trade_tracker_cache[key] = {
-        "time": now,
-        "candles": candles
-    }
-
-    return candles
-
-
-# ================================================
-# 🧹 CACHE CLEANUP (v21.1.7)
-# ================================================
-
-def cache_cleanup(ttl=600):
-    """Clean up old cache entries to prevent memory growth"""
-    now = time.time()
-    
-    # Clean _candle_cache
-    keys_to_remove = []
-    for key, value in _candle_cache.items():
-        # _candle_cache stores tuples (candles, timestamp)
-        if isinstance(value, tuple) and len(value) == 2:
-            if now - value[1] > ttl:
-                keys_to_remove.append(key)
-        elif isinstance(value, list):
-            # Old format without timestamp, keep it
-            continue
-    
-    for key in keys_to_remove:
-        del _candle_cache[key]
-    
-    if keys_to_remove:
-        print(f"🧹 Cache cleanup: removed {len(keys_to_remove)} old entries")
-
-
 def update_open_trades():
     """Monitor open trades every 5 minutes using HIGH/LOW for accuracy"""
     print("📈 Trade Tracker STARTED")
@@ -527,111 +412,83 @@ def update_open_trades():
 
             for trade in open_trades:
                 try:
-                    # ==========================================
-                    # CURRENT CANDLE PRICES (CACHED)
-                    # ==========================================
-                    candles = get_trade_tracker_candles(trade['symbol'], "15m")
-                    if not candles:
+                    # Get current candles for HIGH/LOW
+                    candles = get_candles(trade['symbol'], "15m")
+                    if not candles or len(candles) < 1:
                         continue
 
-                    current_price = candles[-1]['close']
-                    current_high = candles[-1]['high']
-                    current_low = candles[-1]['low']
-                    # ==========================================
+                    current_candle = candles[-1]
+                    current_high = current_candle['high']
+                    current_low = current_candle['low']
 
-                    # Calculate current profit/loss using CLOSE
+                    # Calculate max profit / drawdown using HIGH/LOW
                     if trade['side'] == 'LONG':
-                        profit_percent = ((current_price - trade['entry']) / trade['entry']) * 100
+                        max_profit_percent = ((current_high - trade['entry']) / trade['entry']) * 100
+                        max_drawdown_percent = ((current_low - trade['entry']) / trade['entry']) * 100
                     else:  # SHORT
-                        profit_percent = ((trade['entry'] - current_price) / trade['entry']) * 100
+                        max_profit_percent = ((trade['entry'] - current_low) / trade['entry']) * 100
+                        max_drawdown_percent = ((trade['entry'] - current_high) / trade['entry']) * 100
 
-                    # ==========================================
-                    # PROFESSIONAL PROFIT / DRAWDOWN TRACKER
-                    # ==========================================
+                    # Update max profit
+                    if max_profit_percent > trade['max_profit']:
+                        trade['max_profit'] = max_profit_percent
 
-                    if trade['side'] == "LONG":
+                    # Update max drawdown
+                    if max_drawdown_percent < trade['max_drawdown']:
+                        trade['max_drawdown'] = max_drawdown_percent
 
-                        # Highest profit reached
-                        if profit_percent > trade["max_profit"]:
-                            trade["max_profit"] = profit_percent
-
-                        # Lowest excursion reached
-                        if profit_percent < trade["max_drawdown"]:
-                            trade["max_drawdown"] = profit_percent
-
-                    else:   # SHORT
-
-                        # Highest profit while short
-                        if profit_percent > trade["max_profit"]:
-                            trade["max_profit"] = profit_percent
-
-                        # Worst adverse movement
-                        if profit_percent < trade["max_drawdown"]:
-                            trade["max_drawdown"] = profit_percent
-
-                    # ==========================================
-                    # HIGH / LOW ACCURACY TP/SL CHECK
-                    # ==========================================
-
+                    # Check TP/SL using HIGH/LOW for accuracy
                     new_status = None
                     result = None
                     close_time = datetime.now()
 
-                    if trade['side'] == "LONG":
-
+                    if trade['side'] == 'LONG':
+                        # Check if TP3 hit (using HIGH)
                         if current_high >= trade['tp3']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP3"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP3'
+                        # Check if TP2 hit (using HIGH)
                         elif current_high >= trade['tp2']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP2"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP2'
+                        # Check if TP1 hit (using HIGH)
                         elif current_high >= trade['tp1']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP1"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP1'
+                        # Check if SL hit (using LOW)
                         elif current_low <= trade['sl']:
-                            new_status = "CLOSED"
-                            result = "LOSS_SL"
+                            new_status = 'CLOSED'
+                            result = 'LOSS_SL'
 
                     else:  # SHORT
-
+                        # Check if TP3 hit (using LOW)
                         if current_low <= trade['tp3']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP3"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP3'
+                        # Check if TP2 hit (using LOW)
                         elif current_low <= trade['tp2']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP2"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP2'
+                        # Check if TP1 hit (using LOW)
                         elif current_low <= trade['tp1']:
-                            new_status = "CLOSED"
-                            result = "WIN_TP1"
-
+                            new_status = 'CLOSED'
+                            result = 'WIN_TP1'
+                        # Check if SL hit (using HIGH)
                         elif current_high >= trade['sl']:
-                            new_status = "CLOSED"
-                            result = "LOSS_SL"
+                            new_status = 'CLOSED'
+                            result = 'LOSS_SL'
 
                     # Update database if closed
                     if new_status:
-                        # Calculate result_pct and trade_duration
-                        result_pct = round(profit_percent, 2)
-                        trade_duration = int((close_time - trade['signal_time']).total_seconds())
-                        max_profit_pct = round(trade['max_profit'], 2)
-
                         update_trade(
                             trade['id'],
                             new_status,
                             result,
                             round(trade['max_profit'], 2),
                             round(trade['max_drawdown'], 2),
-                            close_time,
-                            result_pct,
-                            trade_duration,
-                            max_profit_pct
+                            close_time
                         )
-                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result} | Profit: {result_pct}% | Duration: {trade_duration}s")
+                        print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
                     else:
                         # Update max_profit and max_drawdown only
                         update_trade(
@@ -640,9 +497,6 @@ def update_open_trades():
                             'PENDING',
                             round(trade['max_profit'], 2),
                             round(trade['max_drawdown'], 2),
-                            None,
-                            None,
-                            None,
                             None
                         )
 
@@ -678,9 +532,7 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
-            AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct,
-            AVG(trade_duration) AS avg_duration
+            AVG(rr) AS avg_rr
         FROM trades
         """)
 
@@ -694,8 +546,6 @@ def get_report_stats():
         tp3 = row[5] or 0
         sl = row[6] or 0
         avg_rr = round(row[7] or 0, 2)
-        avg_result_pct = round(row[8] or 0, 2)
-        avg_duration = round(row[9] or 0, 0)
 
         wins = tp1 + tp2 + tp3
 
@@ -710,9 +560,7 @@ def get_report_stats():
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
-            AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct,
-            AVG(trade_duration) AS avg_duration
+            AVG(rr) AS avg_rr
         FROM trades
         WHERE side = 'LONG'
         """)
@@ -722,8 +570,6 @@ def get_report_stats():
         long_wins = long_row[1] or 0
         long_losses = long_row[2] or 0
         long_avg_rr = round(long_row[3] or 0, 2)
-        long_avg_result_pct = round(long_row[4] or 0, 2)
-        long_avg_duration = round(long_row[5] or 0, 0)
         long_closed = long_wins + long_losses
         long_win_rate = round((long_wins / long_closed) * 100, 2) if long_closed > 0 else 0
 
@@ -733,9 +579,7 @@ def get_report_stats():
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
-            AVG(rr) AS avg_rr,
-            AVG(result_pct) AS avg_result_pct,
-            AVG(trade_duration) AS avg_duration
+            AVG(rr) AS avg_rr
         FROM trades
         WHERE side = 'SHORT'
         """)
@@ -745,8 +589,6 @@ def get_report_stats():
         short_wins = short_row[1] or 0
         short_losses = short_row[2] or 0
         short_avg_rr = round(short_row[3] or 0, 2)
-        short_avg_result_pct = round(short_row[4] or 0, 2)
-        short_avg_duration = round(short_row[5] or 0, 0)
         short_closed = short_wins + short_losses
         short_win_rate = round((short_wins / short_closed) * 100, 2) if short_closed > 0 else 0
 
@@ -761,22 +603,16 @@ def get_report_stats():
             "wins": wins,
             "win_rate": win_rate,
             "avg_rr": avg_rr,
-            "avg_result_pct": avg_result_pct,
-            "avg_duration": avg_duration,
             "long_total": long_total,
             "long_wins": long_wins,
             "long_losses": long_losses,
             "long_win_rate": long_win_rate,
             "long_avg_rr": long_avg_rr,
-            "long_avg_result_pct": long_avg_result_pct,
-            "long_avg_duration": long_avg_duration,
             "short_total": short_total,
             "short_wins": short_wins,
             "short_losses": short_losses,
             "short_win_rate": short_win_rate,
-            "short_avg_rr": short_avg_rr,
-            "short_avg_result_pct": short_avg_result_pct,
-            "short_avg_duration": short_avg_duration
+            "short_avg_rr": short_avg_rr
         }
 
     except Exception as e:
@@ -797,7 +633,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.1.7 – Production Analytics ONLINE 🚀"
+    return "🐋 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -970,7 +806,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.1.7 – Production Analytics CORE READY 🐋")
+print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix CORE READY 🐋")
 
 
 # ================================================
@@ -1030,23 +866,11 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 _candle_cache = {}
 
 def get_candles_cached(symbol, tf):
-    """Get cached candles with timestamp for TTL cleanup"""
     key = f"{symbol}_{tf}"
-    now = time.time()
-    
     if key in _candle_cache:
-        cached = _candle_cache[key]
-        # Check if cached data is a tuple (candles, timestamp)
-        if isinstance(cached, tuple) and len(cached) == 2:
-            candles, timestamp = cached
-            # If less than 10 minutes old, return cached data
-            if now - timestamp < 600:
-                return candles
-            # Otherwise, remove old cache and fetch fresh data
-            del _candle_cache[key]
-    
+        return _candle_cache[key]
     candles = get_candles(symbol, tf)
-    _candle_cache[key] = (candles, now)
+    _candle_cache[key] = candles
     return candles
 
 
@@ -1172,9 +996,7 @@ def pre_pump_engine(candles):
     except Exception as e:
         print("PRE PUMP ERROR:", e)
         return {"status": "ERROR", "score": 0}
-
-
-# ================================================
+        # ================================================
 # 🔥 VOLATILITY COMPRESSION ENGINE
 # ================================================
 
@@ -1239,8 +1061,10 @@ def volatility_engine(candles):
             "atr_now": 0,
             "atr_old": 0,
             "bonus": 0
-    }
-        # ================================================
+        }
+
+
+# ================================================
 # 📊 MARKET REGIME ENGINE (FIXED)
 # ================================================
 
@@ -1543,7 +1367,7 @@ def ai_brain(candles):
 
 
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.7)
+# 🎯 SECTION 3: ANALYZE ENGINE (v21.1.5)
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1661,7 +1485,7 @@ def analyze(symbol, sector, debug=None):
             warning_text = "⚠️ RSI EXTREME"
 
         # ================================================
-        # 💧 DYNAMIC FLOW (SINGLE SOURCE - FIXED)
+        # 💧 DYNAMIC FLOW
         # ================================================
 
         flow_score = 0
@@ -1682,53 +1506,53 @@ def analyze(symbol, sector, debug=None):
         else:
             flow_score = 5
             money_status = "NORMAL"
+            # ================================================
+# 📈 MACD MOMENTUM
+# ================================================
 
-        # ================================================
-        # 📈 MACD MOMENTUM
-        # ================================================
+macd_value = macd_simple(closes15)
+macd_score = 3 if macd_value > 0 else 0
 
-        macd_value = macd_simple(closes15)
-        macd_score = 3 if macd_value > 0 else 0
+# ================================================
+# 🔥 MULTI TIMEFRAME VALIDATOR
+# ================================================
 
-        # ================================================
-        # 🔥 MULTI TIMEFRAME VALIDATOR
-        # ================================================
+tf_score = 0
+tf_alignment = True
 
-        tf_score = 0
-        tf_alignment = True
+ema20_15 = ema(closes15, 20)
+if direction_clean == "LONG":
+    if price > ema20_15:
+        tf_score += 5
+    else:
+        tf_alignment = False
+else:  # SHORT
+    if price < ema20_15:
+        tf_score += 5
+    else:
+        tf_alignment = False
 
-        ema20_15 = ema(closes15, 20)
-        if direction_clean == "LONG":
-            if price > ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
-        else:  # SHORT
-            if price < ema20_15:
-                tf_score += 5
-            else:
-                tf_alignment = False
+ema20_1h = ema(closes1h, 20)
+if direction_clean == "LONG":
+    if closes1h[-1] > ema20_1h:
+        tf_score += 5
+    else:
+        tf_alignment = False
+else:  # SHORT
+    if closes1h[-1] < ema20_1h:
+        tf_score += 5
+    else:
+        tf_alignment = False
 
-        ema20_1h = ema(closes1h, 20)
-        if direction_clean == "LONG":
-            if closes1h[-1] > ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
-        else:  # SHORT
-            if closes1h[-1] < ema20_1h:
-                tf_score += 5
-            else:
-                tf_alignment = False
+ema20_4h = ema(closes4h, 20)
+if direction_clean == "LONG":
+    if closes4h[-1] < ema20_4h * 0.97:
+        tf_score -= 10
+else:  # SHORT
+    if closes4h[-1] > ema20_4h * 1.03:
+        tf_score -= 10
 
-        ema20_4h = ema(closes4h, 20)
-        if direction_clean == "LONG":
-            if closes4h[-1] < ema20_4h * 0.97:
-                tf_score -= 10
-        else:  # SHORT
-            if closes4h[-1] > ema20_4h * 1.03:
-                tf_score -= 10
-                # ================================================
+# ================================================
 # 🔥 STRONG CANDLE CHECK
 # ================================================
 
@@ -2368,7 +2192,7 @@ else:  # SHORT
         decision_summary = "\n".join(decision_reasons[:12])
 
         # ================================================
-        # 📦 TRADE DATA (v21.1.7 - COMPLETE)
+        # 📦 TRADE DATA (v21.1.5)
         # ================================================
 
         trade_data = {
@@ -2389,7 +2213,7 @@ else:  # SHORT
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.1.7',
+            'version': 'v21.1.5',
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2453,15 +2277,15 @@ else:  # SHORT
 
 
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.7)
+# 🤖 SECTION 4: TELEGRAM SCANNER (v21.1.5)
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.7 – Production Analytics 🚀
+🐋 AHAD AI v21.1.5 – Dashboard Bug Fix 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.1.7)
+🗄 PostgreSQL Database ACTIVE (v21.1.5)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE (LONG/SHORT Breakdown)
@@ -2495,9 +2319,8 @@ def start(message):
 🏦 Institutional Dashboard ACTIVE
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE
-📦 Caching System ACTIVE (TTL=600s)
-📊 Extended Data Collection ACTIVE
-📈 Result % & Duration Tracking ACTIVE
+📦 Caching System ACTIVE
+🐞 Dashboard Bug Fix ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2510,13 +2333,13 @@ Commands:
 
 
 # ================================================
-# 🔎 SMART SCANNER (v21.1.7)
+# 🔎 SMART SCANNER (v21.1.5)
 # ================================================
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.1.7 – Production Analytics SCANNING...
+🐋 AHAD AI v21.1.5 – Dashboard Bug Fix SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector (Ranked)
@@ -2540,11 +2363,10 @@ def scan(message):
 📈 Trade Tracker ACTIVE (HIGH/LOW Accuracy)
 📊 Performance Analytics ACTIVE
 🔄 Dual Direction Engine ACTIVE (Fully Symmetric)
-🗄 PostgreSQL Production Ready (v21.1.7)
+🗄 PostgreSQL Production Ready (v21.1.5)
 🏦 Institutional Dashboard ACTIVE
-📦 Caching System ACTIVE (TTL=600s)
-📊 Extended Data Collection ACTIVE
-🧹 Cache Cleanup ACTIVE
+📦 Caching System ACTIVE
+🐞 Dashboard Bug Fix ACTIVE
 
 Please wait ⏳
 """)
@@ -2889,8 +2711,7 @@ Run /scan to analyze market.
         )
     else:
         top_rejects = "N/A"
-
-    # ====== SCAN EFFICIENCY ======
+            # ====== SCAN EFFICIENCY ======
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
     
@@ -3088,7 +2909,7 @@ Cache Saved    : {cache_saved_pct}%
 
         # ====== BUILD TELEGRAM MESSAGE ======
         msg = f"""
-🚨 AHAD AI v21.1.7 – Production Analytics 🐋
+🚨 AHAD AI v21.1.5 – Dashboard Bug Fix 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -3197,8 +3018,6 @@ def report_command(message):
 
 🎯 Overall Win Rate : {stats['win_rate']}%
 📊 Avg RR           : {stats['avg_rr']}
-📊 Avg Result %     : {stats['avg_result_pct']}%
-⏱️ Avg Duration     : {int(stats['avg_duration']//60)}m {int(stats['avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3208,8 +3027,6 @@ Wins          : {stats['long_wins']}
 Losses        : {stats['long_losses']}
 Win Rate      : {stats['long_win_rate']}%
 Avg RR        : {stats['long_avg_rr']}
-Avg Result %  : {stats['long_avg_result_pct']}%
-⏱️ Avg Duration : {int(stats['long_avg_duration']//60)}m {int(stats['long_avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3219,13 +3036,11 @@ Wins          : {stats['short_wins']}
 Losses        : {stats['short_losses']}
 Win Rate      : {stats['short_win_rate']}%
 Avg RR        : {stats['short_avg_rr']}
-Avg Result %  : {stats['short_avg_result_pct']}%
-⏱️ Avg Duration : {int(stats['short_avg_duration']//60)}m {int(stats['short_avg_duration']%60)}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.1.7
+🤖 AHAD AI v21.1.5
 🗄 PostgreSQL | 🔒 SSL
-📊 Production Analytics
+🏦 Dashboard Bug Fix
 """
         bot.reply_to(message, report)
 
@@ -3288,7 +3103,7 @@ def history_command(message):
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time, result_pct, trade_duration
+        SELECT id, symbol, side, entry, result, max_profit, max_drawdown, close_time
         FROM trades
         WHERE status = 'CLOSED'
         ORDER BY id DESC
@@ -3314,12 +3129,8 @@ def history_command(message):
         for row in rows:
             result_display = result_map.get(row[4], row[4])
             close_time = row[7].strftime("%Y-%m-%d %H:%M") if row[7] else "N/A"
-            result_pct = f"{row[8]:.2f}%" if row[8] is not None else "N/A"
-            duration = f"{row[9]//60}m {row[9]%60}s" if row[9] else "N/A"
-            
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
             msg += f"Entry: {row[3]} | Result: {result_display}\n"
-            msg += f"Profit: {result_pct} | Duration: {duration}\n"
             msg += f"Max Profit: {row[5]:.2f}% | Max DD: {row[6]:.2f}%\n"
             msg += f"🕐 {close_time}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -3378,7 +3189,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.1.7 – Production Analytics ONLINE 🐋")
+print("🔥 AHAD AI v21.1.5 – Dashboard Bug Fix ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3386,11 +3197,10 @@ print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
 print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
 print("🛡️ Validation Layer ACTIVE")
 print("🗑️ Cache cleared on each scan")
-print("🧹 Cache TTL Cleanup ACTIVE (600s)")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE (Symmetric)")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.1.7)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.1.5)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3402,25 +3212,24 @@ print("🔥 Volatility Compression Integration ACTIVE")
 print("🚀 Dynamic Momentum Weight ACTIVE")
 print("🎯 Dynamic RR Engine ACTIVE")
 print("🔄 Dual Direction Engine ACTIVE (Fully Symmetric)")
-print("📊 Trade Data Expansion ACTIVE (Extended)")
+print("📊 Trade Data Expansion ACTIVE (7 New Fields)")
 print("🏆 Professional Ranking Engine ACTIVE")
 print("💎 Professional Quality Engine v2.0 ACTIVE")
 print("📊 Institutional Flow Rating ACTIVE")
 print("🛡️ Risk Grade System ACTIVE")
-print("🧠 AI Decision Summary ACTIVE (Complete)")
+print("🧠 AI Decision Summary ACTIVE (Enhanced)")
 print("🐘 Market Health Report ACTIVE")
 print("🏦 Institutional Dashboard ACTIVE")
 print("🐞 Enhanced Debug Report with Top Reject Reasons")
-print("📦 Caching System ACTIVE (TTL=600s)")
+print("📦 Caching System ACTIVE")
 print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
-print("📊 Extended Data Collection ACTIVE")
-print("📈 Result % & Duration Tracking ACTIVE")
+print("🐞 Dashboard Bug Fix ACTIVE (Passed=0 Fixed)")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 Production Analytics v21.1.7")
+print("🚀 Dashboard Bug Fix v21.1.5")
 
 while True:
     time.sleep(60)

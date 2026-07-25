@@ -2782,8 +2782,8 @@ Avg DD        : {stats['short_avg_dd']}%
         bot.reply_to(message, report)
 
     except Exception as e:
-        bot.reply_to(message, f"❌ Error generating report: {e}")
-        @bot.message_handler(commands=['open'])
+bot.reply_to(message, f"❌ Error generating report: {e}")
+@bot.message_handler(commands=['open'])
 def open_trades_command(message):
     conn = None
     cur = None

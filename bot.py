@@ -2782,7 +2782,9 @@ Avg DD        : {stats['short_avg_dd']}%
         bot.reply_to(message, report)
 
     except Exception as e:
-bot.reply_to(message, f"❌ Error generating report: {e}")
+        bot.reply_to(message, f"❌ Error generating report: {e}")
+
+
 @bot.message_handler(commands=['open'])
 def open_trades_command(message):
     conn = None
@@ -2899,7 +2901,6 @@ def telegram_engine():
             backoff = min(backoff * 2, 30)
 
 
-# ✅ تشغيل خيط تنظيف الكاش
 def cache_cleanup_thread():
     """قم بتنظيف الكاش المنتهي صلاحيته كل دقيقة"""
     while True:

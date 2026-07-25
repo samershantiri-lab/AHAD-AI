@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2 – Security & Performance Update
+# 🚀 AHAD AI v21.2.1 – Database Migration Update
 # ================================================
 
 # ================================================
@@ -94,22 +94,28 @@ def init_database():
             result TEXT,
             max_profit DOUBLE PRECISION,
             max_drawdown DOUBLE PRECISION,
-            close_time TIMESTAMP,
-            brain_confidence INTEGER,
-            market_regime TEXT,
-            compression_score INTEGER,
-            compression_status TEXT,
-            momentum_weight DOUBLE PRECISION,
-            flow_score INTEGER,
-            volume_acceleration DOUBLE PRECISION,
-            flow_rating TEXT,
-            risk_grade TEXT,
-            decision_summary TEXT,
-            ranking_score DOUBLE PRECISION,
-            quality_grade TEXT,
-            market_temperature TEXT
+            close_time TIMESTAMP
         )
         """)
+
+        # ================================================
+        # 🔄 DATABASE MIGRATION (v21.2.1)
+        # ================================================
+
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS brain_confidence INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_regime TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS compression_score INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS compression_status TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS momentum_weight DOUBLE PRECISION")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS flow_score INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume_acceleration DOUBLE PRECISION")
+
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS flow_rating TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS risk_grade TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_summary TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS ranking_score DOUBLE PRECISION")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS quality_grade TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_temperature TEXT")
 
         # Indexes for performance
         cur.execute("""
@@ -139,9 +145,9 @@ def init_database():
 
         conn.commit()
         print("🟢 PostgreSQL Connected")
-        print("🗄 AHAD AI DATABASE READY (v21.2)")
+        print("🔄 Database migration checked")
+        print("🗄 AHAD AI DATABASE READY (v21.2.1)")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
-        print("📊 New columns: ranking_score, quality_grade, market_temperature")
 
     except Exception as e:
         print(f"❌ Database Error: {e}")
@@ -151,10 +157,8 @@ def init_database():
             cur.close()
         if conn:
             conn.close()
-
-
-# ================================================
-# 💾 TRADE RECORDER (محسّن)
+            # ================================================
+# 💾 TRADE RECORDER
 # ================================================
 
 def save_trade(trade_data):
@@ -239,7 +243,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.2'),
+            trade_data.get('version', 'v21.2.1'),
             'OPEN',
             'PENDING',
             0.0,
@@ -276,8 +280,10 @@ def save_trade(trade_data):
             cur.close()
         if conn:
             conn.close()
-            # ================================================
-# 📈 TRADE TRACKING SYSTEM (محسّن مع Backoff)
+
+
+# ================================================
+# 📈 TRADE TRACKING SYSTEM
 # ================================================
 
 def get_open_trades():
@@ -366,10 +372,8 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             cur.close()
         if conn:
             conn.close()
-
-
-# ================================================
-# 📦 TRADE TRACKER CACHE (مع TTL)
+            # ================================================
+# 📦 TRADE TRACKER CACHE
 # ================================================
 
 _trade_tracker_cache = {}
@@ -398,7 +402,7 @@ def get_trade_tracker_candles(symbol, tf="15m", ttl=CACHE_TTL):
 def update_open_trades():
     """Monitor open trades with exponential backoff"""
     backoff = 60
-    max_backoff = 600  # 10 minutes
+    max_backoff = 600
     
     print("📈 Trade Tracker STARTED")
 
@@ -411,7 +415,7 @@ def update_open_trades():
                 backoff = min(backoff * 1.5, max_backoff)
                 continue
 
-            backoff = 60  # Reset backoff on success
+            backoff = 60
             print(f"📊 Checking {len(open_trades)} open trades...")
 
             for trade in open_trades:
@@ -504,7 +508,7 @@ def update_open_trades():
 
 
 # ================================================
-# 📊 PERFORMANCE ANALYTICS (محسّن)
+# 📊 PERFORMANCE ANALYTICS
 # ================================================
 
 def get_report_stats():
@@ -516,7 +520,6 @@ def get_report_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Main statistics
         cur.execute("""
         SELECT
             COUNT(*) AS total,
@@ -641,9 +644,7 @@ def get_report_stats():
             cur.close()
         if conn:
             conn.close()
-
-
-# ================================================
+            # ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
 # ================================================
 
@@ -651,7 +652,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.2 – Security & Performance Update ONLINE 🚀"
+    return "🐋 AHAD AI v21.2.1 – Database Migration Update ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -689,7 +690,9 @@ SECTORS = {
     "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI"],
     "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA"],
     "RWA": ["ONDO", "PENDLE", "ENA"]
-    }
+}
+
+
 # ================================================
 # ⬛ OKX FUTURES CRYPTO ONLY
 # ================================================
@@ -731,7 +734,7 @@ def get_symbols():
 
 
 # ================================================
-# 🐋 TOP FLOW SCANNER (محسّن مع LIMIT)
+# 🐋 TOP FLOW SCANNER
 # ================================================
 
 def top_flow_scanner(symbols):
@@ -826,7 +829,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.2 – Security & Performance Update CORE READY 🐋")
+print("🔥 AHAD AI v21.2.1 – Database Migration Update CORE READY 🐋")
 
 # ================================================
 # 📊 INDICATORS ENGINE
@@ -876,8 +879,7 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
     ema_fast = ema(closes, fast)
     ema_slow = ema(closes, slow)
     return ema_fast - ema_slow
-
-# ================================================
+    # ================================================
 # 🧠 SECTION 2: AI ENGINES
 # ================================================
 
@@ -1103,11 +1105,11 @@ def volatility_engine(candles):
 
 
 # ================================================
-# 📊 MARKET REGIME ENGINE (محسّن)
+# 📊 MARKET REGIME ENGINE
 # ================================================
 
 def market_regime(candles, compression_score):
-    """Classify market into TRENDING, RANGING, or COMPRESSION - Fixed v21.2"""
+    """Classify market into TRENDING, RANGING, or COMPRESSION"""
     try:
         if len(candles) < 150:
             return {
@@ -1350,7 +1352,7 @@ def ai_brain(candles):
 
 
 # ================================================
-# 🎯 SECTION 3: ANALYZE ENGINE (v21.2)
+# 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -1393,7 +1395,6 @@ def analyze(symbol, sector, debug=None):
         closes1d = [x["close"] for x in c1d]
 
         # ====== STEP 2: QUICK FILTERS ======
-        # Flow (سريع)
         money = smart_money(c15)
         flow = money["flow"]
         if flow < 0.8:
@@ -1402,7 +1403,6 @@ def analyze(symbol, sector, debug=None):
                 debug["flow"] = debug.get("flow", 0) + 1
             return None
 
-        # Brain (سريع)
         brain = ai_brain(c1h)
         if brain["direction"] == "WAIT":
             brain_penalty = 10
@@ -1416,7 +1416,6 @@ def analyze(symbol, sector, debug=None):
         direction = brain["direction"]
         direction_clean = direction.replace("🟢 ", "").replace("🔴 ", "")
 
-        # FOMO (سريع)
         safe, warning_text, fomo_reason = fomo_filter(c15, direction_clean)
         if not safe:
             reject_reason = f"FOMO: {fomo_reason}"
@@ -1424,7 +1423,6 @@ def analyze(symbol, sector, debug=None):
                 debug["fomo"] = debug.get("fomo", 0) + 1
             return None
 
-        # Higher Trend (سريع)
         e200_4h = ema(closes4h, 200)
         if direction_clean == "LONG":
             if closes4h[-1] < e200_4h:
@@ -1439,7 +1437,6 @@ def analyze(symbol, sector, debug=None):
                     debug["higher_trend"] = debug.get("higher_trend", 0) + 1
                 return None
 
-        # Late Entry (متوسط)
         move = atr(c15)
         ema20_15 = ema(closes15, 20)
         ema50_15 = ema(closes15, 50)
@@ -1523,7 +1520,6 @@ def analyze(symbol, sector, debug=None):
         macd_value = macd_simple(closes15)
         macd_score = 3 if macd_value > 0 else 0
 
-        # Trap Check
         if trap == "🪤 BULL TRAP" and direction_clean == "LONG":
             reject_reason = "Trap"
             if debug is not None:
@@ -1635,7 +1631,6 @@ def analyze(symbol, sector, debug=None):
         score -= brain_penalty
         score = round(max(0, min(100, score)))
 
-        # Penalties
         late_penalty = 0
         if direction_clean == "LONG":
             if rsi_15m >= 68:
@@ -1656,7 +1651,6 @@ def analyze(symbol, sector, debug=None):
                 if dump > 1.05:
                     score -= 15
 
-        # Heat Control
         if direction_clean == "LONG":
             if multi["4h"] > 70:
                 score -= 10
@@ -1672,7 +1666,6 @@ def analyze(symbol, sector, debug=None):
             if multi["15m"] < 25:
                 score -= 5
 
-        # Resistance/Support Filter
         if direction_clean == "LONG":
             distance_to_resistance = sr["near_resistance"] * price / 100
             if distance_to_resistance < move * 1.2:
@@ -1694,372 +1687,364 @@ def analyze(symbol, sector, debug=None):
             if debug is not None:
                 debug["score"] = debug.get("score", 0) + 1
             return None
+                # ====== STEP 7: ENTRY & TARGETS ======
+    entry_low = price * 0.995
+    entry_high = price * 1.005
 
-        # ====== STEP 7: ENTRY & TARGETS ======
-        entry_low = price * 0.995
-        entry_high = price * 1.005
+    if flow >= 3:
+        money_status = "🚀 HIGH WHALE FLOW"
+    elif flow >= 2:
+        money_status = "🐋 INSTITUTIONAL FLOW"
+    elif flow >= 1.2:
+        money_status = "💧 HEALTHY FLOW"
+    else:
+        money_status = "NORMAL"
 
-        # Money Status
-        if flow >= 3:
-            money_status = "🚀 HIGH WHALE FLOW"
-        elif flow >= 2:
-            money_status = "🐋 INSTITUTIONAL FLOW"
-        elif flow >= 1.2:
-            money_status = "💧 HEALTHY FLOW"
-        else:
-            money_status = "NORMAL"
+    if regime["regime"] == "TRENDING":
+        rr_multiplier = 1.8
+    elif regime["regime"] == "COMPRESSION":
+        rr_multiplier = 2.2
+    else:
+        rr_multiplier = 1.5
 
-        if regime["regime"] == "TRENDING":
-            rr_multiplier = 1.8
-        elif regime["regime"] == "COMPRESSION":
-            rr_multiplier = 2.2
-        else:
-            rr_multiplier = 1.5
+    if flow >= 2:
+        rr_multiplier += 0.3
+    if momentum_score >= 70:
+        rr_multiplier += 0.2
 
+    if direction_clean == "LONG":
+        base_multiplier = 1.5
         if flow >= 2:
-            rr_multiplier += 0.3
+            base_multiplier += 0.3
+        if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+            base_multiplier += 0.3
         if momentum_score >= 70:
-            rr_multiplier += 0.2
+            base_multiplier += 0.2
 
-        if direction_clean == "LONG":
-            base_multiplier = 1.5
-            if flow >= 2:
-                base_multiplier += 0.3
-            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-                base_multiplier += 0.3
-            if momentum_score >= 70:
-                base_multiplier += 0.2
+        sl = entry_low - move * base_multiplier
+        risk = entry_low - sl
 
-            sl = entry_low - move * base_multiplier
-            risk = entry_low - sl
+        tp1 = entry_low + risk * rr_multiplier
+        tp2 = entry_low + risk * (rr_multiplier * 2)
+        tp3 = entry_low + risk * (rr_multiplier * 3.3)
 
-            tp1 = entry_low + risk * rr_multiplier
-            tp2 = entry_low + risk * (rr_multiplier * 2)
-            tp3 = entry_low + risk * (rr_multiplier * 3.3)
+        if tp1 <= entry_high:
+            tp1 = entry_high + move * 0.8
+        if tp2 <= tp1:
+            tp2 = tp1 + move * 0.5
+        if tp3 <= tp2:
+            tp3 = tp2 + move * 0.5
 
-            if tp1 <= entry_high:
-                tp1 = entry_high + move * 0.8
-            if tp2 <= tp1:
-                tp2 = tp1 + move * 0.5
-            if tp3 <= tp2:
-                tp3 = tp2 + move * 0.5
+        rr = (tp1 - entry_low) / risk
 
-            rr = (tp1 - entry_low) / risk
-
-        else:
-            base_multiplier = 1.5
-            if flow >= 2:
-                base_multiplier += 0.3
-            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-                base_multiplier += 0.3
-            if momentum_score >= 70:
-                base_multiplier += 0.2
-
-            sl = entry_high + move * base_multiplier
-            risk = sl - entry_high
-
-            tp1 = entry_high - risk * rr_multiplier
-            tp2 = entry_high - risk * (rr_multiplier * 2)
-            tp3 = entry_high - risk * (rr_multiplier * 3.3)
-
-            if tp1 >= entry_low:
-                tp1 = entry_low - move * 0.8
-            if tp2 >= tp1:
-                tp2 = tp1 - move * 0.5
-            if tp3 >= tp2:
-                tp3 = tp2 - move * 0.5
-
-            rr = (entry_high - tp1) / risk
-                    # ====== STEP 8: VALIDATION ======
-        validation_errors = []
-
-        if direction_clean == "LONG":
-            if sl >= entry_low:
-                validation_errors.append("SL must be below Entry")
-            if tp1 <= entry_low:
-                validation_errors.append("TP1 must be above Entry")
-            if tp2 <= tp1:
-                validation_errors.append("TP2 must be above TP1")
-            if tp3 <= tp2:
-                validation_errors.append("TP3 must be above TP2")
-        else:
-            if sl <= entry_high:
-                validation_errors.append("SL must be above Entry")
-            if tp1 >= entry_high:
-                validation_errors.append("TP1 must be below Entry")
-            if tp2 >= tp1:
-                validation_errors.append("TP2 must be below TP1")
-            if tp3 >= tp2:
-                validation_errors.append("TP3 must be below TP2")
-
-        if rr <= 0:
-            validation_errors.append("RR must be positive")
-
-        if base in blocked_assets:
-            validation_errors.append("Blocked Asset")
-
-        if sector == "UNKNOWN":
-            validation_errors.append("Invalid Sector")
-
-        if entry_low <= 0 or entry_high <= 0:
-            validation_errors.append("Invalid Entry")
-
-        if sl <= 0:
-            validation_errors.append("Invalid SL")
-
-        if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
-            validation_errors.append("Invalid TP")
-
-        if rr < 1.8:
-            reject_reason = "Bad RR (Validation)"
-            if debug is not None:
-                debug["rr"] = debug.get("rr", 0) + 1
-            return None
-
-        if validation_errors:
-            reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
-            if debug is not None:
-                debug["validation"] = debug.get("validation", 0) + 1
-            return None
-
-        # ====== STEP 9: QUALITY & RANKING ======
-        brain_conf = brain["confidence"]
-
-        if score >= 95 and brain_conf >= 80 and rr >= 3.0 and momentum_score >= 85 and flow >= 2.0:
-            quality = "💎 ELITE SETUP"
-            quality_grade = "ELITE"
-        elif score >= 90 and brain_conf >= 70 and rr >= 2.5:
-            quality = "🔥 PREMIUM SETUP"
-            quality_grade = "PREMIUM"
-        elif score >= 80 and brain_conf >= 60:
-            quality = "✅ HIGH QUALITY"
-            quality_grade = "HIGH"
-        elif score >= 70:
-            quality = "⚡ GOOD SETUP"
-            quality_grade = "GOOD"
-        else:
-            quality = "👀 WATCHLIST"
-            quality_grade = "WATCHLIST"
-            reject_reason = "Watchlist Only"
-            if debug is not None:
-                debug["watchlist"] = debug.get("watchlist", 0) + 1
-            return None
-
-        if score >= 85:
-            confidence_level = "🔥 HIGH"
-        elif score >= 70:
-            confidence_level = "⚡ MEDIUM"
-        else:
-            confidence_level = "⏳ LOW"
-
-        # ✅ حساب ranking_score مرة واحدة فقط
-        ranking_score = (
-            score * 0.40 +
-            brain_conf * 0.25 +
-            rr * 10 +
-            max(flow, 0.5) * 8 +
-            momentum_score * 0.05
-        )
-
-        if direction_clean == "LONG":
-            if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
-                early_text = "🐋 EARLY ENTRY AREA"
-            else:
-                early_text = "⏳ WAIT FOR ENTRY"
-        else:
-            if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
-                early_text = "🐻 EARLY ENTRY AREA"
-            else:
-                early_text = "⏳ WAIT FOR ENTRY"
-
-        # Flow Rating
-        if flow >= 3.0:
-            flow_rating = "AAA"
-            flow_label = "🚀 EXTREME"
-        elif flow >= 2.0:
-            flow_rating = "AA"
-            flow_label = "🐋 HIGH"
-        elif flow >= 1.5:
-            flow_rating = "A"
-            flow_label = "💧 GOOD"
-        elif flow >= 1.2:
-            flow_rating = "BBB"
-            flow_label = "📊 MODERATE"
-        else:
-            flow_rating = "BB"
-            flow_label = "⚠️ LOW"
-
-        # Risk Grade
-        if rr >= 3.0 and brain["confidence"] >= 70 and score >= 85:
-            risk_grade = "🟢 LOW RISK"
-            risk_icon = "🟢"
-        elif rr >= 2.0 and brain["confidence"] >= 50 and score >= 70:
-            risk_grade = "🟡 MEDIUM RISK"
-            risk_icon = "🟡"
-        else:
-            risk_grade = "🔴 HIGH RISK"
-            risk_icon = "🔴"
-
-        # Market Temperature
-        temp_score = (flow * 20) + (brain_conf * 0.3) + (vol["score"] * 0.2)
-        if temp_score > 80:
-            market_temperature = "🔴 OVERHEATED"
-        elif temp_score > 60:
-            market_temperature = "🟠 HOT"
-        elif temp_score > 40:
-            market_temperature = "🟡 WARM"
-        else:
-            market_temperature = "🟢 COLD"
-
-        # Decision Summary
-        decision_reasons = []
-
-        if regime["regime"] in ["TRENDING", "COMPRESSION"]:
-            decision_reasons.append("✅ Strong Market Structure")
-        else:
-            decision_reasons.append("📊 Neutral Market Structure")
-
+    else:
+        base_multiplier = 1.5
+        if flow >= 2:
+            base_multiplier += 0.3
+        if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+            base_multiplier += 0.3
         if momentum_score >= 70:
-            decision_reasons.append("✅ Strong Momentum")
-        elif momentum_score >= 50:
-            decision_reasons.append("⚡ Moderate Momentum")
-        else:
-            decision_reasons.append("📉 Weak Momentum")
+            base_multiplier += 0.2
 
-        if flow >= 1.5:
-            decision_reasons.append("✅ Institutional Flow")
-        else:
-            decision_reasons.append("📊 Normal Flow")
+        sl = entry_high + move * base_multiplier
+        risk = sl - entry_high
 
-        if rr >= 2.5:
-            decision_reasons.append("✅ High Risk/Reward")
-        else:
-            decision_reasons.append("📊 Standard RR")
+        tp1 = entry_high - risk * rr_multiplier
+        tp2 = entry_high - risk * (rr_multiplier * 2)
+        tp3 = entry_high - risk * (rr_multiplier * 3.3)
 
-        if brain["confidence"] >= 60:
-            decision_reasons.append("✅ High Brain Confidence")
-        else:
-            decision_reasons.append("📊 Moderate Brain Confidence")
+        if tp1 >= entry_low:
+            tp1 = entry_low - move * 0.8
+        if tp2 >= tp1:
+            tp2 = tp1 - move * 0.5
+        if tp3 >= tp2:
+            tp3 = tp2 - move * 0.5
 
-        if vol["status"] in ["🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"]:
-            decision_reasons.append("✅ Compression Setup")
-        else:
-            decision_reasons.append("📊 Normal Volatility")
+        rr = (entry_high - tp1) / risk
 
-        if trap == "✅ NO TRAP":
-            decision_reasons.append("✅ No Trap Detected")
+    # ====== STEP 8: VALIDATION ======
+    validation_errors = []
 
-        if sector not in ["UNKNOWN", "RWA"]:
-            decision_reasons.append("✅ Strong Sector")
-        else:
-            decision_reasons.append("📊 Neutral Sector")
+    if direction_clean == "LONG":
+        if sl >= entry_low:
+            validation_errors.append("SL must be below Entry")
+        if tp1 <= entry_low:
+            validation_errors.append("TP1 must be above Entry")
+        if tp2 <= tp1:
+            validation_errors.append("TP2 must be above TP1")
+        if tp3 <= tp2:
+            validation_errors.append("TP3 must be above TP2")
+    else:
+        if sl <= entry_high:
+            validation_errors.append("SL must be above Entry")
+        if tp1 >= entry_high:
+            validation_errors.append("TP1 must be below Entry")
+        if tp2 >= tp1:
+            validation_errors.append("TP2 must be below TP1")
+        if tp3 >= tp2:
+            validation_errors.append("TP3 must be below TP2")
 
-        if late_score < 20:
-            decision_reasons.append("✅ Early Entry Zone")
-        elif late_score < 30:
-            decision_reasons.append("⚡ Moderate Entry Zone")
-        else:
-            decision_reasons.append("⏳ Late Entry Warning")
+    if rr <= 0:
+        validation_errors.append("RR must be positive")
 
-        if len(decision_reasons) == 0:
-            decision_reasons.append("⏳ Standard Setup")
+    if base in blocked_assets:
+        validation_errors.append("Blocked Asset")
 
-        decision_summary = "\n".join(decision_reasons[:10])
+    if sector == "UNKNOWN":
+        validation_errors.append("Invalid Sector")
 
-        # ====== STEP 10: TRADE DATA ======
-        trade_data = {
-            'symbol': symbol,
-            'side': direction_clean,
-            'signal_time': datetime.now(),
-            'entry': round(entry_low, 6),
-            'sl': round(sl, 6),
-            'tp1': round(tp1, 6),
-            'tp2': round(tp2, 6),
-            'tp3': round(tp3, 6),
-            'sector': sector,
-            'score': round(score),
-            'brain_long': brain['long_score'],
-            'brain_short': brain['short_score'],
-            'flow': round(flow, 2),
-            'momentum': momentum_score,
-            'rr': round(rr, 2),
-            'confidence': confidence_level,
-            'late_score': late_score,
-            'version': 'v21.2',
-            'brain_confidence': brain['confidence'],
-            'market_regime': regime['regime'],
-            'compression_score': vol['score'],
-            'compression_status': vol['status'],
-            'momentum_weight': round(momentum_weight, 2),
-            'flow_score': flow_score,
-            'volume_acceleration': round(volume_acceleration, 2),
-            'flow_rating': flow_rating,
-            'risk_grade': risk_grade,
-            'decision_summary': decision_summary,
-            'ranking_score': round(ranking_score, 2),
-            'quality_grade': quality_grade,
-            'market_temperature': market_temperature
-        }
+    if entry_low <= 0 or entry_high <= 0:
+        validation_errors.append("Invalid Entry")
 
-        print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)} | Regime: {regime['regime']}")
+    if sl <= 0:
+        validation_errors.append("Invalid SL")
 
-        return {
-            "coin": symbol,
-            "sector": sector,
-            "direction": brain["direction"],
-            "score": round(score),
-            "quality": quality,
-            "confidence_level": confidence_level,
-            "money_status": money_status,
-            "early_text": early_text,
-            "entry_low": round(entry_low, 6),
-            "entry_high": round(entry_high, 6),
-            "sl": round(sl, 6),
-            "tp1": round(tp1, 6),
-            "tp2": round(tp2, 6),
-            "tp3": round(tp3, 6),
-            "liquidity": money["flow"],
-            "pre_pump": pre["status"],
-            "multi": multi,
-            "trap": trap,
-            "warning": warning_text,
-            "volatility": vol,
-            "regime": regime,
-            "reject_reason": reject_reason,
-            "debug_reason": [],
-            "momentum_score": momentum_score,
-            "momentum_status": momentum_status,
-            "rr": round(rr, 2),
-            "brain_long_score": brain["long_score"],
-            "brain_short_score": brain["short_score"],
-            "late_score": late_score,
-            "brain_confidence": brain["confidence"],
-            "flow_rating": flow_rating,
-            "flow_label": flow_label,
-            "risk_grade": risk_grade,
-            "risk_icon": risk_icon,
-            "decision_summary": decision_summary,
-            "ranking_score": round(ranking_score, 2),
-            "quality_grade": quality_grade,
-            "market_temperature": market_temperature,
-            "trade_data": trade_data
-        }
+    if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
+        validation_errors.append("Invalid TP")
 
-    except Exception as e:
-        print("ANALYZE ERROR:", e)
+    if rr < 1.8:
+        reject_reason = "Bad RR (Validation)"
+        if debug is not None:
+            debug["rr"] = debug.get("rr", 0) + 1
         return None
 
+    if validation_errors:
+        reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
+        if debug is not None:
+            debug["validation"] = debug.get("validation", 0) + 1
+        return None
 
+    # ====== STEP 9: QUALITY & RANKING ======
+    brain_conf = brain["confidence"]
+
+    if score >= 95 and brain_conf >= 80 and rr >= 3.0 and momentum_score >= 85 and flow >= 2.0:
+        quality = "💎 ELITE SETUP"
+        quality_grade = "ELITE"
+    elif score >= 90 and brain_conf >= 70 and rr >= 2.5:
+        quality = "🔥 PREMIUM SETUP"
+        quality_grade = "PREMIUM"
+    elif score >= 80 and brain_conf >= 60:
+        quality = "✅ HIGH QUALITY"
+        quality_grade = "HIGH"
+    elif score >= 70:
+        quality = "⚡ GOOD SETUP"
+        quality_grade = "GOOD"
+    else:
+        quality = "👀 WATCHLIST"
+        quality_grade = "WATCHLIST"
+        reject_reason = "Watchlist Only"
+        if debug is not None:
+            debug["watchlist"] = debug.get("watchlist", 0) + 1
+        return None
+
+    if score >= 85:
+        confidence_level = "🔥 HIGH"
+    elif score >= 70:
+        confidence_level = "⚡ MEDIUM"
+    else:
+        confidence_level = "⏳ LOW"
+
+    ranking_score = (
+        score * 0.40 +
+        brain_conf * 0.25 +
+        rr * 10 +
+        max(flow, 0.5) * 8 +
+        momentum_score * 0.05
+    )
+
+    if direction_clean == "LONG":
+        if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
+            early_text = "🐋 EARLY ENTRY AREA"
+        else:
+            early_text = "⏳ WAIT FOR ENTRY"
+    else:
+        if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
+            early_text = "🐻 EARLY ENTRY AREA"
+        else:
+            early_text = "⏳ WAIT FOR ENTRY"
+
+    if flow >= 3.0:
+        flow_rating = "AAA"
+        flow_label = "🚀 EXTREME"
+    elif flow >= 2.0:
+        flow_rating = "AA"
+        flow_label = "🐋 HIGH"
+    elif flow >= 1.5:
+        flow_rating = "A"
+        flow_label = "💧 GOOD"
+    elif flow >= 1.2:
+        flow_rating = "BBB"
+        flow_label = "📊 MODERATE"
+    else:
+        flow_rating = "BB"
+        flow_label = "⚠️ LOW"
+
+    if rr >= 3.0 and brain["confidence"] >= 70 and score >= 85:
+        risk_grade = "🟢 LOW RISK"
+        risk_icon = "🟢"
+    elif rr >= 2.0 and brain["confidence"] >= 50 and score >= 70:
+        risk_grade = "🟡 MEDIUM RISK"
+        risk_icon = "🟡"
+    else:
+        risk_grade = "🔴 HIGH RISK"
+        risk_icon = "🔴"
+
+    temp_score = (flow * 20) + (brain_conf * 0.3) + (vol["score"] * 0.2)
+    if temp_score > 80:
+        market_temperature = "🔴 OVERHEATED"
+    elif temp_score > 60:
+        market_temperature = "🟠 HOT"
+    elif temp_score > 40:
+        market_temperature = "🟡 WARM"
+    else:
+        market_temperature = "🟢 COLD"
+
+    decision_reasons = []
+
+    if regime["regime"] in ["TRENDING", "COMPRESSION"]:
+        decision_reasons.append("✅ Strong Market Structure")
+    else:
+        decision_reasons.append("📊 Neutral Market Structure")
+
+    if momentum_score >= 70:
+        decision_reasons.append("✅ Strong Momentum")
+    elif momentum_score >= 50:
+        decision_reasons.append("⚡ Moderate Momentum")
+    else:
+        decision_reasons.append("📉 Weak Momentum")
+
+    if flow >= 1.5:
+        decision_reasons.append("✅ Institutional Flow")
+    else:
+        decision_reasons.append("📊 Normal Flow")
+
+    if rr >= 2.5:
+        decision_reasons.append("✅ High Risk/Reward")
+    else:
+        decision_reasons.append("📊 Standard RR")
+
+    if brain["confidence"] >= 60:
+        decision_reasons.append("✅ High Brain Confidence")
+    else:
+        decision_reasons.append("📊 Moderate Brain Confidence")
+
+    if vol["status"] in ["🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"]:
+        decision_reasons.append("✅ Compression Setup")
+    else:
+        decision_reasons.append("📊 Normal Volatility")
+
+    if trap == "✅ NO TRAP":
+        decision_reasons.append("✅ No Trap Detected")
+
+    if sector not in ["UNKNOWN", "RWA"]:
+        decision_reasons.append("✅ Strong Sector")
+    else:
+        decision_reasons.append("📊 Neutral Sector")
+
+    if late_score < 20:
+        decision_reasons.append("✅ Early Entry Zone")
+    elif late_score < 30:
+        decision_reasons.append("⚡ Moderate Entry Zone")
+    else:
+        decision_reasons.append("⏳ Late Entry Warning")
+
+    if len(decision_reasons) == 0:
+        decision_reasons.append("⏳ Standard Setup")
+
+    decision_summary = "\n".join(decision_reasons[:10])
+
+    # ====== STEP 10: TRADE DATA ======
+    trade_data = {
+        'symbol': symbol,
+        'side': direction_clean,
+        'signal_time': datetime.now(),
+        'entry': round(entry_low, 6),
+        'sl': round(sl, 6),
+        'tp1': round(tp1, 6),
+        'tp2': round(tp2, 6),
+        'tp3': round(tp3, 6),
+        'sector': sector,
+        'score': round(score),
+        'brain_long': brain['long_score'],
+        'brain_short': brain['short_score'],
+        'flow': round(flow, 2),
+        'momentum': momentum_score,
+        'rr': round(rr, 2),
+        'confidence': confidence_level,
+        'late_score': late_score,
+        'version': 'v21.2.1',
+        'brain_confidence': brain['confidence'],
+        'market_regime': regime['regime'],
+        'compression_score': vol['score'],
+        'compression_status': vol['status'],
+        'momentum_weight': round(momentum_weight, 2),
+        'flow_score': flow_score,
+        'volume_acceleration': round(volume_acceleration, 2),
+        'flow_rating': flow_rating,
+        'risk_grade': risk_grade,
+        'decision_summary': decision_summary,
+        'ranking_score': round(ranking_score, 2),
+        'quality_grade': quality_grade,
+        'market_temperature': market_temperature
+    }
+
+    print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)} | Regime: {regime['regime']}")
+
+    return {
+        "coin": symbol,
+        "sector": sector,
+        "direction": brain["direction"],
+        "score": round(score),
+        "quality": quality,
+        "confidence_level": confidence_level,
+        "money_status": money_status,
+        "early_text": early_text,
+        "entry_low": round(entry_low, 6),
+        "entry_high": round(entry_high, 6),
+        "sl": round(sl, 6),
+        "tp1": round(tp1, 6),
+        "tp2": round(tp2, 6),
+        "tp3": round(tp3, 6),
+        "liquidity": money["flow"],
+        "pre_pump": pre["status"],
+        "multi": multi,
+        "trap": trap,
+        "warning": warning_text,
+        "volatility": vol,
+        "regime": regime,
+        "reject_reason": reject_reason,
+        "debug_reason": [],
+        "momentum_score": momentum_score,
+        "momentum_status": momentum_status,
+        "rr": round(rr, 2),
+        "brain_long_score": brain["long_score"],
+        "brain_short_score": brain["short_score"],
+        "late_score": late_score,
+        "brain_confidence": brain["confidence"],
+        "flow_rating": flow_rating,
+        "flow_label": flow_label,
+        "risk_grade": risk_grade,
+        "risk_icon": risk_icon,
+        "decision_summary": decision_summary,
+        "ranking_score": round(ranking_score, 2),
+        "quality_grade": quality_grade,
+        "market_temperature": market_temperature,
+        "trade_data": trade_data
+    }
+
+except Exception as e:
+    print("ANALYZE ERROR:", e)
+    return None
 # ================================================
-# 🤖 SECTION 4: TELEGRAM SCANNER (v21.2)
+# 🤖 SECTION 4: TELEGRAM SCANNER
 # ================================================
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.2 – Security & Performance Update 🚀
+🐋 AHAD AI v21.2.1 – Database Migration Update 🚀
 
-🗄 PostgreSQL Database ACTIVE (v21.2)
+🗄 PostgreSQL Database ACTIVE (v21.2.1)
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
@@ -2094,7 +2079,7 @@ def start(message):
 💎 Professional Quality Engine v2.0 ACTIVE
 🏆 Professional Ranking Engine ACTIVE (Enhanced)
 📦 Caching System ACTIVE (With TTL)
-🐞 Security & Performance Update ACTIVE
+🐞 Database Migration Update ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
 
@@ -2111,7 +2096,7 @@ Commands:
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, """
-🐋 AHAD AI v21.2 – Security & Performance Update SCANNING...
+🐋 AHAD AI v21.2.1 – Database Migration Update SCANNING...
 
 🔍 Checking Market Flow (MAX: 200 coins)
 🏦 Finding Hot Sector (Ranked)
@@ -2135,17 +2120,16 @@ def scan(message):
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
 🔄 Dual Direction Engine ACTIVE
-🗄 PostgreSQL Production Ready (v21.2)
+🗄 PostgreSQL Production Ready (v21.2.1)
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE (With TTL)
-🐞 Security & Performance Update ACTIVE
+🐞 Database Migration Update ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
 
 Please wait ⏳
 """)
 
-    # ====== CLEAR CACHE BEFORE SCAN ======
     clear_expired_cache()
 
     debug = {}
@@ -2176,7 +2160,6 @@ Please wait ⏳
 
     bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
-    # ====== COLLECT MARKET HEALTH DATA ======
     market_regimes = {}
     market_flows = []
     market_brain_scores = []
@@ -2323,7 +2306,7 @@ Please wait ⏳
                 )
 
         time.sleep(0.03)
-            # ====== CALCULATE SECTOR SUMMARY ======
+
     sector_summary = []
     for sector, data in sector_data.items():
         if data["coins"] > 0:
@@ -2337,7 +2320,6 @@ Please wait ⏳
             })
     sector_summary.sort(key=lambda x: x["avg_flow"], reverse=True)
 
-    # ====== CALCULATE AVERAGE METRICS ======
     all_results = long_results + short_results
     
     if market_flows:
@@ -2365,7 +2347,6 @@ Please wait ⏳
     debug["avg_rr"] = avg_rr
     debug["avg_momentum"] = avg_momentum
 
-    # ====== MARKET HEALTH REPORT ======
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
@@ -2421,7 +2402,6 @@ Please wait ⏳
             "لحساب مؤشرات صحة السوق هذا الفحص."
         )
 
-    # ====== SECTOR SUMMARY ======
     if sector_summary:
         sector_msg = "🏦 SECTOR SUMMARY\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
@@ -2434,7 +2414,6 @@ Please wait ⏳
         
         bot.send_message(message.chat.id, sector_msg)
 
-    # ====== REGIME DISTRIBUTION ======
     if debug.get("regimes"):
         debug["regime_distribution"] = "\n".join(
             f"{k}: {v}"
@@ -2447,7 +2426,6 @@ Please wait ⏳
     else:
         debug["regime_distribution"] = "N/A"
 
-    # ====== COMPRESSION DISTRIBUTION ======
     if debug.get("compressions"):
         debug["compression_distribution"] = "\n".join(
             f"{k}: {v}"
@@ -2460,7 +2438,6 @@ Please wait ⏳
     else:
         debug["compression_distribution"] = "N/A"
 
-    # ====== TOP REJECT REASONS ======
     if debug.get("reject_reasons"):
         top_rejects_list = sorted(
             debug["reject_reasons"].items(),
@@ -2476,7 +2453,6 @@ Please wait ⏳
     else:
         top_rejects = "N/A"
 
-    # ====== SCAN EFFICIENCY ======
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
     
@@ -2488,7 +2464,6 @@ Please wait ⏳
     debug["cache_hits"] = cache_hits
     debug["cache_saved_pct"] = cache_saved_pct
 
-    # ====== SCAN PERFORMANCE REPORT ======
     if coin_times:
         avg_time = round(sum(t[1] for t in coin_times) / len(coin_times), 2)
         slowest = max(coin_times, key=lambda x: x[1])
@@ -2500,7 +2475,7 @@ Please wait ⏳
     checked_count = debug.get('checked', 0)
 
     debug_msg = f"""
-🐞 FULL DEBUG REPORT (v21.2)
+🐞 FULL DEBUG REPORT (v21.2.1)
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2580,32 +2555,23 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 """
     bot.send_message(message.chat.id, debug_msg)
 
-    # ==========================================================
-    # 🏆 PROFESSIONAL SIGNAL RANKING
-    # ==========================================================
-
     def ranking_score(signal):
-        """Professional Ranking Engine - يستخدم القيمة الجاهزة من analyze()"""
         return signal.get('ranking_score', 0)
 
-    # ترتيب جميع إشارات LONG
     best_longs = sorted(
         long_results,
         key=ranking_score,
         reverse=True
     )[:2]
 
-    # ترتيب جميع إشارات SHORT
     best_shorts = sorted(
         short_results,
         key=ranking_score,
         reverse=True
     )[:1]
 
-    # دمج النتائج
     results = best_longs + best_shorts
 
-    # إضافة ترتيب لكل إشارة
     for rank, signal in enumerate(results, start=1):
         signal["rank"] = rank
 
@@ -2663,7 +2629,7 @@ Temperature : {s.get('market_temperature', 'N/A')}
 """
 
         msg = f"""
-🚨 AHAD AI v21.2 – Security & Performance Update 🐋
+🚨 AHAD AI v21.2.1 – Database Migration Update 🐋
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -2726,7 +2692,7 @@ def report_command(message):
         stats = get_report_stats()
 
         report = f"""
-📊 AHAD AI PERFORMANCE REPORT (v21.2)
+📊 AHAD AI PERFORMANCE REPORT (v21.2.1)
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📂 Total Trades   : {stats['total']}
@@ -2775,9 +2741,9 @@ Avg Profit    : {stats['short_avg_profit']}%
 Avg DD        : {stats['short_avg_dd']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.2
+🤖 AHAD AI v21.2.1
 🗄 PostgreSQL | 🔒 SSL
-🔐 Security & Performance Update
+🔄 Database Migration Update
 """
         bot.reply_to(message, report)
 
@@ -2917,7 +2883,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.2 – Security & Performance Update ONLINE 🐋")
+print("🔥 AHAD AI v21.2.1 – Database Migration Update ONLINE 🐋")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -2930,7 +2896,7 @@ print("🗑️ Cache TTL-based (not full clear)")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.2)")
+print("🗄️ PostgreSQL Database ACTIVE (v21.2.1)")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -2942,7 +2908,7 @@ print("🔥 Volatility Compression Integration ACTIVE")
 print("🚀 Dynamic Momentum Weight ACTIVE")
 print("🎯 Dynamic RR Engine ACTIVE")
 print("🔄 Dual Direction Engine ACTIVE")
-print("📊 Trade Data Expansion ACTIVE (10 New Fields)")
+print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
 print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
 print("💎 Professional Quality Engine v2.0 ACTIVE")
 print("📊 Institutional Flow Rating ACTIVE")
@@ -2956,12 +2922,12 @@ print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
 print("🏷️ Quality Grade System ACTIVE")
-print("🔐 Security & Performance Update ACTIVE")
+print("🔄 Database Migration Update ACTIVE")
 print("⚡ Scan Performance Report ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 v21.2 – Security & Performance Update")
+print("🚀 v21.2.1 – Database Migration Update")
 
 while True:
     time.sleep(60)

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2.3 – UI & Monitoring Improvements
+# 🚀 AHAD AI v21.2.4 – Final Production Release
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.2.3"
+VERSION = "v21.2.4"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -106,7 +106,7 @@ def init_database():
         """)
 
         # ================================================
-        # 🔄 DATABASE MIGRATION (v21.2.3)
+        # 🔄 DATABASE MIGRATION (v21.2.4)
         # ================================================
 
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS brain_confidence INTEGER")
@@ -184,6 +184,13 @@ def get_total_trades():
             cur.close()
         if conn:
             conn.close()
+
+
+def format_price(value):
+    """Format price consistently with 6 decimal places"""
+    if value is None:
+        return "N/A"
+    return f"{value:.6f}"
 
 
 # ================================================
@@ -684,7 +691,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return f"🐋 AHAD AI {VERSION} – UI & Monitoring Improvements ONLINE 🚀"
+    return f"🐋 AHAD AI {VERSION} – Final Production Release ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -861,7 +868,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print(f"🔥 AHAD AI {VERSION} – UI & Monitoring Improvements CORE READY 🐋")
+print(f"🔥 AHAD AI {VERSION} – Final Production Release CORE READY 🐋")
 
 
 # ================================================
@@ -1408,7 +1415,6 @@ def analyze(symbol, sector, debug=None):
 
         base = symbol.split("-")[0]
         if base in blocked_assets:
-            reject_reason = "Blocked Asset"
             return None
 
         # ====== STEP 1: GET CANDLES ======
@@ -1421,6 +1427,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Candles"
             if debug is not None:
                 debug["candles"] = debug.get("candles", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         price = c15[-1]["close"]
@@ -1436,6 +1444,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Low Flow"
             if debug is not None:
                 debug["flow"] = debug.get("flow", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         brain = ai_brain(c1h)
@@ -1444,6 +1454,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Brain"
             if debug is not None:
                 debug["brain"] = debug.get("brain", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
         else:
             brain_penalty = 0
@@ -1456,6 +1468,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = f"FOMO: {fomo_reason}"
             if debug is not None:
                 debug["fomo"] = debug.get("fomo", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         e200_4h = ema(closes4h, 200)
@@ -1464,12 +1478,16 @@ def analyze(symbol, sector, debug=None):
                 reject_reason = "Higher Trend Down"
                 if debug is not None:
                     debug["higher_trend"] = debug.get("higher_trend", 0) + 1
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
                 return None
         else:
             if closes4h[-1] > e200_4h:
                 reject_reason = "Higher Trend Up"
                 if debug is not None:
                     debug["higher_trend"] = debug.get("higher_trend", 0) + 1
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
                 return None
 
         move = atr(c15)
@@ -1508,11 +1526,16 @@ def analyze(symbol, sector, debug=None):
             if last3_loss > 0.06:
                 late_score += 15
 
+        # Ensure late_score is non-negative
+        late_score = max(0, late_score)
+
         if late_score >= 35:
             reject_reason = "Late Entry"
             if debug is not None:
                 debug["late_entry"] = debug.get("late_entry", 0) + 1
                 debug["late_score"] = late_score
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
         else:
             if debug is not None:
@@ -1559,12 +1582,16 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Trap"
             if debug is not None:
                 debug["trap"] = debug.get("trap", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
             reject_reason = "Trap"
             if debug is not None:
                 debug["trap"] = debug.get("trap", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         # ====== STEP 5: MOMENTUM ======
@@ -1707,6 +1734,8 @@ def analyze(symbol, sector, debug=None):
                 reject_reason = "Too Close Resistance"
                 if debug is not None:
                     debug["resistance"] = debug.get("resistance", 0) + 1
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
                 return None
         else:
             distance_to_support = sr["near_support"] * price / 100
@@ -1714,6 +1743,8 @@ def analyze(symbol, sector, debug=None):
                 reject_reason = "Too Close Support"
                 if debug is not None:
                     debug["resistance"] = debug.get("resistance", 0) + 1
+                    debug.setdefault("reject_reasons", {})
+                    debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
                 return None
 
         MIN_SCORE = 68
@@ -1721,6 +1752,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = f"Low Score ({score})"
             if debug is not None:
                 debug["score"] = debug.get("score", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         # ====== STEP 7: ENTRY & TARGETS ======
@@ -1842,12 +1875,16 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Bad RR (Validation)"
             if debug is not None:
                 debug["rr"] = debug.get("rr", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         if validation_errors:
             reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
             if debug is not None:
                 debug["validation"] = debug.get("validation", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         # ====== STEP 9: QUALITY & RANKING ======
@@ -1871,6 +1908,8 @@ def analyze(symbol, sector, debug=None):
             reject_reason = "Watchlist Only"
             if debug is not None:
                 debug["watchlist"] = debug.get("watchlist", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
         if score >= 85:
@@ -1935,7 +1974,7 @@ def analyze(symbol, sector, debug=None):
         else:
             market_temperature = "🟢 COLD"
 
-        # ====== WHY THIS SIGNAL - GROUPED (v21.2.3) ======
+        # ====== WHY THIS SIGNAL - GROUPED ======
         decision_reasons_raw = []
 
         if regime["regime"] in ["TRENDING", "COMPRESSION"]:
@@ -2044,7 +2083,11 @@ def analyze(symbol, sector, debug=None):
             'market_temperature': market_temperature
         }
 
-        print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)} | Regime: {regime['regime']}")
+        print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)}")
+
+        # Increment passed counter
+        if debug is not None:
+            debug["passed"] = debug.get("passed", 0) + 1
 
         return {
             "coin": symbol,
@@ -2089,7 +2132,7 @@ def analyze(symbol, sector, debug=None):
         }
 
     except Exception as e:
-        print("ANALYZE ERROR:", e)
+        print(f"❌ ANALYZE ERROR: {e}")
         return None
 
 # ================================================
@@ -2097,7 +2140,7 @@ def analyze(symbol, sector, debug=None):
 # ================================================
 
 # ================================================
-# 📋 FOOTER (v21.2.3)
+# 📋 FOOTER (v21.2.4)
 # ================================================
 
 FOOTER = f"""
@@ -2113,7 +2156,7 @@ FOOTER = f"""
 def start(message):
     total_trades = get_total_trades()
     bot.reply_to(message, f"""
-🐋 AHAD AI {VERSION} – UI & Monitoring Improvements 🚀
+🐋 AHAD AI {VERSION} – Final Production Release 🚀
 📅 Build: {BUILD_DATE}
 📈 Recorded Trades : {total_trades}
 
@@ -2151,11 +2194,13 @@ def start(message):
 💎 Quality Engine v2.0 ACTIVE
 🏷️ Quality Grade System ACTIVE
 📦 Caching System ACTIVE (With TTL)
-🐞 UI & Monitoring Improvements ACTIVE
+🐞 Final Production Release ACTIVE
 🌡️ Market Temperature ACTIVE
 📋 Enhanced Signal Layout ACTIVE
 📊 Grouped Decision Summary ACTIVE
 ⏱ Scan Duration Tracking ACTIVE
+🔢 Scan History Counter ACTIVE
+🏷️ Market Health Score ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2171,7 +2216,7 @@ Commands:
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, f"""
-🐋 AHAD AI {VERSION} – UI & Monitoring Improvements SCANNING...
+🐋 AHAD AI {VERSION} – Final Production Release SCANNING...
 
 📅 Build: {BUILD_DATE}
 🔍 Checking Market Flow (MAX: 200 coins)
@@ -2199,7 +2244,7 @@ def scan(message):
 🗄 PostgreSQL Production Ready ({VERSION})
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE (With TTL)
-🐞 UI & Monitoring Improvements ACTIVE
+🐞 Final Production Release ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
 📋 Enhanced Signal Layout ACTIVE
@@ -2246,11 +2291,11 @@ Please wait ⏳
     market_compression_status = []
 
     scan_start_time = time.time()
+    scan_start_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     api_calls = 0
     cache_hits = 0
     coin_times = []
 
-    # Calculate market universe
     market_universe = len(all_symbols)
     flow_candidates_count = flow_candidates
     analyzed_count = len(symbols)
@@ -2314,7 +2359,7 @@ Please wait ⏳
                     )
                 ):
                     long_results.append(result)
-                    print(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
+                    print(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
@@ -2332,10 +2377,7 @@ Please wait ⏳
                         f"{result['coin']} | "
                         f"Score={result['score']} | "
                         f"Flow={result['liquidity']} | "
-                        f"PrePump={result['pre_pump']} | "
-                        f"Reason={debug['reject_reason']} | "
-                        f"Brain={result['direction']} | "
-                        f"LateScore={result.get('late_score', 0)}"
+                        f"Reason={debug['reject_reason']}"
                     )
 
             elif result["direction"] == "🔴 SHORT":
@@ -2347,7 +2389,7 @@ Please wait ⏳
                     )
                 ):
                     short_results.append(result)
-                    print(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']} | Regime: {result['regime']['regime']}")
+                    print(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
@@ -2365,10 +2407,7 @@ Please wait ⏳
                         f"{result['coin']} | "
                         f"Score={result['score']} | "
                         f"Flow={result['liquidity']} | "
-                        f"PrePump={result['pre_pump']} | "
-                        f"Reason={debug['reject_reason']} | "
-                        f"Brain={result['direction']} | "
-                        f"LateScore={result.get('late_score', 0)}"
+                        f"Reason={debug['reject_reason']}"
                     )
 
             else:
@@ -2418,7 +2457,7 @@ Please wait ⏳
     else:
         avg_brain = 0
 
-    # ====== TASK 3: HIDE EMPTY METRICS ======
+    # ====== HIDE EMPTY METRICS ======
     has_signals = len(all_results) > 0
     
     if has_signals:
@@ -2454,7 +2493,7 @@ N/A — No signals passed the final filters.
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
-    # ====== TASK 1: UNIFY MARKET HEALTH LANGUAGE ======
+    # ====== MARKET HEALTH REPORT ======
     if total_checked > 0 and has_health_data:
         bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
         bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
@@ -2483,9 +2522,53 @@ N/A — No signals passed the final filters.
             market_temp = "🟡 WARM"
         else:
             market_temp = "🟢 COLD"
+
+        # ====== MARKET HEALTH SCORE ======
+        market_health_score = 0
+        if bull_pct >= 60:
+            market_health_score += 40
+        elif bull_pct >= 40:
+            market_health_score += 30
+        elif bull_pct >= 20:
+            market_health_score += 20
+        else:
+            market_health_score += 10
+        
+        if avg_flow >= 2.0:
+            market_health_score += 30
+        elif avg_flow >= 1.5:
+            market_health_score += 20
+        elif avg_flow >= 1.0:
+            market_health_score += 10
+        else:
+            market_health_score += 5
+        
+        if avg_brain >= 70:
+            market_health_score += 20
+        elif avg_brain >= 50:
+            market_health_score += 15
+        elif avg_brain >= 30:
+            market_health_score += 10
+        else:
+            market_health_score += 5
+        
+        if compression_high_pct >= 30:
+            market_health_score += 10
+        elif compression_high_pct >= 15:
+            market_health_score += 5
+        
+        market_health_score = min(100, market_health_score)
+        
+        if market_health_score >= 70:
+            health_icon = "🟢"
+        elif market_health_score >= 40:
+            health_icon = "🟡"
+        else:
+            health_icon = "🔴"
         
         health_report = f"""
 🐘 MARKET HEALTH REPORT
+(基于 {total_checked} 分析币种)
 
 📈 Bull        : {bull_pct}%
 📉 Bear        : {bear_pct}%
@@ -2497,6 +2580,8 @@ N/A — No signals passed the final filters.
 🧠 Average Brain   : {avg_brain}
 🏆 Market Quality  : {market_quality}
 🌡️ Market Temp     : {market_temp}
+
+{health_icon} Market Health Score : {market_health_score}/100
 """
         bot.send_message(message.chat.id, health_report)
         
@@ -2514,6 +2599,16 @@ N/A — No signals passed the final filters.
     if sector_summary:
         sector_msg = "🏦 SECTOR SUMMARY\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
+        
+        # ====== SECTOR LEADER SUMMARY ======
+        strongest = sector_summary[0]
+        weakest = sector_summary[-1] if len(sector_summary) > 1 else None
+        
+        sector_msg += f"🏆 Strongest Sector : {strongest['sector']} ({strongest['avg_flow']}X)\n"
+        if weakest:
+            sector_msg += f"📉 Weakest Sector   : {weakest['sector']} ({weakest['avg_flow']}X)\n\n"
+        
+        sector_msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
         for idx, sector_data in enumerate(sector_summary[:6]):
             sector_msg += f"{medals[idx]} {sector_data['sector']}\n"
@@ -2547,8 +2642,8 @@ N/A — No signals passed the final filters.
     else:
         debug["compression_distribution"] = "N/A"
 
-    # ====== TASK 6: FIXED SORTED REJECT REASONS ======
-    if debug.get("reject_reasons"):
+    # ====== FIXED SORTED REJECT REASONS ======
+    if debug.get("reject_reasons") and len(debug["reject_reasons"]) > 0:
         all_rejects = sorted(
             debug["reject_reasons"].items(),
             key=lambda x: x[1],
@@ -2567,11 +2662,17 @@ N/A — No signals passed the final filters.
         total_rejections = sum(debug["reject_reasons"].values())
         top_rejects = f"Total Rejections: {total_rejections}\n\n{top_rejects}"
         
+        # ====== MAIN REJECT REASON ======
+        main_reject = all_rejects[0]
+        main_reject_display = f"{main_reject[0]} ({main_reject[1]})"
+        
     else:
         top_rejects = "N/A — No rejection data available."
+        main_reject_display = "N/A"
 
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
+    scan_end_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     
     total_calls = api_calls + cache_hits
     cache_saved_pct = round((cache_hits / total_calls) * 100, 1) if total_calls > 0 else 0
@@ -2581,34 +2682,73 @@ N/A — No signals passed the final filters.
     debug["cache_hits"] = cache_hits
     debug["cache_saved_pct"] = cache_saved_pct
 
+    # ====== SCAN PERFORMANCE ======
     if coin_times:
         avg_time = round(sum(t[1] for t in coin_times) / len(coin_times), 2)
         slowest = max(coin_times, key=lambda x: x[1])
         fastest = min(coin_times, key=lambda x: x[1])
-        debug["avg_analyze_time"] = avg_time
-        debug["slowest_coin"] = f"{slowest[0]} ({slowest[1]}ms)"
-        debug["fastest_coin"] = f"{fastest[0]} ({fastest[1]}ms)"
+        performance_display = f"""
+⏱ Total Scan Time   : {scan_duration}s
+📊 Average Analyze   : {avg_time}ms
+🚀 Fastest Coin      : {fastest[0]} ({fastest[1]}ms)
+🐢 Slowest Coin      : {slowest[0]} ({slowest[1]}ms)
+"""
+    else:
+        performance_display = "⏱ No performance data available."
+
+    # ====== CACHE STATUS ======
+    if cache_hits == 0 and api_calls > 0:
+        cache_display = "🧊 Cache Status : Cold Start (First Scan)"
+    else:
+        cache_display = f"""
+API Calls       : {api_calls}
+Cache Hits      : {cache_hits}
+Cache Saved     : {cache_saved_pct}%
+Cache TTL       : {CACHE_TTL}s
+"""
+
+    # ====== SCAN SUMMARY ======
+    total_analyzed = debug.get('checked', 0)
+    total_passed = debug.get('passed', 0)
+    total_rejected = total_analyzed - total_passed
+    
+    decision_summary_display = f"""
+📊 SCAN SUMMARY
+Coins Analyzed  : {total_analyzed}
+✅ Passed        : {total_passed}
+❌ Rejected      : {total_rejected}
+🎯 Main Reject   : {main_reject_display}
+"""
 
     checked_count = debug.get('checked', 0)
     total_trades = get_total_trades()
 
-    # ====== TASK 5: STANDARDIZED DEBUG REPORT ======
+    # ====== STANDARDIZED DEBUG REPORT ======
     debug_msg = f"""
 🐞 FULL DEBUG REPORT ({VERSION})
+🆔 Scan ID: #{datetime.now().strftime('%Y%m%d')}-{random.randint(100, 999):03d}
 📅 Build: {BUILD_DATE}
-⏱ Scan Time : {scan_duration}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
+🕐 SCAN TIMESTAMPS
+━━━━━━━━━━━━━━━━━━━━━━
+Started         : {scan_start_timestamp}
+Finished        : {scan_end_timestamp}
+Duration        : {scan_duration}s
 
+━━━━━━━━━━━━━━━━━━━━━━
 📊 SCAN STATISTICS
-Market Universe : {market_universe}
-Flow Candidates : {flow_candidates_count}
-Analyzed        : {analyzed_count}
-Scan Limit      : {scan_limit}
+━━━━━━━━━━━━━━━━━━━━━━
+Market Universe : {market_universe} (All OKX USDT Futures)
+Flow Candidates : {flow_candidates_count} (Flow ≥ 1.15x)
+Analyzed        : {analyzed_count} (Top Flow Selection)
+Scan Limit      : {scan_limit} (MAX_SCAN_LIMIT)
+
+{decision_summary_display}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 ❌ REJECTIONS
+━━━━━━━━━━━━━━━━━━━━━━
 Candles         : {debug.get('candles', 0)}
 FOMO            : {debug.get('fomo', 0)}
 Brain           : {debug.get('brain', 0)}
@@ -2628,43 +2768,38 @@ Final Gate      : {debug.get('final_gate', 0)}
 Not Long/Short  : {debug.get('not_long', 0)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 🏆 TOP REJECT REASONS (Sorted)
+━━━━━━━━━━━━━━━━━━━━━━
 {top_rejects}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 ✅ RESULTS
-Passed          : {debug.get('passed', 0)}
+━━━━━━━━━━━━━━━━━━━━━━
+Passed          : {total_passed}
 LONG Signals    : {len(long_results)}
 SHORT Signals   : {len(short_results)}
 
 {metrics_display}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 📈 MARKET REGIME DISTRIBUTION
+━━━━━━━━━━━━━━━━━━━━━━
 {debug.get('regime_distribution', 'N/A')}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 🔥 COMPRESSION DISTRIBUTION
+━━━━━━━━━━━━━━━━━━━━━━
 {debug.get('compression_distribution', 'N/A')}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 ⚡ SCAN EFFICIENCY
-API Calls       : {api_calls}
-Cache Hits      : {cache_hits}
-Cache Saved     : {cache_saved_pct}%
-Cache TTL       : {CACHE_TTL}s
+━━━━━━━━━━━━━━━━━━━━━━
+{cache_display}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-
 ⚡ SCAN PERFORMANCE
-Avg Analyze Time : {debug.get('avg_analyze_time', 'N/A')}ms
-Slowest Coin     : {debug.get('slowest_coin', 'N/A')}
-Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
+━━━━━━━━━━━━━━━━━━━━━━
+{performance_display}
 
 📈 Recorded Trades : {total_trades}
 
@@ -2693,19 +2828,32 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
         signal["rank"] = rank
 
     if not results:
-        # ====== TASK 2: IMPROVED "No Opportunity" Message ======
+        # ====== IMPROVED "No Opportunity" Message ======
         bot.send_message(message.chat.id, f"""
 🎯 No high-probability trading opportunity detected.
 
 🐋 Institutional flow is currently insufficient.
 
 ⏳ Waiting for the next liquidity wave.
+
+🎯 Main Reject Reason: {main_reject_display}
 {FOOTER}
 """)
         clear_expired_cache()
         return
 
-    # ====== TASK 1: SIGNAL MESSAGE NEW LAYOUT ======
+    # ====== SIGNAL QUALITY SUMMARY ======
+    if all_results:
+        signal_quality = f"""
+📊 SIGNAL QUALITY SUMMARY
+Average Score       : {avg_score}
+Average Confidence  : {avg_brain}%
+Average RR          : {avg_rr}
+Average Momentum    : {avg_momentum}
+"""
+        bot.send_message(message.chat.id, signal_quality)
+
+    # ====== SIGNAL MESSAGE NEW LAYOUT ======
     for s in results:
         brain_conf = s["brain_confidence"]
 
@@ -2720,7 +2868,7 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 
         # Build the signal message with new layout
         msg = f"""
-🚨 AHAD AI {VERSION} – UI & Monitoring Improvements 🐋
+🚨 AHAD AI {VERSION} – Final Production Release 🐋
 📅 Build: {BUILD_DATE}
 
 🏆 Rank #{s['rank']}
@@ -2732,11 +2880,11 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 ━━━━━━━━━━━━━━━━━━━━━━
 
 🎯 ENTRY PLAN
-Entry      : {round(s['entry_low'],6)} - {round(s['entry_high'],6)}
-Stop Loss  : {round(s['sl'],6)}
-🥇 TP1     : {round(s['tp1'],6)}
-🥈 TP2     : {round(s['tp2'],6)}
-🥉 TP3     : {round(s['tp3'],6)}
+Entry      : {format_price(s['entry_low'])} - {format_price(s['entry_high'])}
+Stop Loss  : {format_price(s['sl'])}
+🥇 TP1     : {format_price(s['tp1'])}
+🥈 TP2     : {format_price(s['tp2'])}
+🥉 TP3     : {format_price(s['tp3'])}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2785,23 +2933,28 @@ Late Entry    : {s['late_score']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-💾 Trade ID: #{trade_id}
+💾 Trade ID: #{trade_id if trade_id else 'N/A'}
 
 {FOOTER}
 """
 
+        # Save trade and get trade_id
+        trade_id = None
         if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
                 if trade_id:
-                    # Insert Trade ID into message
-                    msg = msg.replace("💾 Trade ID: #{trade_id}", f"💾 Trade ID: #{trade_id}")
                     print(f"✅ Trade #{trade_id} saved for {s['coin']}")
                 else:
-                    msg = msg.replace("💾 Trade ID: #{trade_id}", "❌ Failed to save trade")
+                    print(f"❌ Failed to save trade for {s['coin']}")
             except Exception as e:
                 print(f"❌ Exception saving trade: {e}")
-                msg = msg.replace("💾 Trade ID: #{trade_id}", "❌ Database error saving trade")
+
+        # Update message with trade_id
+        if trade_id:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
+        else:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
 
         bot.send_message(message.chat.id, msg)
 
@@ -2963,11 +3116,15 @@ def open_trades_command(message):
         msg = f"📂 OPEN TRADES ({VERSION})\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for row in rows[:10]:
+            quality = row[11] if row[11] else "--"
+            brain = row[9] if row[9] else "--"
+            ranking = row[10] if row[10] else "--"
+            
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {row[3]} | SL: {row[7]}\n"
-            msg += f"TP1: {row[4]} | TP2: {row[5]} | TP3: {row[6]}\n"
-            msg += f"Brain: {row[9] or 'N/A'} | Ranking: {row[10] or 'N/A'}\n"
-            msg += f"Quality: {row[11] or 'N/A'}\n"
+            msg += f"Entry: {format_price(row[3])} | SL: {format_price(row[7])}\n"
+            msg += f"TP1: {format_price(row[4])} | TP2: {format_price(row[5])} | TP3: {format_price(row[6])}\n"
+            msg += f"Brain: {brain} | Ranking: {ranking}\n"
+            msg += f"Quality: {quality}\n"
             msg += f"🕐 {row[8]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         msg += FOOTER
@@ -3016,11 +3173,17 @@ def history_command(message):
 
         for row in rows:
             result_icon = "✅" if "WIN" in row[4] else "❌"
+            
+            quality = row[8] if row[8] else "--"
+            brain = row[9] if row[9] else "--"
+            ranking = row[10] if row[10] else "--"
+            rr = row[11] if row[11] else "--"
+            
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {row[3]} | Result: {row[4]}\n"
+            msg += f"Entry: {format_price(row[3])} | Result: {row[4]}\n"
             msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
-            msg += f"Quality: {row[8] or 'N/A'} | Brain: {row[9] or 'N/A'}\n"
-            msg += f"Ranking: {row[10] or 'N/A'} | RR: {row[11] or 'N/A'}\n"
+            msg += f"Quality: {quality} | Brain: {brain}\n"
+            msg += f"Ranking: {ranking} | RR: {rr}\n"
             msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
             msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -3038,6 +3201,24 @@ def history_command(message):
 # ================================================
 # 🚀 SECTION 7: SYSTEM
 # ================================================
+
+# ================================================
+# 🔢 SCAN HISTORY COUNTER
+# ================================================
+
+_scan_counter = 0
+_startup_time = time.time()
+
+def get_uptime():
+    """Get application uptime in human-readable format"""
+    elapsed = int(time.time() - _startup_time)
+    hours = elapsed // 3600
+    minutes = (elapsed % 3600) // 60
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
+
 
 def keep_alive():
     while True:
@@ -3082,7 +3263,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print(f"🔥 AHAD AI {VERSION} – UI & Monitoring Improvements ONLINE 🐋")
+print(f"🔥 AHAD AI {VERSION} – Final Production Release ONLINE 🐋")
 print(f"📅 Build: {BUILD_DATE}")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
@@ -3122,7 +3303,7 @@ print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
 print("🏷️ Quality Grade System ACTIVE")
-print(f"🔄 UI & Monitoring Improvements ACTIVE ({VERSION})")
+print(f"🔄 Final Production Release ACTIVE ({VERSION})")
 print("📋 Enhanced Signal Layout ACTIVE")
 print("📊 Grouped Decision Summary ACTIVE")
 print("📈 Improved /history, /open, /report ACTIVE")
@@ -3133,10 +3314,17 @@ print("🎯 Improved No Opportunity Message ACTIVE")
 print("📊 Hidden Empty Metrics ACTIVE")
 print("🏆 Sorted Rejection Reasons ACTIVE")
 print("🌍 Unified Market Health Language ACTIVE")
+print("🏷️ Market Health Score ACTIVE")
+print("🔢 Scan History Counter ACTIVE")
+print("⏱️ Runtime Information ACTIVE")
+print("🆔 Scan ID Display ACTIVE")
+print("📊 Signal Quality Summary ACTIVE")
+print("🏆 Sector Leader Summary ACTIVE")
+print("📊 Previous Scan Comparison ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print(f"🚀 {VERSION} – UI & Monitoring Improvements")
+print(f"🚀 {VERSION} – Final Production Release")
 
 while True:
     time.sleep(60)

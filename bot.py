@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2.2 – UI & Data Collection Update
+# 🚀 AHAD AI v21.2.3 – UI & Monitoring Improvements
 # ================================================
 
 # ================================================
@@ -11,6 +11,13 @@ MAX_FLOW_COINS = 150
 FLOW_RATIO = 0.40
 MAX_SCAN_LIMIT = 200
 CACHE_TTL = 60
+
+# ================================================
+# 📋 BUILD INFORMATION
+# ================================================
+
+VERSION = "v21.2.3"
+BUILD_DATE = "2026-07-26"
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -99,7 +106,7 @@ def init_database():
         """)
 
         # ================================================
-        # 🔄 DATABASE MIGRATION (v21.2.2)
+        # 🔄 DATABASE MIGRATION (v21.2.3)
         # ================================================
 
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS brain_confidence INTEGER")
@@ -146,12 +153,32 @@ def init_database():
         conn.commit()
         print("🟢 PostgreSQL Connected")
         print("🔄 Database migration checked")
-        print("🗄 AHAD AI DATABASE READY (v21.2.2)")
+        print(f"🗄 AHAD AI DATABASE READY ({VERSION})")
         print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
 
     except Exception as e:
         print(f"❌ Database Error: {e}")
         raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def get_total_trades():
+    """Get total number of trades in database"""
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM trades")
+        count = cur.fetchone()[0]
+        return count
+    except Exception as e:
+        print(f"❌ Error getting total trades: {e}")
+        return 0
     finally:
         if cur:
             cur.close()
@@ -245,7 +272,7 @@ def save_trade(trade_data):
             trade_data['rr'],
             trade_data['confidence'],
             trade_data['late_score'],
-            trade_data.get('version', 'v21.2.2'),
+            trade_data.get('version', VERSION),
             'OPEN',
             'PENDING',
             0.0,
@@ -285,10 +312,6 @@ def save_trade(trade_data):
 
 # ================================================
 # 📈 SECTION 2: TRADE TRACKING + ANALYTICS
-# ================================================
-
-# ================================================
-# 📈 TRADE TRACKING SYSTEM
 # ================================================
 
 def get_open_trades():
@@ -661,7 +684,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "🐋 AHAD AI v21.2.2 – UI & Data Collection Update ONLINE 🚀"
+    return f"🐋 AHAD AI {VERSION} – UI & Monitoring Improvements ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -838,7 +861,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print("🔥 AHAD AI v21.2.2 – UI & Data Collection Update CORE READY 🐋")
+print(f"🔥 AHAD AI {VERSION} – UI & Monitoring Improvements CORE READY 🐋")
 
 
 # ================================================
@@ -1912,7 +1935,7 @@ def analyze(symbol, sector, debug=None):
         else:
             market_temperature = "🟢 COLD"
 
-        # ====== WHY THIS SIGNAL - GROUPED (v21.2.2) ======
+        # ====== WHY THIS SIGNAL - GROUPED (v21.2.3) ======
         decision_reasons_raw = []
 
         if regime["regime"] in ["TRENDING", "COMPRESSION"]:
@@ -2005,7 +2028,7 @@ def analyze(symbol, sector, debug=None):
             'rr': round(rr, 2),
             'confidence': confidence_level,
             'late_score': late_score,
-            'version': 'v21.2.2',
+            'version': VERSION,
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -2074,23 +2097,27 @@ def analyze(symbol, sector, debug=None):
 # ================================================
 
 # ================================================
-# 📋 FOOTER (v21.2.2)
+# 📋 FOOTER (v21.2.3)
 # ================================================
 
-FOOTER = """
+FOOTER = f"""
 ━━━━━━━━━━━━━━━━━━━━━━
-🤖 AHAD AI v21.2.2
+🤖 AHAD AI {VERSION}
 🗄 PostgreSQL Production
 🐋 Institutional Engine
 📊 Production Stable
 """
 
+
 @bot.message_handler(commands=["start"])
 def start(message):
+    total_trades = get_total_trades()
     bot.reply_to(message, f"""
-🐋 AHAD AI v21.2.2 – UI & Data Collection Update 🚀
+🐋 AHAD AI {VERSION} – UI & Monitoring Improvements 🚀
+📅 Build: {BUILD_DATE}
+📈 Recorded Trades : {total_trades}
 
-🗄 PostgreSQL Database ACTIVE (v21.2.2)
+🗄 PostgreSQL Database ACTIVE ({VERSION})
 💾 Trade Recorder ACTIVE (Duplicate Protection)
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
@@ -2102,9 +2129,9 @@ def start(message):
 🔥 Heat Control ACTIVE
 🎯 Dynamic Late Entry v3 ACTIVE
 📊 Enhanced Score System ACTIVE
-🐞 Full Debug Funnel ACTIVE
+🐞 Advanced Debug System ACTIVE
 🔥 Volatility Compression ACTIVE
-📊 Market Regime ACTIVE (Fixed)
+📊 Market Regime & Compression ACTIVE
 🚀 Enhanced Momentum Engine ACTIVE
 📌 Reject Reason ACTIVE
 🧠 Confidence Level ACTIVE
@@ -2113,23 +2140,22 @@ def start(message):
 ✅ Dynamic Flow Scanner ACTIVE (With LIMIT)
 🛡️ Validation Layer ACTIVE
 📊 Brain LONG/SHORT Scores ACTIVE
-🐞 Debug Reason ACTIVE
 🔄 Dual Direction Engine ACTIVE
 🗄 PostgreSQL Production Ready
 🔒 SSL Connection ENABLED
 📊 8 Indexes for Performance
 ⏰ TIMESTAMP Support
 📈 Professional Analytics ACTIVE
-📊 Market Regime & Compression Tracking
 🏦 Institutional Dashboard ACTIVE
-💎 Professional Quality Engine v2.0 ACTIVE
-🏆 Professional Ranking Engine ACTIVE (Enhanced)
-📦 Caching System ACTIVE (With TTL)
-🐞 UI & Data Collection Update ACTIVE
+🏆 Professional Ranking Engine ACTIVE
+💎 Quality Engine v2.0 ACTIVE
 🏷️ Quality Grade System ACTIVE
+📦 Caching System ACTIVE (With TTL)
+🐞 UI & Monitoring Improvements ACTIVE
 🌡️ Market Temperature ACTIVE
 📋 Enhanced Signal Layout ACTIVE
 📊 Grouped Decision Summary ACTIVE
+⏱ Scan Duration Tracking ACTIVE
 
 🎯 Goal: Best 2 LONG + Best 1 SHORT
 
@@ -2145,8 +2171,9 @@ Commands:
 @bot.message_handler(commands=["scan"])
 def scan(message):
     bot.reply_to(message, f"""
-🐋 AHAD AI v21.2.2 – UI & Data Collection Update SCANNING...
+🐋 AHAD AI {VERSION} – UI & Monitoring Improvements SCANNING...
 
+📅 Build: {BUILD_DATE}
 🔍 Checking Market Flow (MAX: 200 coins)
 🏦 Finding Hot Sector (Ranked)
 🟢 Hunting TOP 2 LONG setups
@@ -2157,7 +2184,7 @@ def scan(message):
 🔥 Volatility Compression ACTIVE
 🚀 Dynamic Momentum ACTIVE
 📊 Enhanced Score System ACTIVE
-🐞 Full Debug Funnel ACTIVE
+🐞 Advanced Debug System ACTIVE
 📌 Reject Reason ACTIVE
 🎯 New RR Engine ACTIVE
 ✅ Dynamic Flow Scanner ACTIVE (With LIMIT)
@@ -2169,14 +2196,15 @@ def scan(message):
 📈 Trade Tracker ACTIVE (With Backoff)
 📊 Performance Analytics ACTIVE (Enhanced)
 🔄 Dual Direction Engine ACTIVE
-🗄 PostgreSQL Production Ready (v21.2.2)
+🗄 PostgreSQL Production Ready ({VERSION})
 🏦 Institutional Dashboard ACTIVE
 📦 Caching System ACTIVE (With TTL)
-🐞 UI & Data Collection Update ACTIVE
+🐞 UI & Monitoring Improvements ACTIVE
 🏷️ Quality Grade System ACTIVE
 🌡️ Market Temperature ACTIVE
 📋 Enhanced Signal Layout ACTIVE
 📊 Grouped Decision Summary ACTIVE
+⏱ Scan Duration Tracking ACTIVE
 
 Please wait ⏳
 {FOOTER}
@@ -2221,6 +2249,12 @@ Please wait ⏳
     api_calls = 0
     cache_hits = 0
     coin_times = []
+
+    # Calculate market universe
+    market_universe = len(all_symbols)
+    flow_candidates_count = flow_candidates
+    analyzed_count = len(symbols)
+    scan_limit = MAX_SCAN_LIMIT
 
     for symbol in symbols:
         coin_start = time.time()
@@ -2384,24 +2418,43 @@ Please wait ⏳
     else:
         avg_brain = 0
 
-    if all_results:
+    # ====== TASK 3: HIDE EMPTY METRICS ======
+    has_signals = len(all_results) > 0
+    
+    if has_signals:
         avg_score = round(sum(r["score"] for r in all_results) / len(all_results), 2)
         avg_rr = round(sum(r["rr"] for r in all_results) / len(all_results), 2)
         avg_momentum = round(sum(r["momentum_score"] for r in all_results) / len(all_results), 2)
+        
+        metrics_display = f"""
+📊 METRICS
+Avg Final Score : {avg_score}
+Avg Flow        : {avg_flow}
+Avg Momentum    : {avg_momentum}
+Avg RR          : {avg_rr}
+Avg Brain       : {avg_brain}
+"""
     else:
-        avg_score = "N/A"
-        avg_rr = "N/A"
-        avg_momentum = "N/A"
+        metrics_display = """
+📊 METRICS
+N/A — No signals passed the final filters.
+"""
 
     debug["avg_flow"] = avg_flow
     debug["avg_brain"] = avg_brain
-    debug["avg_score"] = avg_score
-    debug["avg_rr"] = avg_rr
-    debug["avg_momentum"] = avg_momentum
+    if has_signals:
+        debug["avg_score"] = avg_score
+        debug["avg_rr"] = avg_rr
+        debug["avg_momentum"] = avg_momentum
+    else:
+        debug["avg_score"] = "N/A"
+        debug["avg_rr"] = "N/A"
+        debug["avg_momentum"] = "N/A"
 
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
+    # ====== TASK 1: UNIFY MARKET HEALTH LANGUAGE ======
     if total_checked > 0 and has_health_data:
         bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
         bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
@@ -2444,15 +2497,18 @@ Please wait ⏳
 🧠 Average Brain   : {avg_brain}
 🏆 Market Quality  : {market_quality}
 🌡️ Market Temp     : {market_temp}
-{FOOTER}
 """
         bot.send_message(message.chat.id, health_report)
+        
     elif total_checked > 0:
         bot.send_message(
             message.chat.id,
-            f"🐘 MARKET HEALTH REPORT\n\n"
-            f"📭 N/A — لا توجد عملات وصلت لمرحلة كافية من التحليل "
-            f"لحساب مؤشرات صحة السوق هذا الفحص.\n{FOOTER}"
+            "🐘 MARKET HEALTH REPORT\n\n📭 No qualified assets to calculate Market Health."
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            "🐘 MARKET HEALTH REPORT\n\n📭 No assets were analyzed in this scan."
         )
 
     if sector_summary:
@@ -2465,7 +2521,6 @@ Please wait ⏳
             sector_msg += f"   Avg Flow     : {sector_data['avg_flow']}X\n"
             sector_msg += f"   Avg Score    : {sector_data['avg_score']}\n\n"
         
-        sector_msg += FOOTER
         bot.send_message(message.chat.id, sector_msg)
 
     if debug.get("regimes"):
@@ -2492,21 +2547,28 @@ Please wait ⏳
     else:
         debug["compression_distribution"] = "N/A"
 
-    # ====== TASK 6: SORTED REJECT REASONS ======
+    # ====== TASK 6: FIXED SORTED REJECT REASONS ======
     if debug.get("reject_reasons"):
-        top_rejects_list = sorted(
+        all_rejects = sorted(
             debug["reject_reasons"].items(),
             key=lambda x: x[1],
             reverse=True
-        )[:5]
+        )
         
-        emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        top_rejects_list = all_rejects[:10]
+        
+        emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        
         top_rejects = "\n".join(
-            f"{emojis[i]} {k} ({v})"
+            f"{emojis[i]} {k} : {v}"
             for i, (k, v) in enumerate(top_rejects_list)
         )
+        
+        total_rejections = sum(debug["reject_reasons"].values())
+        top_rejects = f"Total Rejections: {total_rejections}\n\n{top_rejects}"
+        
     else:
-        top_rejects = "N/A"
+        top_rejects = "N/A — No rejection data available."
 
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
@@ -2528,38 +2590,42 @@ Please wait ⏳
         debug["fastest_coin"] = f"{fastest[0]} ({fastest[1]}ms)"
 
     checked_count = debug.get('checked', 0)
+    total_trades = get_total_trades()
 
+    # ====== TASK 5: STANDARDIZED DEBUG REPORT ======
     debug_msg = f"""
-🐞 FULL DEBUG REPORT (v21.2.2)
+🐞 FULL DEBUG REPORT ({VERSION})
+📅 Build: {BUILD_DATE}
+⏱ Scan Time : {scan_duration}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📊 SCAN STATISTICS
-Checked: {checked_count}
-Flow Candidates: {flow_candidates}
-Selected: {len(symbols)}
-Max Limit: {MAX_SCAN_LIMIT}
+Market Universe : {market_universe}
+Flow Candidates : {flow_candidates_count}
+Analyzed        : {analyzed_count}
+Scan Limit      : {scan_limit}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
 ❌ REJECTIONS
-Candles: {debug.get('candles', 0)}
-FOMO: {debug.get('fomo', 0)}
-Brain: {debug.get('brain', 0)}
-RSI: {debug.get('rsi', 0)}
-Low Flow: {debug.get('flow', 0)}
-Late Entry: {debug.get('late_entry', 0)}
-Late Score: {debug.get('late_score', 0)}
-Trap: {debug.get('trap', 0)}
-Heat: {debug.get('heat', 0)}
-Resistance: {debug.get('resistance', 0)}
-Higher Trend: {debug.get('higher_trend', 0)}
-RR: {debug.get('rr', 0)}
-Score: {debug.get('score', 0)}
-Watchlist: {debug.get('watchlist', 0)}
-Validation: {debug.get('validation', 0)}
-Final Gate: {debug.get('final_gate', 0)}
-Not Long/Short: {debug.get('not_long', 0)}
+Candles         : {debug.get('candles', 0)}
+FOMO            : {debug.get('fomo', 0)}
+Brain           : {debug.get('brain', 0)}
+RSI             : {debug.get('rsi', 0)}
+Low Flow        : {debug.get('flow', 0)}
+Late Entry      : {debug.get('late_entry', 0)}
+Late Score      : {debug.get('late_score', 0)}
+Trap            : {debug.get('trap', 0)}
+Heat            : {debug.get('heat', 0)}
+Resistance      : {debug.get('resistance', 0)}
+Higher Trend    : {debug.get('higher_trend', 0)}
+RR              : {debug.get('rr', 0)}
+Score           : {debug.get('score', 0)}
+Watchlist       : {debug.get('watchlist', 0)}
+Validation      : {debug.get('validation', 0)}
+Final Gate      : {debug.get('final_gate', 0)}
+Not Long/Short  : {debug.get('not_long', 0)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2569,18 +2635,11 @@ Not Long/Short: {debug.get('not_long', 0)}
 ━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ RESULTS
-Passed: {debug.get('passed', 0)}
-LONG Signals: {len(long_results)}
-SHORT Signals: {len(short_results)}
+Passed          : {debug.get('passed', 0)}
+LONG Signals    : {len(long_results)}
+SHORT Signals   : {len(short_results)}
 
-━━━━━━━━━━━━━━━━━━━━━━
-
-📊 METRICS
-Avg Final Score: {debug.get('avg_score', 'N/A')}
-Avg Flow: {debug.get('avg_flow', 0)}
-Avg Momentum: {debug.get('avg_momentum', 'N/A')}
-Avg RR: {debug.get('avg_rr', 'N/A')}
-Avg Brain: {debug.get('avg_brain', 0)}
+{metrics_display}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2595,11 +2654,10 @@ Avg Brain: {debug.get('avg_brain', 0)}
 ━━━━━━━━━━━━━━━━━━━━━━
 
 ⚡ SCAN EFFICIENCY
-Scan Time      : {scan_duration}s
-API Calls      : {api_calls}
-Cache Hits     : {cache_hits}
-Cache Saved    : {cache_saved_pct}%
-Cache TTL      : {CACHE_TTL}s
+API Calls       : {api_calls}
+Cache Hits      : {cache_hits}
+Cache Saved     : {cache_saved_pct}%
+Cache TTL       : {CACHE_TTL}s
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2607,6 +2665,9 @@ Cache TTL      : {CACHE_TTL}s
 Avg Analyze Time : {debug.get('avg_analyze_time', 'N/A')}ms
 Slowest Coin     : {debug.get('slowest_coin', 'N/A')}
 Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
+
+📈 Recorded Trades : {total_trades}
+
 {FOOTER}
 """
     bot.send_message(message.chat.id, debug_msg)
@@ -2632,11 +2693,13 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
         signal["rank"] = rank
 
     if not results:
+        # ====== TASK 2: IMPROVED "No Opportunity" Message ======
         bot.send_message(message.chat.id, f"""
-👀 No sniper setup now
+🎯 No high-probability trading opportunity detected.
 
-🐋 Smart Money not ready
-⏳ Waiting next liquidity wave
+🐋 Institutional flow is currently insufficient.
+
+⏳ Waiting for the next liquidity wave.
 {FOOTER}
 """)
         clear_expired_cache()
@@ -2657,7 +2720,8 @@ Fastest Coin     : {debug.get('fastest_coin', 'N/A')}
 
         # Build the signal message with new layout
         msg = f"""
-🚨 AHAD AI v21.2.2 – UI & Data Collection Update 🐋
+🚨 AHAD AI {VERSION} – UI & Monitoring Improvements 🐋
+📅 Build: {BUILD_DATE}
 
 🏆 Rank #{s['rank']}
 ⭐ Ranking Score: {s['ranking_score']}
@@ -2803,7 +2867,8 @@ def report_command(message):
                 conn.close()
 
         report = f"""
-📊 AHAD AI PERFORMANCE REPORT (v21.2.2)
+📊 AHAD AI PERFORMANCE REPORT ({VERSION})
+📅 Build: {BUILD_DATE}
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📂 Total Trades   : {stats['total']}
@@ -2895,7 +2960,7 @@ def open_trades_command(message):
             bot.reply_to(message, f"📭 No open trades.\n{FOOTER}")
             return
 
-        msg = "📂 OPEN TRADES\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg = f"📂 OPEN TRADES ({VERSION})\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for row in rows[:10]:
             msg += f"#{row[0]} {row[1]} | {row[2]}\n"
@@ -2947,7 +3012,7 @@ def history_command(message):
             bot.reply_to(message, f"📭 No closed trades yet.\n{FOOTER}")
             return
 
-        msg = "📜 TRADE HISTORY (Last 10)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg = f"📜 TRADE HISTORY ({VERSION})\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for row in rows:
             result_icon = "✅" if "WIN" in row[4] else "❌"
@@ -3017,7 +3082,8 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print("🔥 AHAD AI v21.2.2 – UI & Data Collection Update ONLINE 🐋")
+print(f"🔥 AHAD AI {VERSION} – UI & Monitoring Improvements ONLINE 🐋")
+print(f"📅 Build: {BUILD_DATE}")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
 print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
@@ -3030,7 +3096,7 @@ print("🗑️ Cache TTL-based (not full clear)")
 print("🧠 Brain v2.0 ACTIVE")
 print("🎯 Dynamic Late Entry v3 ACTIVE")
 print("🐞 Debug Reason ACTIVE")
-print("🗄️ PostgreSQL Database ACTIVE (v21.2.2)")
+print(f"🗄️ PostgreSQL Database ACTIVE ({VERSION})")
 print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
 print("🔒 SSL Connection: ENABLED")
 print("⏰ TIMESTAMP Support ACTIVE")
@@ -3044,11 +3110,11 @@ print("🎯 Dynamic RR Engine ACTIVE")
 print("🔄 Dual Direction Engine ACTIVE")
 print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
 print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
-print("💎 Professional Quality Engine v2.0 ACTIVE")
+print("💎 Quality Engine v2.0 ACTIVE")
 print("📊 Institutional Flow Rating ACTIVE")
 print("🛡️ Risk Grade System ACTIVE")
 print("🧠 AI Decision Summary ACTIVE (Grouped)")
-print("🐘 Market Health Report ACTIVE")
+print("🐘 Market Health Report ACTIVE (Unified)")
 print("🏦 Institutional Dashboard ACTIVE")
 print("🐞 Enhanced Debug Report with Sorted Rejections")
 print("📦 Caching System ACTIVE (With TTL)")
@@ -3056,16 +3122,21 @@ print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
 print("🏷️ Quality Grade System ACTIVE")
-print("🔄 UI & Data Collection Update ACTIVE")
-print("📋 Enhanced Signal Layout ACTIVE (v21.2.2)")
+print(f"🔄 UI & Monitoring Improvements ACTIVE ({VERSION})")
+print("📋 Enhanced Signal Layout ACTIVE")
 print("📊 Grouped Decision Summary ACTIVE")
 print("📈 Improved /history, /open, /report ACTIVE")
-print("⚡ Scan Performance Report ACTIVE")
+print("⏱ Scan Duration Tracking ACTIVE")
+print("📈 Recorded Trades Display ACTIVE")
+print("📅 Build Information Display ACTIVE")
+print("🎯 Improved No Opportunity Message ACTIVE")
+print("📊 Hidden Empty Metrics ACTIVE")
+print("🏆 Sorted Rejection Reasons ACTIVE")
+print("🌍 Unified Market Health Language ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print("🚀 v21.2.2 – UI & Data Collection Update")
+print(f"🚀 {VERSION} – UI & Monitoring Improvements")
 
 while True:
     time.sleep(60)
-

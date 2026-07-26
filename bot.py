@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2.4 – Final Production Release
+# 🚀 AHAD AI v21.2.5 – UI Optimization
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.2.4"
+VERSION = "v21.2.5"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -32,6 +32,7 @@ import urllib.request
 import psycopg2
 from datetime import datetime
 from collections import defaultdict
+import random
 
 from flask import Flask
 import telebot
@@ -106,7 +107,7 @@ def init_database():
         """)
 
         # ================================================
-        # 🔄 DATABASE MIGRATION (v21.2.4)
+        # 🔄 DATABASE MIGRATION (v21.2.5)
         # ================================================
 
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS brain_confidence INTEGER")
@@ -317,8 +318,9 @@ def save_trade(trade_data):
         if conn:
             conn.close()
 
+
 # ================================================
-# 📈 SECTION 2: TRADE TRACKING + ANALYTICS
+# 📈 TRADE TRACKING SYSTEM
 # ================================================
 
 def get_open_trades():
@@ -691,7 +693,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return f"🐋 AHAD AI {VERSION} – Final Production Release ONLINE 🚀"
+    return f"🐋 AHAD AI {VERSION} – UI Optimization ONLINE 🚀"
 
 @app.route("/health")
 def health():
@@ -868,7 +870,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
-print(f"🔥 AHAD AI {VERSION} – Final Production Release CORE READY 🐋")
+print(f"🔥 AHAD AI {VERSION} – UI Optimization CORE READY 🐋")
 
 
 # ================================================
@@ -921,7 +923,7 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
     return ema_fast - ema_slow
 
 # ================================================
-# 🧠 SECTION 3: AI ENGINES (PART 1)
+# 🧠 SECTION 2: AI ENGINES (PART 1)
 # ================================================
 
 _candle_cache = {}
@@ -1394,7 +1396,7 @@ def ai_brain(candles):
             }
 
 # ================================================
-# 🎯 SECTION 4: ANALYZE ENGINE
+# 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
 def analyze(symbol, sector, debug=None):
@@ -2136,11 +2138,11 @@ def analyze(symbol, sector, debug=None):
         return None
 
 # ================================================
-# 🤖 SECTION 5: TELEGRAM SCANNER (PART 1)
+# 🤖 SECTION 4: TELEGRAM SCANNER (PART 1)
 # ================================================
 
 # ================================================
-# 📋 FOOTER (v21.2.4)
+# 📋 FOOTER (v21.2.5)
 # ================================================
 
 FOOTER = f"""
@@ -2156,7 +2158,7 @@ FOOTER = f"""
 def start(message):
     total_trades = get_total_trades()
     bot.reply_to(message, f"""
-🐋 AHAD AI {VERSION} – Final Production Release 🚀
+🐋 AHAD AI {VERSION} – UI Optimization 🚀
 📅 Build: {BUILD_DATE}
 📈 Recorded Trades : {total_trades}
 
@@ -2194,7 +2196,7 @@ def start(message):
 💎 Quality Engine v2.0 ACTIVE
 🏷️ Quality Grade System ACTIVE
 📦 Caching System ACTIVE (With TTL)
-🐞 Final Production Release ACTIVE
+🐞 UI Optimization ACTIVE
 🌡️ Market Temperature ACTIVE
 📋 Enhanced Signal Layout ACTIVE
 📊 Grouped Decision Summary ACTIVE
@@ -2215,43 +2217,18 @@ Commands:
 
 @bot.message_handler(commands=["scan"])
 def scan(message):
+    # ====== SHORT STARTUP MESSAGE ======
     bot.reply_to(message, f"""
-🐋 AHAD AI {VERSION} – Final Production Release SCANNING...
+🐋 AHAD AI {VERSION}
 
-📅 Build: {BUILD_DATE}
-🔍 Checking Market Flow (MAX: 200 coins)
-🏦 Finding Hot Sector (Ranked)
-🟢 Hunting TOP 2 LONG setups
-🔴 Hunting TOP 1 SHORT setup
-🐋 Tracking Smart Money
-⚡ Detecting Pre-Pump
-📊 Market Regime Detection ACTIVE
-🔥 Volatility Compression ACTIVE
-🚀 Dynamic Momentum ACTIVE
-📊 Enhanced Score System ACTIVE
-🐞 Advanced Debug System ACTIVE
-📌 Reject Reason ACTIVE
-🎯 New RR Engine ACTIVE
-✅ Dynamic Flow Scanner ACTIVE (With LIMIT)
-🛡️ Validation Layer ACTIVE
-🧠 Brain v2.0 ACTIVE
-🎯 Dynamic Late Entry v3 ACTIVE
-🐞 Debug Reason ACTIVE
-💾 Trade Recorder ACTIVE (Duplicate Protection)
-📈 Trade Tracker ACTIVE (With Backoff)
-📊 Performance Analytics ACTIVE (Enhanced)
-🔄 Dual Direction Engine ACTIVE
-🗄 PostgreSQL Production Ready ({VERSION})
-🏦 Institutional Dashboard ACTIVE
-📦 Caching System ACTIVE (With TTL)
-🐞 Final Production Release ACTIVE
-🏷️ Quality Grade System ACTIVE
-🌡️ Market Temperature ACTIVE
-📋 Enhanced Signal Layout ACTIVE
-📊 Grouped Decision Summary ACTIVE
-⏱ Scan Duration Tracking ACTIVE
+🚀 Smart Market Scan Started
 
-Please wait ⏳
+📅 Build : {BUILD_DATE}
+🧠 AI Brain ACTIVE
+🐋 Smart Money ACTIVE
+🌍 Market Intelligence ACTIVE
+
+⏳ Please wait...
 {FOOTER}
 """)
 
@@ -2270,20 +2247,11 @@ Please wait ⏳
     hot_sector = flow["sector"]
 
     ranking = flow["ranking"]
-    text = "🔥 MARKET FLOW\n\n"
-    medals = ["🥇", "🥈", "🥉"]
-
-    for i, item in enumerate(ranking):
-        text += f"{medals[i]} {item[0]}  |  Flow: {item[1]}\n"
-
-    bot.send_message(message.chat.id, text)
 
     sector_data = {sector: {"coins": 0, "flows": [], "scores": []} for sector in SECTORS.keys()}
 
     if len(symbols) < 20:
         symbols = all_symbols
-
-    bot.send_message(message.chat.id, f"💎 Smart Money Watchlist: {len(symbols)} coins")
 
     market_regimes = {}
     market_flows = []
@@ -2493,7 +2461,17 @@ N/A — No signals passed the final filters.
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
 
-    # ====== MARKET HEALTH REPORT ======
+    # ====== CALCULATE MARKET HEALTH DATA ======
+    bull_pct = 0
+    bear_pct = 0
+    sideways_pct = 0
+    mixed_pct = 0
+    compression_high_pct = 0
+    market_quality = "📊 NEUTRAL"
+    market_temp = "🟢 COLD"
+    market_health_score = 0
+    health_icon = "🟡"
+
     if total_checked > 0 and has_health_data:
         bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
         bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
@@ -2565,59 +2543,42 @@ N/A — No signals passed the final filters.
             health_icon = "🟡"
         else:
             health_icon = "🔴"
-        
-        health_report = f"""
-🐘 MARKET HEALTH REPORT
-(基于 {total_checked} 分析币种)
 
-📈 Bull        : {bull_pct}%
-📉 Bear        : {bear_pct}%
-📊 Sideways    : {sideways_pct}%
-🔄 Mixed       : {mixed_pct}%
-🔥 Compression : {compression_high_pct}%
-
-📊 Average Flow    : {avg_flow}X
-🧠 Average Brain   : {avg_brain}
-🏆 Market Quality  : {market_quality}
-🌡️ Market Temp     : {market_temp}
-
-{health_icon} Market Health Score : {market_health_score}/100
-"""
-        bot.send_message(message.chat.id, health_report)
-        
-    elif total_checked > 0:
-        bot.send_message(
-            message.chat.id,
-            "🐘 MARKET HEALTH REPORT\n\n📭 No qualified assets to calculate Market Health."
-        )
-    else:
-        bot.send_message(
-            message.chat.id,
-            "🐘 MARKET HEALTH REPORT\n\n📭 No assets were analyzed in this scan."
-        )
-
+    # ====== BUILD TOP SECTORS DISPLAY ======
+    top_sectors_display = ""
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
+    
     if sector_summary:
-        sector_msg = "🏦 SECTOR SUMMARY\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
-        
-        # ====== SECTOR LEADER SUMMARY ======
-        strongest = sector_summary[0]
-        weakest = sector_summary[-1] if len(sector_summary) > 1 else None
-        
-        sector_msg += f"🏆 Strongest Sector : {strongest['sector']} ({strongest['avg_flow']}X)\n"
-        if weakest:
-            sector_msg += f"📉 Weakest Sector   : {weakest['sector']} ({weakest['avg_flow']}X)\n\n"
-        
-        sector_msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
         for idx, sector_data in enumerate(sector_summary[:6]):
-            sector_msg += f"{medals[idx]} {sector_data['sector']}\n"
-            sector_msg += f"   Coins        : {sector_data['coins']}\n"
-            sector_msg += f"   Avg Flow     : {sector_data['avg_flow']}X\n"
-            sector_msg += f"   Avg Score    : {sector_data['avg_score']}\n\n"
-        
-        bot.send_message(message.chat.id, sector_msg)
+            top_sectors_display += f"{medals[idx]} {sector_data['sector']:<8} Flow {sector_data['avg_flow']:.2f} | Score {sector_data['avg_score']:.1f}\n"
+    else:
+        top_sectors_display = "No sector data available."
 
+    # ====== STRONGEST & WEAKEST SECTOR ======
+    strongest_sector = sector_summary[0]['sector'] if sector_summary else "N/A"
+    weakest_sector = sector_summary[-1]['sector'] if len(sector_summary) > 1 else "N/A"
+
+    # ====== SEND ONE DASHBOARD MESSAGE ======
+    dashboard_msg = f"""
+🌍 AHAD AI MARKET DASHBOARD
+
+❤️ Health Score : {market_health_score}/100
+🌡 Temperature  : {market_temp}
+
+🐋 Avg Flow     : {avg_flow:.2f}
+🧠 Avg Brain    : {avg_brain:.1f}
+
+🏆 Best Sector  : {strongest_sector}
+📉 Weakest      : {weakest_sector}
+
+📊 Top Sectors
+
+{top_sectors_display}
+{FOOTER}
+"""
+    bot.send_message(message.chat.id, dashboard_msg)
+
+    # ====== CONTINUE WITH EXISTING DEBUG REPORT ======
     if debug.get("regimes"):
         debug["regime_distribution"] = "\n".join(
             f"{k}: {v}"
@@ -2868,7 +2829,7 @@ Average Momentum    : {avg_momentum}
 
         # Build the signal message with new layout
         msg = f"""
-🚨 AHAD AI {VERSION} – Final Production Release 🐋
+🚨 AHAD AI {VERSION} – UI Optimization 🐋
 📅 Build: {BUILD_DATE}
 
 🏆 Rank #{s['rank']}
@@ -3199,7 +3160,7 @@ def history_command(message):
             conn.close()
 
 # ================================================
-# 🚀 SECTION 7: SYSTEM
+# 🚀 SECTION 6: SYSTEM (PART 1)
 # ================================================
 
 # ================================================
@@ -3263,7 +3224,7 @@ threading.Thread(target=telegram_engine, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 threading.Thread(target=update_open_trades, daemon=True).start()
 
-print(f"🔥 AHAD AI {VERSION} – Final Production Release ONLINE 🐋")
+print(f"🔥 AHAD AI {VERSION} – UI Optimization ONLINE 🐋")
 print(f"📅 Build: {BUILD_DATE}")
 print(f"📅 Started at: {time.ctime()}")
 print(f"🐍 Python Version: {os.sys.version}")
@@ -3303,7 +3264,7 @@ print("⚡ Scan Efficiency Tracking ACTIVE")
 print("🌡️ Market Temperature ACTIVE")
 print("🏦 Sector Summary ACTIVE")
 print("🏷️ Quality Grade System ACTIVE")
-print(f"🔄 Final Production Release ACTIVE ({VERSION})")
+print(f"🔄 UI Optimization ACTIVE ({VERSION})")
 print("📋 Enhanced Signal Layout ACTIVE")
 print("📊 Grouped Decision Summary ACTIVE")
 print("📈 Improved /history, /open, /report ACTIVE")
@@ -3321,10 +3282,118 @@ print("🆔 Scan ID Display ACTIVE")
 print("📊 Signal Quality Summary ACTIVE")
 print("🏆 Sector Leader Summary ACTIVE")
 print("📊 Previous Scan Comparison ACTIVE")
+print("🌍 AHAD AI MARKET DASHBOARD ACTIVE")
 print("📋 Commands: /scan | /report | /open | /history")
 print("🎯 Best 2 LONG + Best 1 SHORT")
 print("✅ SYSTEM READY FOR PRODUCTION")
-print(f"🚀 {VERSION} – Final Production Release")
+print(f"🚀 {VERSION} – UI Optimization")
 
 while True:
     time.sleep(60)
+
+    # ====== SIGNAL MESSAGE NEW LAYOUT ======
+    for s in results:
+        brain_conf = s["brain_confidence"]
+
+        if brain_conf >= 80:
+            confidence_rank = "🔥 VERY HIGH"
+        elif brain_conf >= 60:
+            confidence_rank = "✅ HIGH"
+        elif brain_conf >= 40:
+            confidence_rank = "⚡ MEDIUM"
+        else:
+            confidence_rank = "⚠ LOW"
+
+        # Build the signal message with new layout
+        msg = f"""
+🚨 AHAD AI {VERSION} – UI Optimization 🐋
+📅 Build: {BUILD_DATE}
+
+🏆 Rank #{s['rank']}
+⭐ Ranking Score: {s['ranking_score']}
+
+{s['direction']} | 🪙 {s['coin']}
+🏦 Sector: {s['sector']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 ENTRY PLAN
+Entry      : {format_price(s['entry_low'])} - {format_price(s['entry_high'])}
+Stop Loss  : {format_price(s['sl'])}
+🥇 TP1     : {format_price(s['tp1'])}
+🥈 TP2     : {format_price(s['tp2'])}
+🥉 TP3     : {format_price(s['tp3'])}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🏦 INSTITUTIONAL DASHBOARD
+├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
+├─ Smart Money : {s['money_status']}
+├─ Market      : {s['regime']['regime']}
+├─ Momentum    : {s['momentum_score']}/100 ({s['momentum_status']})
+├─ RR          : {s['rr']}
+├─ Quality Grade: {s.get('quality_grade', 'N/A')}
+├─ Ranking Score: {s.get('ranking_score', 0)}
+└─ Risk        : {s['risk_grade']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 AI BRAIN
+📈 LONG Score  : {s['brain_long_score']}
+📉 SHORT Score : {s['brain_short_score']}
+🎯 Confidence  : {brain_conf}/100
+🏆 Level       : {confidence_rank}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 INSTITUTIONAL FLOW
+Flow         : {s['liquidity']}X
+Rating       : {s['flow_rating']}
+Flow Score   : {round(s['liquidity'] * 35, 0)}
+Temperature  : {s.get('market_temperature', 'N/A')}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📈 MARKET STATUS
+Final Score   : {s['score']}/100
+Trap Status   : {s['trap']}
+Market Regime : {s['regime']['regime']}
+Compression   : {s['volatility']['status']}
+Late Entry    : {s['late_score']}
+
+{s['warning']}
+{s['early_text']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+💡 WHY THIS SIGNAL?
+{s['decision_summary']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+💾 Trade ID: #{trade_id if trade_id else 'N/A'}
+
+{FOOTER}
+"""
+
+        # Save trade and get trade_id
+        trade_id = None
+        if s.get('trade_data'):
+            try:
+                trade_id = save_trade(s['trade_data'])
+                if trade_id:
+                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                else:
+                    print(f"❌ Failed to save trade for {s['coin']}")
+            except Exception as e:
+                print(f"❌ Exception saving trade: {e}")
+
+        # Update message with trade_id
+        if trade_id:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
+        else:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
+
+        bot.send_message(message.chat.id, msg)
+
+    clear_expired_cache()

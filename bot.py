@@ -1609,6 +1609,9 @@ else:
 if trap == "✅ NO TRAP":
     score += 10
 
+if trap == "✅ NO TRAP":
+    score += 10
+
 score += multi["score"] * 0.1
 
 if direction_clean == "LONG":

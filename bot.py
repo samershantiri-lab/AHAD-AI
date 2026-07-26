@@ -2241,10 +2241,13 @@ def scan(message):
     short_results = []
     all_symbols = get_symbols()
 
+    print("🔍 DEBUG: After get_symbols() -", len(all_symbols), "symbols found")
+
     symbols, flow_candidates = top_flow_scanner(all_symbols)
+    print("🔍 DEBUG: After top_flow_scanner() -", len(symbols), "symbols selected,", flow_candidates, "flow candidates")
 
     flow = sector_flow(all_symbols)
-    hot_sector = flow["sector"]
+    print("🔍 DEBUG: After sector_flow()")
 
     ranking = flow["ranking"]
 
@@ -2252,6 +2255,7 @@ def scan(message):
 
     if len(symbols) < 20:
         symbols = all_symbols
+        print("🔍 DEBUG: Symbols expanded to", len(symbols))
 
     market_regimes = {}
     market_flows = []
@@ -2268,6 +2272,8 @@ def scan(message):
     flow_candidates_count = flow_candidates
     analyzed_count = len(symbols)
     scan_limit = MAX_SCAN_LIMIT
+
+    print("🔍 DEBUG: Before for symbol in symbols loop -", len(symbols), "symbols to analyze")
 
     for symbol in symbols:
         coin_start = time.time()
@@ -2400,6 +2406,8 @@ def scan(message):
 
         time.sleep(0.03)
 
+    print("🔍 DEBUG: After for symbol in symbols loop - completed")
+
     sector_summary = []
     for sector, data in sector_data.items():
         if data["coins"] > 0:
@@ -2460,6 +2468,8 @@ N/A — No signals passed the final filters.
 
     total_checked = debug.get('checked', 0)
     has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
+
+    print("🔍 DEBUG: Before building dashboard")
 
     # ====== CALCULATE MARKET HEALTH DATA ======
     bull_pct = 0
@@ -2577,6 +2587,7 @@ N/A — No signals passed the final filters.
 {FOOTER}
 """
     bot.send_message(message.chat.id, dashboard_msg)
+    print("🔍 DEBUG: After sending dashboard")
 
     # ====== CONTINUE WITH EXISTING DEBUG REPORT ======
     if debug.get("regimes"):
@@ -2767,6 +2778,7 @@ SHORT Signals   : {len(short_results)}
 {FOOTER}
 """
     bot.send_message(message.chat.id, debug_msg)
+    print("🔍 DEBUG: After sending debug report")
 
     def ranking_score(signal):
         return signal.get('ranking_score', 0)
@@ -2784,12 +2796,13 @@ SHORT Signals   : {len(short_results)}
     )[:1]
 
     results = best_longs + best_shorts
+    print(f"🔍 DEBUG: After ranking - {len(results)} signals selected")
 
     for rank, signal in enumerate(results, start=1):
         signal["rank"] = rank
 
     if not results:
-        # ====== IMPROVED "No Opportunity" Message ======
+        print("🔍 DEBUG: No results - sending No Opportunity message")
         bot.send_message(message.chat.id, f"""
 🎯 No high-probability trading opportunity detected.
 
@@ -2813,6 +2826,9 @@ Average RR          : {avg_rr}
 Average Momentum    : {avg_momentum}
 """
         bot.send_message(message.chat.id, signal_quality)
+        print("🔍 DEBUG: After sending signal quality summary")
+
+    print(f"🔍 DEBUG: Before signal loop - {len(results)} signals to send")
 
     # ====== SIGNAL MESSAGE NEW LAYOUT ======
     for s in results:
@@ -2827,7 +2843,6 @@ Average Momentum    : {avg_momentum}
         else:
             confidence_rank = "⚠ LOW"
 
-        # Build the signal message with new layout
         msg = f"""
 🚨 AHAD AI {VERSION} – UI Optimization 🐋
 📅 Build: {BUILD_DATE}
@@ -2899,7 +2914,6 @@ Late Entry    : {s['late_score']}
 {FOOTER}
 """
 
-        # Save trade and get trade_id
         trade_id = None
         if s.get('trade_data'):
             try:
@@ -2911,19 +2925,19 @@ Late Entry    : {s['late_score']}
             except Exception as e:
                 print(f"❌ Exception saving trade: {e}")
 
-        # Update message with trade_id
         if trade_id:
             msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
         else:
             msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
 
         bot.send_message(message.chat.id, msg)
+        print(f"🔍 DEBUG: Signal sent for {s['coin']}")
 
     clear_expired_cache()
-
+    print("🔍 DEBUG: Scan completed successfully")
 
 # ================================================
-# 📊 TASK 5: IMPROVED /report
+# 📊 TASK: IMPROVED /report
 # ================================================
 
 @bot.message_handler(commands=['report'])
@@ -3047,7 +3061,7 @@ Avg DD        : {stats['short_avg_dd']}%
 
 
 # ================================================
-# 📂 TASK 4: IMPROVED /open
+# 📂 TASK: IMPROVED /open
 # ================================================
 
 @bot.message_handler(commands=['open'])
@@ -3101,7 +3115,7 @@ def open_trades_command(message):
 
 
 # ================================================
-# 📜 TASK 3: IMPROVED /history
+# 📜 TASK: IMPROVED /history
 # ================================================
 
 @bot.message_handler(commands=['history'])
@@ -3160,7 +3174,7 @@ def history_command(message):
             conn.close()
 
 # ================================================
-# 🚀 SECTION 6: SYSTEM (PART 1)
+# 🚀 SECTION 7: SYSTEM
 # ================================================
 
 # ================================================
@@ -3290,110 +3304,3 @@ print(f"🚀 {VERSION} – UI Optimization")
 
 while True:
     time.sleep(60)
-
-    # ====== SIGNAL MESSAGE NEW LAYOUT ======
-    for s in results:
-        brain_conf = s["brain_confidence"]
-
-        if brain_conf >= 80:
-            confidence_rank = "🔥 VERY HIGH"
-        elif brain_conf >= 60:
-            confidence_rank = "✅ HIGH"
-        elif brain_conf >= 40:
-            confidence_rank = "⚡ MEDIUM"
-        else:
-            confidence_rank = "⚠ LOW"
-
-        # Build the signal message with new layout
-        msg = f"""
-🚨 AHAD AI {VERSION} – UI Optimization 🐋
-📅 Build: {BUILD_DATE}
-
-🏆 Rank #{s['rank']}
-⭐ Ranking Score: {s['ranking_score']}
-
-{s['direction']} | 🪙 {s['coin']}
-🏦 Sector: {s['sector']}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-🎯 ENTRY PLAN
-Entry      : {format_price(s['entry_low'])} - {format_price(s['entry_high'])}
-Stop Loss  : {format_price(s['sl'])}
-🥇 TP1     : {format_price(s['tp1'])}
-🥈 TP2     : {format_price(s['tp2'])}
-🥉 TP3     : {format_price(s['tp3'])}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-🏦 INSTITUTIONAL DASHBOARD
-├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
-├─ Smart Money : {s['money_status']}
-├─ Market      : {s['regime']['regime']}
-├─ Momentum    : {s['momentum_score']}/100 ({s['momentum_status']})
-├─ RR          : {s['rr']}
-├─ Quality Grade: {s.get('quality_grade', 'N/A')}
-├─ Ranking Score: {s.get('ranking_score', 0)}
-└─ Risk        : {s['risk_grade']}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-🧠 AI BRAIN
-📈 LONG Score  : {s['brain_long_score']}
-📉 SHORT Score : {s['brain_short_score']}
-🎯 Confidence  : {brain_conf}/100
-🏆 Level       : {confidence_rank}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📊 INSTITUTIONAL FLOW
-Flow         : {s['liquidity']}X
-Rating       : {s['flow_rating']}
-Flow Score   : {round(s['liquidity'] * 35, 0)}
-Temperature  : {s.get('market_temperature', 'N/A')}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📈 MARKET STATUS
-Final Score   : {s['score']}/100
-Trap Status   : {s['trap']}
-Market Regime : {s['regime']['regime']}
-Compression   : {s['volatility']['status']}
-Late Entry    : {s['late_score']}
-
-{s['warning']}
-{s['early_text']}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-💡 WHY THIS SIGNAL?
-{s['decision_summary']}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-💾 Trade ID: #{trade_id if trade_id else 'N/A'}
-
-{FOOTER}
-"""
-
-        # Save trade and get trade_id
-        trade_id = None
-        if s.get('trade_data'):
-            try:
-                trade_id = save_trade(s['trade_data'])
-                if trade_id:
-                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
-                else:
-                    print(f"❌ Failed to save trade for {s['coin']}")
-            except Exception as e:
-                print(f"❌ Exception saving trade: {e}")
-
-        # Update message with trade_id
-        if trade_id:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
-        else:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
-
-        bot.send_message(message.chat.id, msg)
-
-    clear_expired_cache()

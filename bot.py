@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.4.3 – Adaptive Intelligence Update
+# 🚀 AHAD AI v21.4.4 – Production Patch
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.4.3"
+VERSION = "v21.4.4"
 BUILD_DATE = "2026-07-27"
 
 # ================================================
@@ -2791,7 +2791,7 @@ Coins Analyzed  : {analyzed_coins}
 🔴 SHORT        : {short_signals}
 🎯 Acceptance   : {acceptance_rate}%
 
-🐋 Avg Flow     : {avg_flow:.2f}
+🐋 Avg Flow Ratio (5c) : {avg_flow:.2f}
 🧠 Avg Brain    : {avg_brain:.1f}
 
 🏆 Best Sector  : {strongest_sector}
@@ -2921,6 +2921,11 @@ Coins Analyzed  : {total_analyzed}
 📅 Build: {BUILD_DATE}
 
 ━━━━━━━━━━━━━━━━━━━━━━
+🏆 TOP REJECT REASONS (Sorted)
+━━━━━━━━━━━━━━━━━━━━━━
+{top_rejects}
+
+━━━━━━━━━━━━━━━━━━━━━━
 🕐 SCAN TIMESTAMPS
 ━━━━━━━━━━━━━━━━━━━━━━
 Started         : {scan_start_timestamp}
@@ -2957,11 +2962,6 @@ Watchlist       : {debug.get('watchlist', 0)}
 Validation      : {debug.get('validation', 0)}
 Final Gate      : {debug.get('final_gate', 0)}
 Not Long/Short  : {debug.get('not_long', 0)}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🏆 TOP REJECT REASONS (Sorted)
-━━━━━━━━━━━━━━━━━━━━━━
-{top_rejects}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ✅ RESULTS
@@ -3347,6 +3347,19 @@ def open_trades_command(message):
             cur.close()
         if conn:
             conn.close()
+
+
+# ================================================
+# 🐞 TASK: /debug (v21.4.4 - Task 1 - Production Fix)
+# ================================================
+
+@bot.message_handler(commands=["debug"])
+def debug_command(message):
+    global _last_debug_data
+    if _last_debug_data:
+        send_long_message(message.chat.id, _last_debug_data)
+    else:
+        bot.reply_to(message, "No scan has been executed yet.")
 
 
 # ================================================

@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.3"
+VERSION = "v21.2.5"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -33,7 +33,6 @@ import psycopg2
 from datetime import datetime
 from collections import defaultdict
 import random
-from functools import wraps
 
 from flask import Flask
 import telebot
@@ -48,32 +47,6 @@ if not TOKEN:
     raise Exception("❌ BOT_TOKEN NOT FOUND")
 
 bot = telebot.TeleBot(TOKEN)
-
-# Comma-separated Telegram chat IDs allowed to use the bot.
-# Fail closed: this is a production trading-signal bot and /scan is expensive.
-_allowed_chat_ids_raw = os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS", "")
-try:
-    ALLOWED_CHAT_IDS = {
-        int(chat_id.strip())
-        for chat_id in _allowed_chat_ids_raw.split(",")
-        if chat_id.strip()
-    }
-except ValueError as exc:
-    raise Exception("TELEGRAM_ALLOWED_CHAT_IDS must contain comma-separated numeric chat IDs") from exc
-
-if not ALLOWED_CHAT_IDS:
-    raise Exception("TELEGRAM_ALLOWED_CHAT_IDS is required")
-
-
-def authorized_only(handler):
-    """Reject Telegram commands from chats outside the production allow-list."""
-    @wraps(handler)
-    def wrapper(message, *args, **kwargs):
-        if message.chat.id not in ALLOWED_CHAT_IDS:
-            bot.reply_to(message, "Unauthorized access.")
-            return None
-        return handler(message, *args, **kwargs)
-    return wrapper
 
 # ================================================
 # 🗄 POSTGRESQL DATABASE
@@ -233,11 +206,6 @@ def save_trade(trade_data):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # Serialize same-symbol/same-side inserts across all bot processes.
-        # This prevents the SELECT-then-INSERT duplicate race below.
-        duplicate_key = f"{trade_data['symbol']}:{trade_data['side']}"
-        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (duplicate_key,))
         
         # ====== CHECK FOR DUPLICATE ======
         cur.execute("""
@@ -495,38 +463,32 @@ def update_open_trades():
                     if not candles:
                         continue
 
-                    # Do not score an in-progress candle. OKX marks completed
-                    # candles with confirm == "1"; using an open candle creates
-                    # unstable and non-repeatable TP/SL results.
-                    completed_candles = [c for c in candles if c.get('confirmed', False)]
-                    if not completed_candles:
-                        continue
-                    latest = completed_candles[-1]
-                    current_high = latest['high']
-                    current_low = latest['low']
+                    current_price = candles[-1]['close']
+                    current_high = candles[-1]['high']
+                    current_low = candles[-1]['low']
+
+                    if trade['side'] == 'LONG':
+                        profit_percent = ((current_price - trade['entry']) / trade['entry']) * 100
+                    else:
+                        profit_percent = ((trade['entry'] - current_price) / trade['entry']) * 100
 
                     if trade['side'] == "LONG":
-                        best_excursion = ((current_high - trade['entry']) / trade['entry']) * 100
-                        worst_excursion = ((current_low - trade['entry']) / trade['entry']) * 100
+                        if profit_percent > trade["max_profit"]:
+                            trade["max_profit"] = profit_percent
+                        if profit_percent < trade["max_drawdown"]:
+                            trade["max_drawdown"] = profit_percent
                     else:
-                        best_excursion = ((trade['entry'] - current_low) / trade['entry']) * 100
-                        worst_excursion = ((trade['entry'] - current_high) / trade['entry']) * 100
-
-                    trade["max_profit"] = max(trade["max_profit"], best_excursion)
-                    trade["max_drawdown"] = min(trade["max_drawdown"], worst_excursion)
+                        if profit_percent > trade["max_profit"]:
+                            trade["max_profit"] = profit_percent
+                        if profit_percent < trade["max_drawdown"]:
+                            trade["max_drawdown"] = profit_percent
 
                     new_status = None
                     result = None
                     close_time = datetime.now()
 
                     if trade['side'] == "LONG":
-                        # OHLC candles cannot reveal the intra-candle order. If
-                        # both SL and TP were touched, record the conservative
-                        # outcome instead of overstating the strategy's results.
-                        if current_low <= trade['sl'] and current_high >= trade['tp1']:
-                            new_status = "CLOSED"
-                            result = "LOSS_SL"
-                        elif current_high >= trade['tp3']:
+                        if current_high >= trade['tp3']:
                             new_status = "CLOSED"
                             result = "WIN_TP3"
                         elif current_high >= trade['tp2']:
@@ -539,10 +501,7 @@ def update_open_trades():
                             new_status = "CLOSED"
                             result = "LOSS_SL"
                     else:
-                        if current_high >= trade['sl'] and current_low <= trade['tp1']:
-                            new_status = "CLOSED"
-                            result = "LOSS_SL"
-                        elif current_low <= trade['tp3']:
+                        if current_low <= trade['tp3']:
                             new_status = "CLOSED"
                             result = "WIN_TP3"
                         elif current_low <= trade['tp2']:
@@ -609,11 +568,11 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
-            AVG(CASE WHEN status = 'CLOSED' THEN rr END) AS avg_rr,
-            AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
-            AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown,
-            MAX(CASE WHEN status = 'CLOSED' THEN max_profit END) AS best_trade,
-            MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade
+            AVG(rr) AS avg_rr,
+            AVG(max_profit) AS avg_max_profit,
+            AVG(max_drawdown) AS avg_max_drawdown,
+            MAX(max_profit) AS best_trade,
+            MIN(max_drawdown) AS worst_trade
         FROM trades
         """)
 
@@ -642,7 +601,7 @@ def get_report_stats():
         # LONG statistics
         cur.execute("""
         SELECT
-            COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) AS total,
+            COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
             AVG(rr) AS avg_rr,
@@ -665,7 +624,7 @@ def get_report_stats():
         # SHORT statistics
         cur.execute("""
         SELECT
-            COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) AS total,
+            COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
             COUNT(CASE WHEN status = 'CLOSED' AND result = 'LOSS_SL' THEN 1 END) AS losses,
             AVG(rr) AS avg_rr,
@@ -783,11 +742,7 @@ def get_symbols():
     try:
         url = "https://www.okx.com/api/v5/public/instruments"
         params = {"instType": "SWAP"}
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") not in (None, "0"):
-            raise RuntimeError(f"OKX instruments error: {data.get('msg', data.get('code'))}")
+        data = requests.get(url, params=params, timeout=15).json()
 
         blocked = [
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
@@ -830,7 +785,6 @@ def top_flow_scanner(symbols):
     for symbol in symbols:
         if processed >= MAX_SCAN_LIMIT:
             break
-        processed += 1
             
         try:
             c15 = get_candles(symbol, "15m")
@@ -846,9 +800,7 @@ def top_flow_scanner(symbols):
             if vol_avg == 0:
                 continue
 
-            # Compare five-candle volume with the expected volume for five
-            # average candles. Without the multiplier, normal flow is ~5x.
-            flow = vol_now / (vol_avg * 5)
+            flow = vol_now / vol_avg
             move = ((closes[-1] - closes[-20]) / closes[-20]) * 100
 
             if move > 10:
@@ -856,6 +808,7 @@ def top_flow_scanner(symbols):
 
             if flow >= 1.15:
                 results.append({"coin": symbol, "flow": flow})
+                processed += 1
 
         except Exception as e:
             print(symbol, e)
@@ -894,11 +847,7 @@ def get_candles(symbol, tf):
         url = "https://www.okx.com/api/v5/market/candles"
         params = {"instId": symbol, "bar": frames[tf], "limit": 200}
 
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") not in (None, "0"):
-            raise RuntimeError(f"OKX candles error: {data.get('msg', data.get('code'))}")
+        data = requests.get(url, params=params, timeout=10).json()
 
         if not data or "data" not in data or not data["data"]:
             return []
@@ -910,8 +859,7 @@ def get_candles(symbol, tf):
                 "high": float(c[2]),
                 "low": float(c[3]),
                 "close": float(c[4]),
-                "volume": float(c[5]),
-                "confirmed": len(c) > 8 and c[8] == "1"
+                "volume": float(c[5])
             })
 
         return candles
@@ -1032,7 +980,7 @@ def sector_flow(symbols):
                         average = sum(volumes[-50:]) / 50
 
                         if average > 0:
-                            total += recent / (average * 5)
+                            total += recent / average
                             matched += 1
 
             power = round(total / matched, 2) if matched > 0 else 0
@@ -1072,7 +1020,7 @@ def smart_money(candles):
         if volume_avg == 0:
             flow = 0
         else:
-            flow = volume_now / (volume_avg * 5)
+            flow = volume_now / volume_avg
 
         volume_avg_20 = sum(volumes[-20:]) / 4
         volume_acceleration = volume_now / volume_avg_20 if volume_avg_20 > 0 else 0
@@ -1113,7 +1061,7 @@ def pre_pump_engine(candles):
         if volume_avg == 0:
             return {"status": "NORMAL", "score": 0}
 
-        flow = volume_now / (volume_avg * 5)
+        flow = volume_now / volume_avg
         move = ((price - closes[-30]) / closes[-30]) * 100
         current_rsi = rsi(closes)
 
@@ -2206,25 +2154,7 @@ FOOTER = f"""
 """
 
 
-_scan_lock = threading.Lock()
-
-
-def single_scan_only(handler):
-    """Prevent overlapping scans from exhausting the API or duplicating signals."""
-    @wraps(handler)
-    def wrapper(message, *args, **kwargs):
-        if not _scan_lock.acquire(blocking=False):
-            bot.reply_to(message, "A scan is already running. Please wait for it to finish.")
-            return None
-        try:
-            return handler(message, *args, **kwargs)
-        finally:
-            _scan_lock.release()
-    return wrapper
-
-
 @bot.message_handler(commands=["start"])
-@authorized_only
 def start(message):
     total_trades = get_total_trades()
     bot.reply_to(message, f"""
@@ -2286,8 +2216,6 @@ Commands:
 
 
 @bot.message_handler(commands=["scan"])
-@authorized_only
-@single_scan_only
 def scan(message):
     # ====== SHORT STARTUP MESSAGE ======
     bot.reply_to(message, f"""
@@ -2904,15 +2832,6 @@ Average Momentum    : {avg_momentum}
 
     # ====== SIGNAL MESSAGE NEW LAYOUT ======
     for s in results:
-        trade_id = None
-        if s.get('trade_data'):
-            try:
-                trade_id = save_trade(s['trade_data'])
-                if trade_id:
-                    print(f"Trade #{trade_id} saved for {s['coin']}")
-            except Exception as e:
-                print(f"Error saving trade for {s['coin']}: {e}")
-
         brain_conf = s["brain_confidence"]
 
         if brain_conf >= 80:
@@ -2995,9 +2914,8 @@ Late Entry    : {s['late_score']}
 {FOOTER}
 """
 
-        # Fallback only: the normal save happens before rendering so the ID is
-        # available in the message. Do not insert a second trade on success.
-        if not trade_id and s.get('trade_data'):
+        trade_id = None
+        if s.get('trade_data'):
             try:
                 trade_id = save_trade(s['trade_data'])
                 if trade_id:
@@ -3023,7 +2941,6 @@ Late Entry    : {s['late_score']}
 # ================================================
 
 @bot.message_handler(commands=['report'])
-@authorized_only
 def report_command(message):
     try:
         stats = get_report_stats()
@@ -3148,7 +3065,6 @@ Avg DD        : {stats['short_avg_dd']}%
 # ================================================
 
 @bot.message_handler(commands=['open'])
-@authorized_only
 def open_trades_command(message):
     conn = None
     cur = None
@@ -3203,7 +3119,6 @@ def open_trades_command(message):
 # ================================================
 
 @bot.message_handler(commands=['history'])
-@authorized_only
 def history_command(message):
     conn = None
     cur = None

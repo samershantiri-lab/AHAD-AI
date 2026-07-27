@@ -1542,7 +1542,7 @@ ai_brain_core = AIBrainCore()
 # 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
-def analyze(symbol, sector, debug=None):
+def analyze(symbol, sector, debug=None, stage_trace=None):
     try:
         reject_reason = ""
 
@@ -1609,7 +1609,11 @@ def analyze(symbol, sector, debug=None):
                 debug["flow"] = debug.get("flow", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["flow"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["flow"] = True
 
         brain = ai_brain(c1h)
         record_market_brain_stats(sector, brain["confidence"])
@@ -1620,9 +1624,13 @@ def analyze(symbol, sector, debug=None):
                 debug["brain"] = debug.get("brain", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["brain"] = False
             return None
         else:
             brain_penalty = 0
+        if stage_trace is not None:
+            stage_trace["brain"] = True
 
         direction = brain["direction"]
         direction_clean = direction.replace("🟢 ", "").replace("🔴 ", "")
@@ -1640,7 +1648,11 @@ def analyze(symbol, sector, debug=None):
                 debug["fomo"] = debug.get("fomo", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["fomo"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["fomo"] = True
 
         if soft_fomo and debug is not None:
             debug["soft_fomo"] = debug.get("soft_fomo", 0) + 1
@@ -1653,6 +1665,8 @@ def analyze(symbol, sector, debug=None):
                     debug["higher_trend"] = debug.get("higher_trend", 0) + 1
                     debug.setdefault("reject_reasons", {})
                     debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+                if stage_trace is not None:
+                    stage_trace["higher_timeframe"] = False
                 return None
         else:
             if closes4h[-1] > e200_4h:
@@ -1661,7 +1675,11 @@ def analyze(symbol, sector, debug=None):
                     debug["higher_trend"] = debug.get("higher_trend", 0) + 1
                     debug.setdefault("reject_reasons", {})
                     debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+                if stage_trace is not None:
+                    stage_trace["higher_timeframe"] = False
                 return None
+        if stage_trace is not None:
+            stage_trace["higher_timeframe"] = True
 
         move = atr(c15)
         ema20_15 = ema(closes15, 20)
@@ -1714,10 +1732,14 @@ def analyze(symbol, sector, debug=None):
                 debug["late_score"] = late_score
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["late_entry"] = False
             return None
         else:
             if debug is not None:
                 debug["late_score"] = late_score
+        if stage_trace is not None:
+            stage_trace["late_entry"] = True
 
         # ====== STEP 3: HEAVY ENGINES ======
         sr = support_resistance(c15)
@@ -1763,6 +1785,8 @@ def analyze(symbol, sector, debug=None):
                 debug["trap"] = debug.get("trap", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["trap"] = False
             return None
 
         if trap == "🪤 BEAR TRAP" and direction_clean == "SHORT":
@@ -1771,7 +1795,11 @@ def analyze(symbol, sector, debug=None):
                 debug["trap"] = debug.get("trap", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["trap"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["trap"] = True
 
         # ====== STEP 5: MOMENTUM ======
         if len(closes15) >= 10:
@@ -1921,6 +1949,8 @@ def analyze(symbol, sector, debug=None):
                     debug["resistance"] = debug.get("resistance", 0) + 1
                     debug.setdefault("reject_reasons", {})
                     debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+                if stage_trace is not None:
+                    stage_trace["resistance"] = False
                 return None
         else:
             distance_to_support = sr["near_support"] * price / 100
@@ -1930,7 +1960,11 @@ def analyze(symbol, sector, debug=None):
                     debug["resistance"] = debug.get("resistance", 0) + 1
                     debug.setdefault("reject_reasons", {})
                     debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+                if stage_trace is not None:
+                    stage_trace["resistance"] = False
                 return None
+        if stage_trace is not None:
+            stage_trace["resistance"] = True
 
         MIN_SCORE = 68
         if score < MIN_SCORE:
@@ -1939,7 +1973,11 @@ def analyze(symbol, sector, debug=None):
                 debug["score"] = debug.get("score", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["score"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["score"] = True
 
         # ====== STEP 7: ENTRY & TARGETS ======
         entry_low = price * 0.995
@@ -2062,7 +2100,11 @@ def analyze(symbol, sector, debug=None):
                 debug["rr"] = debug.get("rr", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["rr"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["rr"] = True
 
         if validation_errors:
             reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
@@ -2070,7 +2112,11 @@ def analyze(symbol, sector, debug=None):
                 debug["validation"] = debug.get("validation", 0) + 1
                 debug.setdefault("reject_reasons", {})
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            if stage_trace is not None:
+                stage_trace["validation"] = False
             return None
+        if stage_trace is not None:
+            stage_trace["validation"] = True
 
         # ====== STEP 9: QUALITY & RANKING ======
         brain_conf = brain["confidence"]
@@ -2456,6 +2502,11 @@ def scan(message):
     debug = {}
     debug["reject_reasons"] = {}
 
+    # ====== INSTRUMENTATION (v22.0.2): PIPELINE SURVIVAL TRACE ======
+    # Pure diagnostics - one entry per scanned symbol, recording pass/fail
+    # for each gate. Never read by any accept/reject/scoring logic below.
+    pipeline_trace = []
+
     long_results = []
     short_results = []
     all_symbols = get_symbols()
@@ -2506,7 +2557,8 @@ def scan(message):
         else:
             api_calls += 1
 
-        result = analyze(symbol, coin_sector, debug=debug)
+        stage_trace = {}
+        result = analyze(symbol, coin_sector, debug=debug, stage_trace=stage_trace)
 
         coin_end = time.time()
         coin_duration = round((coin_end - coin_start) * 1000, 2)
@@ -2527,8 +2579,12 @@ def scan(message):
                     )
                 ):
                     long_results.append(result)
+                    if stage_trace is not None:
+                        stage_trace["final_gate"] = True
                     print(f"✅ LONG ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
+                    if stage_trace is not None:
+                        stage_trace["final_gate"] = False
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
                         "Not Long"
@@ -2557,8 +2613,12 @@ def scan(message):
                     )
                 ):
                     short_results.append(result)
+                    if stage_trace is not None:
+                        stage_trace["final_gate"] = True
                     print(f"✅ SHORT ACCEPTED: {result['coin']} | Score: {result['score']} | Flow: {result['liquidity']}")
                 else:
+                    if stage_trace is not None:
+                        stage_trace["final_gate"] = False
                     debug["final_gate"] = debug.get("final_gate", 0) + 1
                     reason = (
                         "Not Short"
@@ -2597,6 +2657,12 @@ def scan(message):
                     f"Score={result['score']} | "
                     f"Reason={debug['reject_reason']}"
                 )
+
+        # Record this symbol's gate-by-gate trace regardless of outcome.
+        # Any gate not present in stage_trace simply was never reached
+        # (the symbol was already rejected upstream) - reported as
+        # "not reached" below, never conflated with an actual rejection.
+        pipeline_trace.append({"symbol": symbol, **stage_trace})
 
         time.sleep(0.03)
 
@@ -3035,6 +3101,60 @@ SHORT Signals   : {len(short_results)}
     global _last_debug_data
     _last_debug_data = debug_msg
     print("🔍 DEBUG: Debug report cached for /debug command")
+
+    # ====== INSTRUMENTATION (v22.0.2): PIPELINE SURVIVAL REPORT ======
+    # Pure diagnostics, computed entirely from pipeline_trace collected
+    # during the scan loop above. Reads nothing but pipeline_trace and
+    # writes nothing back into any accept/reject/scoring variable - it
+    # cannot change which coins are accepted or how they are scored.
+    #
+    # For each gate: Passed / Rejected are counted only from symbols that
+    # actually reached that gate. A symbol rejected upstream (at an
+    # earlier gate) is counted as "Not Reached" here, never folded into
+    # "Rejected" - conflating the two would misrepresent why a symbol
+    # never made it this far.
+    _gate_order = [
+        ("flow", "Flow"),
+        ("brain", "Brain"),
+        ("fomo", "FOMO"),
+        ("higher_timeframe", "Higher Timeframe"),
+        ("late_entry", "Late Entry"),
+        ("trap", "Trap"),
+        ("resistance", "Resistance"),
+        ("score", "Score"),
+        ("rr", "RR"),
+        ("validation", "Validation"),
+        ("final_gate", "Final Gate"),
+    ]
+
+    total_scanned_for_trace = len(pipeline_trace)
+
+    gate_summary_lines = []
+    funnel_lines = [f"Start: {total_scanned_for_trace}"]
+
+    for gate_key, gate_label in _gate_order:
+        gate_passed = sum(1 for t in pipeline_trace if t.get(gate_key) is True)
+        gate_rejected = sum(1 for t in pipeline_trace if t.get(gate_key) is False)
+        gate_not_reached = total_scanned_for_trace - gate_passed - gate_rejected
+
+        gate_summary_lines.append(
+            f"{gate_label}:\nPassed: {gate_passed}\nRejected: {gate_rejected}\nNot Reached: {gate_not_reached}\n"
+        )
+
+        survival_pct = (gate_passed / total_scanned_for_trace * 100) if total_scanned_for_trace > 0 else 0.0
+        funnel_lines.append(f"\nAfter {gate_label}:\n{gate_passed} ({survival_pct:.1f}%)")
+
+    pipeline_survival_msg = (
+        "🧪 PIPELINE SURVIVAL REPORT (Diagnostics Only)\n"
+        "This report is instrumentation only - it does not affect trading behavior.\n\n"
+        "───── PER-GATE BREAKDOWN ─────\n\n"
+        + "\n".join(gate_summary_lines)
+        + "\n───── SURVIVAL FUNNEL ─────\n"
+        + "\n".join(funnel_lines)
+    )
+
+    bot.send_message(message.chat.id, pipeline_survival_msg)
+    print("🔍 DEBUG: Pipeline survival report sent")
 
     # ====== RANKING IMPROVEMENT (v21.4.3 - Task 6) ======
     # This ONLY changes sort order among already-accepted signals - the

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2.6 – UI Optimization
+# 🚀 AHAD AI v21.2.5 – UI Optimization
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.2.6"
+VERSION = "v21.2.7"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -2846,6 +2846,25 @@ Average Momentum    : {avg_momentum}
         else:
             confidence_rank = "⚠ LOW"
 
+        # ✅ FIX v21.2.7: trade_id must be computed BEFORE the msg
+        # f-string references it. Previously trade_id was assigned
+        # AFTER the f-string (which already referenced it directly,
+        # not as an escaped literal), causing an UnboundLocalError
+        # on every first signal of every scan — silently killing the
+        # rest of the message sequence (no signal card, no /debug
+        # footer note). Same bug class as the earlier `rr` and
+        # `debug_command` issues: a variable used before assignment.
+        trade_id = None
+        if s.get('trade_data'):
+            try:
+                trade_id = save_trade(s['trade_data'])
+                if trade_id:
+                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                else:
+                    print(f"❌ Failed to save trade for {s['coin']}")
+            except Exception as e:
+                print(f"❌ Exception saving trade: {e}")
+
         msg = f"""
 🚨 AHAD AI {VERSION} – UI Optimization 🐋
 📅 Build: {BUILD_DATE}
@@ -2916,22 +2935,6 @@ Late Entry    : {s['late_score']}
 
 {FOOTER}
 """
-
-        trade_id = None
-        if s.get('trade_data'):
-            try:
-                trade_id = save_trade(s['trade_data'])
-                if trade_id:
-                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
-                else:
-                    print(f"❌ Failed to save trade for {s['coin']}")
-            except Exception as e:
-                print(f"❌ Exception saving trade: {e}")
-
-        if trade_id:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
-        else:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
 
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.4.4 – Production Patch
+# 🚀 AHAD AI v22.0.1 – Stability & Production Verification
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.4.4"
+VERSION = "v22.0.1"
 BUILD_DATE = "2026-07-27"
 
 # ================================================
@@ -1501,6 +1501,43 @@ def ai_brain(candles):
         "short_score": short_score
             }
 
+# =============================================================================
+# AI BRAIN CORE (v22 FOUNDATION)
+# =============================================================================
+#
+# Phase 1 - Architecture preparation ONLY. This class does not calculate
+# anything, does not read any candle/indicator data, and its output is not
+# used anywhere yet. It exists purely so the future AI Brain v3+ integration
+# has one clean, well-defined seam to plug into later.
+#
+# NAMING NOTE: the production codebase already has a top-level function
+# named `ai_brain` (defined above - the existing, untouched brain engine
+# used throughout analyze() as `brain = ai_brain(c1h)`). To avoid shadowing
+# that function - which would break every scan - the singleton instance of
+# this new class is named `ai_brain_core`, and the integration call below
+# uses that name instead of the literal `ai_brain.analyze(context)`.
+#
+# Do NOT add calculations, indicators, imports, or trading logic here in
+# Phase 1. This is a placeholder only.
+# =============================================================================
+
+class AIBrainCore:
+    """Placeholder for the future AI Brain v3+ integration. Currently
+    performs no analysis and has no effect on any trading decision."""
+
+    def analyze(self, context):
+        return {
+            "brain_score": None,
+            "brain_decision": None,
+            "brain_confidence": None,
+            "brain_reason": "AI Brain not enabled"
+        }
+
+
+# Single shared instance, created once at import time. No initialization
+# side effects, no external calls, no state - safe to construct eagerly.
+ai_brain_core = AIBrainCore()
+
 # ================================================
 # 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
@@ -1544,6 +1581,23 @@ def analyze(symbol, sector, debug=None):
         closes1h = [x["close"] for x in c1h]
         closes4h = [x["close"] for x in c4h]
         closes1d = [x["close"] for x in c1d]
+
+        # ====== AI BRAIN CORE (v22 FOUNDATION) - ARCHITECTURE PREPARATION ONLY ======
+        # Single integration point for the future AI Brain v3+ engine. The result
+        # is intentionally discarded - it does not feed the score, the filters,
+        # the rejection logic, the trade_data, the return value, or Telegram
+        # output. This call exists solely so the wiring is in place; current
+        # scan results are unaffected because brain_result is never read again.
+        context = {
+            "symbol": symbol,
+            "sector": sector,
+            "price": price,
+            "candles_15m": c15,
+            "candles_1h": c1h,
+            "candles_4h": c4h,
+            "candles_1d": c1d,
+        }
+        brain_result = ai_brain_core.analyze(context)  # noqa: F841 (intentionally unused in Phase 1)
 
         # ====== STEP 2: QUICK FILTERS ======
         money = smart_money(c15)
@@ -2416,16 +2470,9 @@ def scan(message):
 
     ranking = flow["ranking"]
 
-    sector_data = {sector: {"coins": 0, "flows": [], "scores": []} for sector in SECTORS.keys()}
-
     if len(symbols) < 20:
         symbols = all_symbols
         print("🔍 DEBUG: Symbols expanded to", len(symbols))
-
-    market_regimes = {}
-    market_flows = []
-    market_brain_scores = []
-    market_compression_status = []
 
     scan_start_time = time.time()
     scan_start_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -2467,20 +2514,9 @@ def scan(message):
 
         print(f"END: {symbol}")
 
-        if result and coin_sector in sector_data:
-            sector_data[coin_sector]["coins"] += 1
-            sector_data[coin_sector]["flows"].append(result.get("liquidity", 0))
-            sector_data[coin_sector]["scores"].append(result.get("score", 0))
-
         if result:
             if result["score"] > 100:
                 result["score"] = 100
-
-            regime_name = result["regime"]["regime"]
-            market_regimes[regime_name] = market_regimes.get(regime_name, 0) + 1
-            market_flows.append(result["liquidity"])
-            market_brain_scores.append(result["brain_confidence"])
-            market_compression_status.append(result["volatility"]["status"])
 
             if result["direction"] == "🟢 LONG":
                 if (

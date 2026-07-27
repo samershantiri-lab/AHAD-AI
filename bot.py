@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.4.1 – UI Optimization
+# 🚀 AHAD AI v21.4.2 – UI Optimization
 # ================================================
 
 # ================================================
@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.4.1"
+VERSION = "v21.4.2"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -107,7 +107,7 @@ def init_database():
         """)
 
         # ================================================
-        # 🔄 DATABASE MIGRATION (v21.4.1)
+        # 🔄 DATABASE MIGRATION (v21.4.2)
         # ================================================
 
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS brain_confidence INTEGER")
@@ -956,6 +956,64 @@ def clear_expired_cache():
 
 
 # ================================================
+# 📊 MARKET STATS ENGINE
+# ================================================
+
+_market_stats = {}
+
+def reset_market_stats():
+    """Reset scan-wide market statistics before each /scan."""
+    global _market_stats
+    _market_stats = {
+        "flow_samples": 0,
+        "flow_sum": 0.0,
+        "brain_samples": 0,
+        "brain_sum": 0.0,
+        "sector_flow": defaultdict(list),
+        "sector_brain": defaultdict(list),
+        "regimes": defaultdict(int),
+        "compressions": defaultdict(int),
+    }
+
+def record_market_flow_stats(sector, flow):
+    """Record flow statistics for dashboard calculations."""
+    if flow is None:
+        return
+    if not _market_stats:
+        reset_market_stats()
+    _market_stats["flow_samples"] += 1
+    _market_stats["flow_sum"] += flow
+    if sector and sector != "UNKNOWN":
+        _market_stats["sector_flow"][sector].append(flow)
+
+def record_market_brain_stats(sector, brain_confidence):
+    """Record brain confidence statistics for dashboard calculations."""
+    if brain_confidence is None:
+        return
+    if not _market_stats:
+        reset_market_stats()
+    _market_stats["brain_samples"] += 1
+    _market_stats["brain_sum"] += brain_confidence
+    if sector and sector != "UNKNOWN":
+        _market_stats["sector_brain"][sector].append(brain_confidence)
+
+def record_market_regime_stats(regime, compression_status, debug=None):
+    """Record market regime and compression statistics for dashboard/debug."""
+    if not _market_stats:
+        reset_market_stats()
+    if regime:
+        _market_stats["regimes"][regime] += 1
+        if debug is not None:
+            debug.setdefault("regimes", {})
+            debug["regimes"][regime] = debug["regimes"].get(regime, 0) + 1
+    if compression_status:
+        _market_stats["compressions"][compression_status] += 1
+        if debug is not None:
+            debug.setdefault("compressions", {})
+            debug["compressions"][compression_status] = debug["compressions"].get(compression_status, 0) + 1
+
+
+# ================================================
 # 🏦 SECTOR FLOW ENGINE
 # ================================================
 
@@ -1442,6 +1500,7 @@ def analyze(symbol, sector, debug=None):
         # ====== STEP 2: QUICK FILTERS ======
         money = smart_money(c15)
         flow = money["flow"]
+        record_market_flow_stats(sector, flow)
         if flow < 0.8:
             reject_reason = "Low Flow"
             if debug is not None:
@@ -1451,6 +1510,7 @@ def analyze(symbol, sector, debug=None):
             return None
 
         brain = ai_brain(c1h)
+        record_market_brain_stats(sector, brain["confidence"])
         if brain["direction"] == "WAIT":
             brain_penalty = 10
             reject_reason = "Brain"
@@ -1550,6 +1610,7 @@ def analyze(symbol, sector, debug=None):
         trap = trap_detector(c15)
         vol = volatility_engine(c15)
         regime = market_regime(c15, vol["score"])
+        record_market_regime_stats(regime.get("regime"), vol.get("status"), debug)
 
         rsi_15m = rsi(closes15)
         rsi_1h = rsi(closes1h)
@@ -2142,7 +2203,7 @@ def analyze(symbol, sector, debug=None):
 # ================================================
 
 # ================================================
-# 📋 FOOTER (v21.4.1)
+# 📋 FOOTER (v21.4.2)
 # ================================================
 
 FOOTER = f"""
@@ -2263,6 +2324,7 @@ def scan(message):
 """)
 
     clear_expired_cache()
+    reset_market_stats()
 
     debug = {}
     debug["reject_reasons"] = {}
@@ -2346,13 +2408,6 @@ def scan(message):
             market_flows.append(result["liquidity"])
             market_brain_scores.append(result["brain_confidence"])
             market_compression_status.append(result["volatility"]["status"])
-
-            debug.setdefault("regimes", {})
-            debug["regimes"][regime_name] = debug["regimes"].get(regime_name, 0) + 1
-
-            compression_name = result["volatility"]["status"]
-            debug.setdefault("compressions", {})
-            debug["compressions"][compression_name] = debug["compressions"].get(compression_name, 0) + 1
 
             if result["direction"] == "🟢 LONG":
                 if (
@@ -2438,39 +2493,36 @@ def scan(message):
 
     print("🔍 DEBUG: After for symbol in symbols loop - completed")
 
+    stats_flow_samples = _market_stats.get("flow_samples", 0)
+    stats_brain_samples = _market_stats.get("brain_samples", 0)
+    avg_flow = round(_market_stats.get("flow_sum", 0.0) / stats_flow_samples, 2) if stats_flow_samples > 0 else 0
+    avg_brain = round(_market_stats.get("brain_sum", 0.0) / stats_brain_samples, 1) if stats_brain_samples > 0 else 0
+
     sector_summary = []
-    for sector, data in sector_data.items():
-        if data["coins"] > 0:
-            avg_flow = round(sum(data["flows"]) / len(data["flows"]), 2) if data["flows"] else 0
-            avg_score = round(sum(data["scores"]) / len(data["scores"]), 1) if data["scores"] else 0
-            sector_summary.append({
-                "sector": sector,
-                "coins": data["coins"],
-                "avg_flow": avg_flow,
-                "avg_score": avg_score
-            })
+    for sector, flows in _market_stats.get("sector_flow", {}).items():
+        if not flows:
+            continue
+        brains = _market_stats.get("sector_brain", {}).get(sector, [])
+        avg_sector_flow = round(sum(flows) / len(flows), 2)
+        avg_sector_brain = round(sum(brains) / len(brains), 1) if brains else 0
+        sector_summary.append({
+            "sector": sector,
+            "coins": len(flows),
+            "avg_flow": avg_sector_flow,
+            "avg_brain": avg_sector_brain
+        })
     sector_summary.sort(key=lambda x: x["avg_flow"], reverse=True)
 
     all_results = long_results + short_results
-    
-    if market_flows:
-        avg_flow = round(sum(market_flows) / len(market_flows), 2)
-    else:
-        avg_flow = 0
-
-    if market_brain_scores:
-        avg_brain = round(sum(market_brain_scores) / len(market_brain_scores), 1)
-    else:
-        avg_brain = 0
 
     # ====== HIDE EMPTY METRICS ======
     has_signals = len(all_results) > 0
-    
+
     if has_signals:
         avg_score = round(sum(r["score"] for r in all_results) / len(all_results), 2)
         avg_rr = round(sum(r["rr"] for r in all_results) / len(all_results), 2)
         avg_momentum = round(sum(r["momentum_score"] for r in all_results) / len(all_results), 2)
-        
+
         metrics_display = f"""
 📊 METRICS
 Avg Final Score : {avg_score}
@@ -2496,8 +2548,10 @@ N/A — No signals passed the final filters.
         debug["avg_rr"] = "N/A"
         debug["avg_momentum"] = "N/A"
 
-    total_checked = debug.get('checked', 0)
-    has_health_data = bool(market_regimes) or bool(market_flows) or bool(market_brain_scores)
+    regime_total = sum(_market_stats.get("regimes", {}).values())
+    compression_total = sum(_market_stats.get("compressions", {}).values())
+    health_base = regime_total if regime_total > 0 else stats_flow_samples
+    has_health_data = bool(stats_flow_samples or stats_brain_samples or regime_total or compression_total)
 
     print("🔍 DEBUG: Before building dashboard")
 
@@ -2512,16 +2566,18 @@ N/A — No signals passed the final filters.
     market_health_score = 0
     health_icon = "🟡"
 
-    if total_checked > 0 and has_health_data:
-        bull_pct = round((market_regimes.get("TRENDING", 0) / total_checked) * 100, 1)
-        bear_pct = round((market_regimes.get("BEARISH", 0) / total_checked) * 100, 1)
-        sideways_pct = round((market_regimes.get("RANGING", 0) / total_checked) * 100, 1)
-        mixed_pct = round((market_regimes.get("MIXED", 0) / total_checked) * 100, 1)
-        compression_pct = round((market_regimes.get("COMPRESSION", 0) / total_checked) * 100, 1)
-        
-        high_compression = sum(1 for s in market_compression_status if "SPRING LOADED" in s or "BUILDING" in s)
-        compression_high_pct = round((high_compression / len(market_compression_status)) * 100, 1) if market_compression_status else 0
-        
+    if has_health_data and health_base > 0:
+        bull_pct = round((_market_stats.get("regimes", {}).get("TRENDING", 0) / health_base) * 100, 1)
+        bear_pct = round((_market_stats.get("regimes", {}).get("BEARISH", 0) / health_base) * 100, 1)
+        sideways_pct = round((_market_stats.get("regimes", {}).get("RANGING", 0) / health_base) * 100, 1)
+        mixed_pct = round((_market_stats.get("regimes", {}).get("MIXED", 0) / health_base) * 100, 1)
+
+        high_compression = sum(
+            count for status, count in _market_stats.get("compressions", {}).items()
+            if "SPRING LOADED" in status or "BUILDING" in status
+        )
+        compression_high_pct = round((high_compression / compression_total) * 100, 1) if compression_total else 0
+
         if bull_pct > 50 and avg_brain > 70:
             market_quality = "🔥 EXCELLENT"
         elif bull_pct > 30 and avg_brain > 60:
@@ -2530,7 +2586,7 @@ N/A — No signals passed the final filters.
             market_quality = "⚠️ CAUTION"
         else:
             market_quality = "📊 NEUTRAL"
-        
+
         temp_score = (avg_flow * 20) + (avg_brain * 0.3) + (compression_high_pct * 0.2)
         if temp_score > 80:
             market_temp = "🔴 OVERHEATED"
@@ -2551,7 +2607,7 @@ N/A — No signals passed the final filters.
             market_health_score += 20
         else:
             market_health_score += 10
-        
+
         if avg_flow >= 2.0:
             market_health_score += 30
         elif avg_flow >= 1.5:
@@ -2560,7 +2616,7 @@ N/A — No signals passed the final filters.
             market_health_score += 10
         else:
             market_health_score += 5
-        
+
         if avg_brain >= 70:
             market_health_score += 20
         elif avg_brain >= 50:
@@ -2569,14 +2625,14 @@ N/A — No signals passed the final filters.
             market_health_score += 10
         else:
             market_health_score += 5
-        
+
         if compression_high_pct >= 30:
             market_health_score += 10
         elif compression_high_pct >= 15:
             market_health_score += 5
-        
+
         market_health_score = min(100, market_health_score)
-        
+
         if market_health_score >= 70:
             health_icon = "🟢"
         elif market_health_score >= 40:
@@ -2585,12 +2641,13 @@ N/A — No signals passed the final filters.
             health_icon = "🔴"
 
     # ====== BUILD TOP SECTORS DISPLAY ======
+    # ====== BUILD TOP SECTORS DISPLAY ======
     top_sectors_display = ""
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
     
     if sector_summary:
         for idx, sector_data in enumerate(sector_summary[:6]):
-            top_sectors_display += f"{medals[idx]} {sector_data['sector']:<8} Flow {sector_data['avg_flow']:.2f} | Score {sector_data['avg_score']:.1f}\n"
+            top_sectors_display += f"{medals[idx]} {sector_data['sector']:<8} Flow {sector_data['avg_flow']:.2f} | Brain {sector_data['avg_brain']:.1f}\n"
     else:
         top_sectors_display = "No sector data available."
 

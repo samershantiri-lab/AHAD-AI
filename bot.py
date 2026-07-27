@@ -2932,6 +2932,21 @@ Average Momentum    : {avg_momentum}
         else:
             confidence_rank = "⚠ LOW"
 
+        # ✅ FIX (re-applied from v21.2.7): trade_id must be computed
+        # BEFORE the msg f-string references it, or every first
+        # signal of every scan crashes with UnboundLocalError and
+        # silently kills the rest of the message sequence.
+        trade_id = None
+        if s.get('trade_data'):
+            try:
+                trade_id = save_trade(s['trade_data'])
+                if trade_id:
+                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                else:
+                    print(f"❌ Failed to save trade for {s['coin']}")
+            except Exception as e:
+                print(f"❌ Exception saving trade: {e}")
+
         msg = f"""
 🚨 AHAD AI {VERSION} – UI Optimization 🐋
 📅 Build: {BUILD_DATE}
@@ -3002,22 +3017,6 @@ Late Entry    : {s['late_score']}
 
 {FOOTER}
 """
-
-        trade_id = None
-        if s.get('trade_data'):
-            try:
-                trade_id = save_trade(s['trade_data'])
-                if trade_id:
-                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
-                else:
-                    print(f"❌ Failed to save trade for {s['coin']}")
-            except Exception as e:
-                print(f"❌ Exception saving trade: {e}")
-
-        if trade_id:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
-        else:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
 
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")

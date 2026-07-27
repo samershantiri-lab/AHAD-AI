@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v21.2.8 – UI Optimization (FIXED)
+# 🚀 AHAD AI v21.2.5 – UI Optimization
 # ================================================
 
 # ================================================
@@ -16,8 +16,8 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.2.8"
-BUILD_DATE = "2026-07-27"
+VERSION = "v21.2.5"
+BUILD_DATE = "2026-07-26"
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -192,6 +192,7 @@ def format_price(value):
     if value is None:
         return "N/A"
     return f"{value:.6f}"
+
 
 # ================================================
 # 💾 TRADE RECORDER
@@ -682,6 +683,7 @@ def get_report_stats():
             cur.close()
         if conn:
             conn.close()
+
 
 # ================================================
 # 🌐 RENDER KEEP ALIVE SERVER
@@ -1391,7 +1393,7 @@ def ai_brain(candles):
         "confidence": confidence,
         "long_score": long_score,
         "short_score": short_score
-        }
+            }
 
 # ================================================
 # 🎯 SECTION 3: ANALYZE ENGINE
@@ -1756,384 +1758,384 @@ def analyze(symbol, sector, debug=None):
                 debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
             return None
 
-    # ====== STEP 7: ENTRY & TARGETS ======
-    entry_low = price * 0.995
-    entry_high = price * 1.005
+        # ====== STEP 7: ENTRY & TARGETS ======
+        entry_low = price * 0.995
+        entry_high = price * 1.005
 
-    if flow >= 3:
-        money_status = "🚀 HIGH WHALE FLOW"
-    elif flow >= 2:
-        money_status = "🐋 INSTITUTIONAL FLOW"
-    elif flow >= 1.2:
-        money_status = "💧 HEALTHY FLOW"
-    else:
-        money_status = "NORMAL"
+        if flow >= 3:
+            money_status = "🚀 HIGH WHALE FLOW"
+        elif flow >= 2:
+            money_status = "🐋 INSTITUTIONAL FLOW"
+        elif flow >= 1.2:
+            money_status = "💧 HEALTHY FLOW"
+        else:
+            money_status = "NORMAL"
 
-    if regime["regime"] == "TRENDING":
-        rr_multiplier = 1.8
-    elif regime["regime"] == "COMPRESSION":
-        rr_multiplier = 2.2
-    else:
-        rr_multiplier = 1.5
+        if regime["regime"] == "TRENDING":
+            rr_multiplier = 1.8
+        elif regime["regime"] == "COMPRESSION":
+            rr_multiplier = 2.2
+        else:
+            rr_multiplier = 1.5
 
-    if flow >= 2:
-        rr_multiplier += 0.3
-    if momentum_score >= 70:
-        rr_multiplier += 0.2
-
-    if direction_clean == "LONG":
-        base_multiplier = 1.5
         if flow >= 2:
-            base_multiplier += 0.3
-        if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-            base_multiplier += 0.3
+            rr_multiplier += 0.3
         if momentum_score >= 70:
-            base_multiplier += 0.2
+            rr_multiplier += 0.2
 
-        sl = entry_low - move * base_multiplier
-        risk = entry_low - sl
+        if direction_clean == "LONG":
+            base_multiplier = 1.5
+            if flow >= 2:
+                base_multiplier += 0.3
+            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+                base_multiplier += 0.3
+            if momentum_score >= 70:
+                base_multiplier += 0.2
 
-        tp1 = entry_low + risk * rr_multiplier
-        tp2 = entry_low + risk * (rr_multiplier * 2)
-        tp3 = entry_low + risk * (rr_multiplier * 3.3)
+            sl = entry_low - move * base_multiplier
+            risk = entry_low - sl
 
-        if tp1 <= entry_high:
-            tp1 = entry_high + move * 0.8
-        if tp2 <= tp1:
-            tp2 = tp1 + move * 0.5
-        if tp3 <= tp2:
-            tp3 = tp2 + move * 0.5
+            tp1 = entry_low + risk * rr_multiplier
+            tp2 = entry_low + risk * (rr_multiplier * 2)
+            tp3 = entry_low + risk * (rr_multiplier * 3.3)
 
-        rr = (tp1 - entry_low) / risk
+            if tp1 <= entry_high:
+                tp1 = entry_high + move * 0.8
+            if tp2 <= tp1:
+                tp2 = tp1 + move * 0.5
+            if tp3 <= tp2:
+                tp3 = tp2 + move * 0.5
 
-    else:
-        base_multiplier = 1.5
-        if flow >= 2:
-            base_multiplier += 0.3
-        if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
-            base_multiplier += 0.3
+            rr = (tp1 - entry_low) / risk
+
+        else:
+            base_multiplier = 1.5
+            if flow >= 2:
+                base_multiplier += 0.3
+            if money_status in ["🚀 HIGH WHALE FLOW", "🐋 INSTITUTIONAL FLOW"]:
+                base_multiplier += 0.3
+            if momentum_score >= 70:
+                base_multiplier += 0.2
+
+            sl = entry_high + move * base_multiplier
+            risk = sl - entry_high
+
+            tp1 = entry_high - risk * rr_multiplier
+            tp2 = entry_high - risk * (rr_multiplier * 2)
+            tp3 = entry_high - risk * (rr_multiplier * 3.3)
+
+            if tp1 >= entry_low:
+                tp1 = entry_low - move * 0.8
+            if tp2 >= tp1:
+                tp2 = tp1 - move * 0.5
+            if tp3 >= tp2:
+                tp3 = tp2 - move * 0.5
+
+            rr = (entry_high - tp1) / risk
+
+        # ====== STEP 8: VALIDATION ======
+        validation_errors = []
+
+        if direction_clean == "LONG":
+            if sl >= entry_low:
+                validation_errors.append("SL must be below Entry")
+            if tp1 <= entry_low:
+                validation_errors.append("TP1 must be above Entry")
+            if tp2 <= tp1:
+                validation_errors.append("TP2 must be above TP1")
+            if tp3 <= tp2:
+                validation_errors.append("TP3 must be above TP2")
+        else:
+            if sl <= entry_high:
+                validation_errors.append("SL must be above Entry")
+            if tp1 >= entry_high:
+                validation_errors.append("TP1 must be below Entry")
+            if tp2 >= tp1:
+                validation_errors.append("TP2 must be below TP1")
+            if tp3 >= tp2:
+                validation_errors.append("TP3 must be below TP2")
+
+        if rr <= 0:
+            validation_errors.append("RR must be positive")
+
+        if base in blocked_assets:
+            validation_errors.append("Blocked Asset")
+
+        if sector == "UNKNOWN":
+            validation_errors.append("Invalid Sector")
+
+        if entry_low <= 0 or entry_high <= 0:
+            validation_errors.append("Invalid Entry")
+
+        if sl <= 0:
+            validation_errors.append("Invalid SL")
+
+        if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
+            validation_errors.append("Invalid TP")
+
+        if rr < 1.8:
+            reject_reason = "Bad RR (Validation)"
+            if debug is not None:
+                debug["rr"] = debug.get("rr", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            return None
+
+        if validation_errors:
+            reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
+            if debug is not None:
+                debug["validation"] = debug.get("validation", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            return None
+
+        # ====== STEP 9: QUALITY & RANKING ======
+        brain_conf = brain["confidence"]
+
+        if score >= 95 and brain_conf >= 80 and rr >= 3.0 and momentum_score >= 85 and flow >= 2.0:
+            quality = "💎 ELITE SETUP"
+            quality_grade = "ELITE"
+        elif score >= 90 and brain_conf >= 70 and rr >= 2.5:
+            quality = "🔥 PREMIUM SETUP"
+            quality_grade = "PREMIUM"
+        elif score >= 80 and brain_conf >= 60:
+            quality = "✅ HIGH QUALITY"
+            quality_grade = "HIGH"
+        elif score >= 70:
+            quality = "⚡ GOOD SETUP"
+            quality_grade = "GOOD"
+        else:
+            quality = "👀 WATCHLIST"
+            quality_grade = "WATCHLIST"
+            reject_reason = "Watchlist Only"
+            if debug is not None:
+                debug["watchlist"] = debug.get("watchlist", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            return None
+
+        if score >= 85:
+            confidence_level = "🔥 HIGH"
+        elif score >= 70:
+            confidence_level = "⚡ MEDIUM"
+        else:
+            confidence_level = "⏳ LOW"
+
+        ranking_score = (
+            score * 0.40 +
+            brain_conf * 0.25 +
+            rr * 10 +
+            max(flow, 0.5) * 8 +
+            momentum_score * 0.05
+        )
+
+        if direction_clean == "LONG":
+            if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
+                early_text = "🐋 EARLY ENTRY AREA"
+            else:
+                early_text = "⏳ WAIT FOR ENTRY"
+        else:
+            if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
+                early_text = "🐻 EARLY ENTRY AREA"
+            else:
+                early_text = "⏳ WAIT FOR ENTRY"
+
+        if flow >= 3.0:
+            flow_rating = "AAA"
+            flow_label = "🚀 EXTREME"
+        elif flow >= 2.0:
+            flow_rating = "AA"
+            flow_label = "🐋 HIGH"
+        elif flow >= 1.5:
+            flow_rating = "A"
+            flow_label = "💧 GOOD"
+        elif flow >= 1.2:
+            flow_rating = "BBB"
+            flow_label = "📊 MODERATE"
+        else:
+            flow_rating = "BB"
+            flow_label = "⚠️ LOW"
+
+        if rr >= 3.0 and brain["confidence"] >= 70 and score >= 85:
+            risk_grade = "🟢 LOW RISK"
+            risk_icon = "🟢"
+        elif rr >= 2.0 and brain["confidence"] >= 50 and score >= 70:
+            risk_grade = "🟡 MEDIUM RISK"
+            risk_icon = "🟡"
+        else:
+            risk_grade = "🔴 HIGH RISK"
+            risk_icon = "🔴"
+
+        temp_score = (flow * 20) + (brain_conf * 0.3) + (vol["score"] * 0.2)
+        if temp_score > 80:
+            market_temperature = "🔴 OVERHEATED"
+        elif temp_score > 60:
+            market_temperature = "🟠 HOT"
+        elif temp_score > 40:
+            market_temperature = "🟡 WARM"
+        else:
+            market_temperature = "🟢 COLD"
+
+        # ====== WHY THIS SIGNAL - GROUPED ======
+        decision_reasons_raw = []
+
+        if regime["regime"] in ["TRENDING", "COMPRESSION"]:
+            decision_reasons_raw.append("✅ Strong Market Structure")
+        else:
+            decision_reasons_raw.append("📊 Neutral Market Structure")
+
         if momentum_score >= 70:
-            base_multiplier += 0.2
-
-        sl = entry_high + move * base_multiplier
-        risk = sl - entry_high
-
-        tp1 = entry_high - risk * rr_multiplier
-        tp2 = entry_high - risk * (rr_multiplier * 2)
-        tp3 = entry_high - risk * (rr_multiplier * 3.3)
-
-        if tp1 >= entry_low:
-            tp1 = entry_low - move * 0.8
-        if tp2 >= tp1:
-            tp2 = tp1 - move * 0.5
-        if tp3 >= tp2:
-            tp3 = tp2 - move * 0.5
-
-        rr = (entry_high - tp1) / risk
-
-    # ====== STEP 8: VALIDATION ======
-    validation_errors = []
-
-    if direction_clean == "LONG":
-        if sl >= entry_low:
-            validation_errors.append("SL must be below Entry")
-        if tp1 <= entry_low:
-            validation_errors.append("TP1 must be above Entry")
-        if tp2 <= tp1:
-            validation_errors.append("TP2 must be above TP1")
-        if tp3 <= tp2:
-            validation_errors.append("TP3 must be above TP2")
-    else:
-        if sl <= entry_high:
-            validation_errors.append("SL must be above Entry")
-        if tp1 >= entry_high:
-            validation_errors.append("TP1 must be below Entry")
-        if tp2 >= tp1:
-            validation_errors.append("TP2 must be below TP1")
-        if tp3 >= tp2:
-            validation_errors.append("TP3 must be below TP2")
-
-    if rr <= 0:
-        validation_errors.append("RR must be positive")
-
-    if base in blocked_assets:
-        validation_errors.append("Blocked Asset")
-
-    if sector == "UNKNOWN":
-        validation_errors.append("Invalid Sector")
-
-    if entry_low <= 0 or entry_high <= 0:
-        validation_errors.append("Invalid Entry")
-
-    if sl <= 0:
-        validation_errors.append("Invalid SL")
-
-    if tp1 <= 0 or tp2 <= 0 or tp3 <= 0:
-        validation_errors.append("Invalid TP")
-
-    if rr < 1.8:
-        reject_reason = "Bad RR (Validation)"
-        if debug is not None:
-            debug["rr"] = debug.get("rr", 0) + 1
-            debug.setdefault("reject_reasons", {})
-            debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
-        return None
-
-    if validation_errors:
-        reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
-        if debug is not None:
-            debug["validation"] = debug.get("validation", 0) + 1
-            debug.setdefault("reject_reasons", {})
-            debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
-        return None
-
-    # ====== STEP 9: QUALITY & RANKING ======
-    brain_conf = brain["confidence"]
-
-    if score >= 95 and brain_conf >= 80 and rr >= 3.0 and momentum_score >= 85 and flow >= 2.0:
-        quality = "💎 ELITE SETUP"
-        quality_grade = "ELITE"
-    elif score >= 90 and brain_conf >= 70 and rr >= 2.5:
-        quality = "🔥 PREMIUM SETUP"
-        quality_grade = "PREMIUM"
-    elif score >= 80 and brain_conf >= 60:
-        quality = "✅ HIGH QUALITY"
-        quality_grade = "HIGH"
-    elif score >= 70:
-        quality = "⚡ GOOD SETUP"
-        quality_grade = "GOOD"
-    else:
-        quality = "👀 WATCHLIST"
-        quality_grade = "WATCHLIST"
-        reject_reason = "Watchlist Only"
-        if debug is not None:
-            debug["watchlist"] = debug.get("watchlist", 0) + 1
-            debug.setdefault("reject_reasons", {})
-            debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
-        return None
-
-    if score >= 85:
-        confidence_level = "🔥 HIGH"
-    elif score >= 70:
-        confidence_level = "⚡ MEDIUM"
-    else:
-        confidence_level = "⏳ LOW"
-
-    ranking_score = (
-        score * 0.40 +
-        brain_conf * 0.25 +
-        rr * 10 +
-        max(flow, 0.5) * 8 +
-        momentum_score * 0.05
-    )
-
-    if direction_clean == "LONG":
-        if momentum_score >= 60 and flow >= 1.2 and sr["near_resistance"] > 3:
-            early_text = "🐋 EARLY ENTRY AREA"
+            decision_reasons_raw.append("✅ Strong Momentum")
+        elif momentum_score >= 50:
+            decision_reasons_raw.append("⚡ Moderate Momentum")
         else:
-            early_text = "⏳ WAIT FOR ENTRY"
-    else:
-        if momentum_score >= 60 and flow >= 1.2 and sr["near_support"] > 3:
-            early_text = "🐻 EARLY ENTRY AREA"
+            decision_reasons_raw.append("📉 Weak Momentum")
+
+        if flow >= 1.5:
+            decision_reasons_raw.append("✅ Institutional Flow")
         else:
-            early_text = "⏳ WAIT FOR ENTRY"
+            decision_reasons_raw.append("📊 Normal Flow")
 
-    if flow >= 3.0:
-        flow_rating = "AAA"
-        flow_label = "🚀 EXTREME"
-    elif flow >= 2.0:
-        flow_rating = "AA"
-        flow_label = "🐋 HIGH"
-    elif flow >= 1.5:
-        flow_rating = "A"
-        flow_label = "💧 GOOD"
-    elif flow >= 1.2:
-        flow_rating = "BBB"
-        flow_label = "📊 MODERATE"
-    else:
-        flow_rating = "BB"
-        flow_label = "⚠️ LOW"
-
-    if rr >= 3.0 and brain["confidence"] >= 70 and score >= 85:
-        risk_grade = "🟢 LOW RISK"
-        risk_icon = "🟢"
-    elif rr >= 2.0 and brain["confidence"] >= 50 and score >= 70:
-        risk_grade = "🟡 MEDIUM RISK"
-        risk_icon = "🟡"
-    else:
-        risk_grade = "🔴 HIGH RISK"
-        risk_icon = "🔴"
-
-    temp_score = (flow * 20) + (brain_conf * 0.3) + (vol["score"] * 0.2)
-    if temp_score > 80:
-        market_temperature = "🔴 OVERHEATED"
-    elif temp_score > 60:
-        market_temperature = "🟠 HOT"
-    elif temp_score > 40:
-        market_temperature = "🟡 WARM"
-    else:
-        market_temperature = "🟢 COLD"
-
-    # ====== WHY THIS SIGNAL - GROUPED ======
-    decision_reasons_raw = []
-
-    if regime["regime"] in ["TRENDING", "COMPRESSION"]:
-        decision_reasons_raw.append("✅ Strong Market Structure")
-    else:
-        decision_reasons_raw.append("📊 Neutral Market Structure")
-
-    if momentum_score >= 70:
-        decision_reasons_raw.append("✅ Strong Momentum")
-    elif momentum_score >= 50:
-        decision_reasons_raw.append("⚡ Moderate Momentum")
-    else:
-        decision_reasons_raw.append("📉 Weak Momentum")
-
-    if flow >= 1.5:
-        decision_reasons_raw.append("✅ Institutional Flow")
-    else:
-        decision_reasons_raw.append("📊 Normal Flow")
-
-    if rr >= 2.5:
-        decision_reasons_raw.append("✅ High Risk/Reward")
-    else:
-        decision_reasons_raw.append("📊 Standard RR")
-
-    if brain["confidence"] >= 60:
-        decision_reasons_raw.append("✅ High Brain Confidence")
-    else:
-        decision_reasons_raw.append("📊 Moderate Brain Confidence")
-
-    if vol["status"] in ["🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"]:
-        decision_reasons_raw.append("✅ Compression Setup")
-    else:
-        decision_reasons_raw.append("📊 Normal Volatility")
-
-    if trap == "✅ NO TRAP":
-        decision_reasons_raw.append("✅ No Trap Detected")
-
-    if sector not in ["UNKNOWN", "RWA"]:
-        decision_reasons_raw.append("✅ Strong Sector")
-    else:
-        decision_reasons_raw.append("📊 Neutral Sector")
-
-    if late_score < 20:
-        decision_reasons_raw.append("✅ Early Entry Zone")
-    elif late_score < 30:
-        decision_reasons_raw.append("⚡ Moderate Entry Zone")
-    else:
-        decision_reasons_raw.append("⏳ Late Entry Warning")
-
-    if len(decision_reasons_raw) == 0:
-        decision_reasons_raw.append("⏳ Standard Setup")
-
-    # Group reasons
-    strong_reasons = []
-    neutral_reasons = []
-    risk_reasons = []
-
-    for reason in decision_reasons_raw:
-        if any(keyword in reason for keyword in ["✅", "Strong", "High", "Institutional", "Compression", "Early", "No Trap"]):
-            strong_reasons.append(reason)
-        elif any(keyword in reason for keyword in ["⚠️", "Weak", "Late", "Risk"]):
-            risk_reasons.append(reason)
+        if rr >= 2.5:
+            decision_reasons_raw.append("✅ High Risk/Reward")
         else:
-            neutral_reasons.append(reason)
+            decision_reasons_raw.append("📊 Standard RR")
 
-    decision_summary = ""
-    if strong_reasons:
-        decision_summary += "🔥 Strong Reasons\n" + "\n".join(strong_reasons) + "\n\n"
-    if neutral_reasons:
-        decision_summary += "📊 Neutral Factors\n" + "\n".join(neutral_reasons) + "\n\n"
-    if risk_reasons:
-        decision_summary += "⚠️ Risk Factors\n" + "\n".join(risk_reasons)
+        if brain["confidence"] >= 60:
+            decision_reasons_raw.append("✅ High Brain Confidence")
+        else:
+            decision_reasons_raw.append("📊 Moderate Brain Confidence")
 
-    # ====== STEP 10: TRADE DATA ======
-    trade_data = {
-        'symbol': symbol,
-        'side': direction_clean,
-        'signal_time': datetime.now(),
-        'entry': round(entry_low, 6),
-        'sl': round(sl, 6),
-        'tp1': round(tp1, 6),
-        'tp2': round(tp2, 6),
-        'tp3': round(tp3, 6),
-        'sector': sector,
-        'score': round(score),
-        'brain_long': brain['long_score'],
-        'brain_short': brain['short_score'],
-        'flow': round(flow, 2),
-        'momentum': momentum_score,
-        'rr': round(rr, 2),
-        'confidence': confidence_level,
-        'late_score': late_score,
-        'version': VERSION,
-        'brain_confidence': brain['confidence'],
-        'market_regime': regime['regime'],
-        'compression_score': vol['score'],
-        'compression_status': vol['status'],
-        'momentum_weight': round(momentum_weight, 2),
-        'flow_score': flow_score,
-        'volume_acceleration': round(volume_acceleration, 2),
-        'flow_rating': flow_rating,
-        'risk_grade': risk_grade,
-        'decision_summary': decision_summary,
-        'ranking_score': round(ranking_score, 2),
-        'quality_grade': quality_grade,
-        'market_temperature': market_temperature
-    }
+        if vol["status"] in ["🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"]:
+            decision_reasons_raw.append("✅ Compression Setup")
+        else:
+            decision_reasons_raw.append("📊 Normal Volatility")
 
-    print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)}")
+        if trap == "✅ NO TRAP":
+            decision_reasons_raw.append("✅ No Trap Detected")
 
-    # Increment passed counter
-    if debug is not None:
-        debug["passed"] = debug.get("passed", 0) + 1
+        if sector not in ["UNKNOWN", "RWA"]:
+            decision_reasons_raw.append("✅ Strong Sector")
+        else:
+            decision_reasons_raw.append("📊 Neutral Sector")
 
-    return {
-        "coin": symbol,
-        "sector": sector,
-        "direction": brain["direction"],
-        "score": round(score),
-        "quality": quality,
-        "confidence_level": confidence_level,
-        "money_status": money_status,
-        "early_text": early_text,
-        "entry_low": round(entry_low, 6),
-        "entry_high": round(entry_high, 6),
-        "sl": round(sl, 6),
-        "tp1": round(tp1, 6),
-        "tp2": round(tp2, 6),
-        "tp3": round(tp3, 6),
-        "liquidity": money["flow"],
-        "pre_pump": pre["status"],
-        "multi": multi,
-        "trap": trap,
-        "warning": warning_text,
-        "volatility": vol,
-        "regime": regime,
-        "reject_reason": reject_reason,
-        "debug_reason": [],
-        "momentum_score": momentum_score,
-        "momentum_status": momentum_status,
-        "rr": round(rr, 2),
-        "brain_long_score": brain["long_score"],
-        "brain_short_score": brain["short_score"],
-        "late_score": late_score,
-        "brain_confidence": brain["confidence"],
-        "flow_rating": flow_rating,
-        "flow_label": flow_label,
-        "risk_grade": risk_grade,
-        "risk_icon": risk_icon,
-        "decision_summary": decision_summary,
-        "ranking_score": round(ranking_score, 2),
-        "quality_grade": quality_grade,
-        "market_temperature": market_temperature,
-        "trade_data": trade_data
-    }
+        if late_score < 20:
+            decision_reasons_raw.append("✅ Early Entry Zone")
+        elif late_score < 30:
+            decision_reasons_raw.append("⚡ Moderate Entry Zone")
+        else:
+            decision_reasons_raw.append("⏳ Late Entry Warning")
 
-except Exception as e:
-    print(f"❌ ANALYZE ERROR: {e}")
-    return None
+        if len(decision_reasons_raw) == 0:
+            decision_reasons_raw.append("⏳ Standard Setup")
+
+        # Group reasons
+        strong_reasons = []
+        neutral_reasons = []
+        risk_reasons = []
+
+        for reason in decision_reasons_raw:
+            if any(keyword in reason for keyword in ["✅", "Strong", "High", "Institutional", "Compression", "Early", "No Trap"]):
+                strong_reasons.append(reason)
+            elif any(keyword in reason for keyword in ["⚠️", "Weak", "Late", "Risk"]):
+                risk_reasons.append(reason)
+            else:
+                neutral_reasons.append(reason)
+
+        decision_summary = ""
+        if strong_reasons:
+            decision_summary += "🔥 Strong Reasons\n" + "\n".join(strong_reasons) + "\n\n"
+        if neutral_reasons:
+            decision_summary += "📊 Neutral Factors\n" + "\n".join(neutral_reasons) + "\n\n"
+        if risk_reasons:
+            decision_summary += "⚠️ Risk Factors\n" + "\n".join(risk_reasons)
+
+        # ====== STEP 10: TRADE DATA ======
+        trade_data = {
+            'symbol': symbol,
+            'side': direction_clean,
+            'signal_time': datetime.now(),
+            'entry': round(entry_low, 6),
+            'sl': round(sl, 6),
+            'tp1': round(tp1, 6),
+            'tp2': round(tp2, 6),
+            'tp3': round(tp3, 6),
+            'sector': sector,
+            'score': round(score),
+            'brain_long': brain['long_score'],
+            'brain_short': brain['short_score'],
+            'flow': round(flow, 2),
+            'momentum': momentum_score,
+            'rr': round(rr, 2),
+            'confidence': confidence_level,
+            'late_score': late_score,
+            'version': VERSION,
+            'brain_confidence': brain['confidence'],
+            'market_regime': regime['regime'],
+            'compression_score': vol['score'],
+            'compression_status': vol['status'],
+            'momentum_weight': round(momentum_weight, 2),
+            'flow_score': flow_score,
+            'volume_acceleration': round(volume_acceleration, 2),
+            'flow_rating': flow_rating,
+            'risk_grade': risk_grade,
+            'decision_summary': decision_summary,
+            'ranking_score': round(ranking_score, 2),
+            'quality_grade': quality_grade,
+            'market_temperature': market_temperature
+        }
+
+        print(f"✅ SIGNAL ACCEPTED: {symbol} | {direction_clean} | Score: {round(score)} | Flow: {round(flow,2)} | RR: {round(rr,2)}")
+
+        # Increment passed counter
+        if debug is not None:
+            debug["passed"] = debug.get("passed", 0) + 1
+
+        return {
+            "coin": symbol,
+            "sector": sector,
+            "direction": brain["direction"],
+            "score": round(score),
+            "quality": quality,
+            "confidence_level": confidence_level,
+            "money_status": money_status,
+            "early_text": early_text,
+            "entry_low": round(entry_low, 6),
+            "entry_high": round(entry_high, 6),
+            "sl": round(sl, 6),
+            "tp1": round(tp1, 6),
+            "tp2": round(tp2, 6),
+            "tp3": round(tp3, 6),
+            "liquidity": money["flow"],
+            "pre_pump": pre["status"],
+            "multi": multi,
+            "trap": trap,
+            "warning": warning_text,
+            "volatility": vol,
+            "regime": regime,
+            "reject_reason": reject_reason,
+            "debug_reason": [],
+            "momentum_score": momentum_score,
+            "momentum_status": momentum_status,
+            "rr": round(rr, 2),
+            "brain_long_score": brain["long_score"],
+            "brain_short_score": brain["short_score"],
+            "late_score": late_score,
+            "brain_confidence": brain["confidence"],
+            "flow_rating": flow_rating,
+            "flow_label": flow_label,
+            "risk_grade": risk_grade,
+            "risk_icon": risk_icon,
+            "decision_summary": decision_summary,
+            "ranking_score": round(ranking_score, 2),
+            "quality_grade": quality_grade,
+            "market_temperature": market_temperature,
+            "trade_data": trade_data
+        }
+
+    except Exception as e:
+        print(f"❌ ANALYZE ERROR: {e}")
+        return None
 
 # ================================================
 # 🤖 SECTION 4: TELEGRAM SCANNER (PART 1)
@@ -2150,6 +2152,35 @@ FOOTER = f"""
 🐋 Institutional Engine
 📊 Production Stable
 """
+
+
+_last_debug_data = None
+TELEGRAM_MESSAGE_LIMIT = 3900
+
+def send_long_message(chat_id, text, reply_to_message_id=None, chunk_size=TELEGRAM_MESSAGE_LIMIT):
+    """Send long Telegram messages in safe chunks."""
+    if not text:
+        return
+
+    remaining = text
+    first = True
+
+    while remaining:
+        if len(remaining) <= chunk_size:
+            chunk = remaining
+            remaining = ""
+        else:
+            split_at = remaining.rfind("\n", 0, chunk_size)
+            if split_at == -1 or split_at < chunk_size // 2:
+                split_at = chunk_size
+            chunk = remaining[:split_at].rstrip()
+            remaining = remaining[split_at:].lstrip("\n")
+
+        if first and reply_to_message_id is not None:
+            bot.send_message(chat_id, chunk, reply_to_message_id=reply_to_message_id)
+            first = False
+        else:
+            bot.send_message(chat_id, chunk)
 
 
 @bot.message_handler(commands=["start"])
@@ -2620,23 +2651,23 @@ N/A — No signals passed the final filters.
             key=lambda x: x[1],
             reverse=True
         )
-        
+
         top_rejects_list = all_rejects[:10]
-        
+
         emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        
+
         top_rejects = "\n".join(
             f"{emojis[i]} {k} : {v}"
             for i, (k, v) in enumerate(top_rejects_list)
         )
-        
+
         total_rejections = sum(debug["reject_reasons"].values())
         top_rejects = f"Total Rejections: {total_rejections}\n\n{top_rejects}"
-        
+
         # ====== MAIN REJECT REASON ======
         main_reject = all_rejects[0]
         main_reject_display = f"{main_reject[0]} ({main_reject[1]})"
-        
+
     else:
         top_rejects = "N/A — No rejection data available."
         main_reject_display = "N/A"
@@ -2644,10 +2675,10 @@ N/A — No signals passed the final filters.
     scan_end_time = time.time()
     scan_duration = round(scan_end_time - scan_start_time, 2)
     scan_end_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-    
+
     total_calls = api_calls + cache_hits
     cache_saved_pct = round((cache_hits / total_calls) * 100, 1) if total_calls > 0 else 0
-    
+
     debug["scan_duration"] = scan_duration
     debug["api_calls"] = api_calls
     debug["cache_hits"] = cache_hits
@@ -2682,7 +2713,7 @@ Cache TTL       : {CACHE_TTL}s
     total_analyzed = debug.get('checked', 0)
     total_passed = debug.get('passed', 0)
     total_rejected = total_analyzed - total_passed
-    
+
     decision_summary_display = f"""
 📊 SCAN SUMMARY
 Coins Analyzed  : {total_analyzed}
@@ -2776,7 +2807,8 @@ SHORT Signals   : {len(short_results)}
 
 {FOOTER}
 """
-    debug_command_handler.last_debug_data = debug_msg
+    global _last_debug_data
+    _last_debug_data = debug_msg
     print("🔍 DEBUG: Debug report cached for /debug command")
 
     def ranking_score(signal):
@@ -2810,7 +2842,6 @@ SHORT Signals   : {len(short_results)}
 ⏳ Waiting for the next liquidity wave.
 
 🎯 Main Reject Reason: {main_reject_display}
-
 📋 Full breakdown: /debug
 {FOOTER}
 """)
@@ -2843,18 +2874,6 @@ Average Momentum    : {avg_momentum}
             confidence_rank = "⚡ MEDIUM"
         else:
             confidence_rank = "⚠ LOW"
-
-        # ====== FIXED v21.2.8: trade_id defined BEFORE message ======
-        trade_id = None
-        if s.get('trade_data'):
-            try:
-                trade_id = save_trade(s['trade_data'])
-                if trade_id:
-                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
-                else:
-                    print(f"❌ Failed to save trade for {s['coin']}")
-            except Exception as e:
-                print(f"❌ Exception saving trade: {e}")
 
         msg = f"""
 🚨 AHAD AI {VERSION} – UI Optimization 🐋
@@ -2927,36 +2946,27 @@ Late Entry    : {s['late_score']}
 {FOOTER}
 """
 
+        trade_id = None
+        if s.get('trade_data'):
+            try:
+                trade_id = save_trade(s['trade_data'])
+                if trade_id:
+                    print(f"✅ Trade #{trade_id} saved for {s['coin']}")
+                else:
+                    print(f"❌ Failed to save trade for {s['coin']}")
+            except Exception as e:
+                print(f"❌ Exception saving trade: {e}")
+
+        if trade_id:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
+        else:
+            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
+
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")
 
-    bot.send_message(message.chat.id, f"📋 Full scan breakdown: /debug\n{FOOTER}")
-
     clear_expired_cache()
     print("🔍 DEBUG: Scan completed successfully")
-
-# ================================================
-# 🐞 COMMAND: /debug (v21.2.6 — separated from /scan)
-# ================================================
-
-@bot.message_handler(commands=['debug'])
-def debug_command_handler(message):
-    if debug_command_handler.last_debug_data is None:
-        bot.reply_to(message, f"""
-🐞 No debug data available yet.
-
-Run /scan first, then send /debug to see the full breakdown.
-
-{FOOTER}
-""")
-        return
-
-    bot.send_message(message.chat.id, debug_command_handler.last_debug_data)
-
-
-# ✅ initialized AFTER the function is fully defined (avoids the
-# NameError that broke earlier v21.3 attempts at this same feature)
-debug_command_handler.last_debug_data = None
 
 # ================================================
 # 📊 TASK: IMPROVED /report

@@ -16,7 +16,7 @@ CACHE_TTL = 60
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v21.2.5"
+VERSION = "v21.2.6"
 BUILD_DATE = "2026-07-26"
 
 # ================================================
@@ -2208,6 +2208,7 @@ def start(message):
 
 Commands:
 /scan – Run scanner with Institutional Dashboard
+/debug – Full technical breakdown of the last scan
 /report – Performance report
 /open – Open trades list
 /history – Last 10 closed trades
@@ -2777,8 +2778,8 @@ SHORT Signals   : {len(short_results)}
 
 {FOOTER}
 """
-    bot.send_message(message.chat.id, debug_msg)
-    print("🔍 DEBUG: After sending debug report")
+    debug_command_handler.last_debug_data = debug_msg
+    print("🔍 DEBUG: Debug report cached for /debug command")
 
     def ranking_score(signal):
         return signal.get('ranking_score', 0)
@@ -2811,6 +2812,8 @@ SHORT Signals   : {len(short_results)}
 ⏳ Waiting for the next liquidity wave.
 
 🎯 Main Reject Reason: {main_reject_display}
+
+📋 Full breakdown: /debug
 {FOOTER}
 """)
         clear_expired_cache()
@@ -2933,8 +2936,34 @@ Late Entry    : {s['late_score']}
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")
 
+    bot.send_message(message.chat.id, f"📋 Full scan breakdown: /debug\n{FOOTER}")
+
     clear_expired_cache()
     print("🔍 DEBUG: Scan completed successfully")
+
+
+# ================================================
+# 🐞 COMMAND: /debug (v21.2.6 — separated from /scan)
+# ================================================
+
+@bot.message_handler(commands=['debug'])
+def debug_command_handler(message):
+    if debug_command_handler.last_debug_data is None:
+        bot.reply_to(message, f"""
+🐞 No debug data available yet.
+
+Run /scan first, then send /debug to see the full breakdown.
+
+{FOOTER}
+""")
+        return
+
+    bot.send_message(message.chat.id, debug_command_handler.last_debug_data)
+
+
+# ✅ initialized AFTER the function is fully defined (avoids the
+# NameError that broke earlier v21.3 attempts at this same feature)
+debug_command_handler.last_debug_data = None
 
 # ================================================
 # 📊 TASK: IMPROVED /report

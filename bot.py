@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI REBORN v22.1.2 – Telegram Signal Hotfix
+# 🚀 AHAD AI v22.1.3 – UX & Signal Quality Update
 # ================================================
 
 """
@@ -271,6 +271,142 @@ sequence for a single signal); every fatal gate, every penalty, Alpha
 Hunter, Heat Control, Opportunity Mode, and the ranking formula are
 byte-identical to v22.1.0.
 ================================================================================
+
+
+================================================================================
+AHAD AI v22.1.3 - UX & SIGNAL QUALITY UPDATE
+================================================================================
+Every change in this version is confined to `scan()`'s message-building
+and ordering, plus the static SECTORS reference table. `analyze()` -
+every fatal gate, penalty, engine call, and the ranking formula - is
+byte-identical to v22.1.2 (confirmed by direct diff before release).
+
+--------------------------------------------------------------------------------
+TASK 1 & 2 - New Signal Design + Quality Titles
+--------------------------------------------------------------------------------
+Replaced the old verbose signal message with the compact design
+specified, using a QUALITY_TITLES lookup:
+    ELITE -> "👑 ELITE OPPORTUNITY", PREMIUM -> "💎 PREMIUM SIGNAL",
+    HIGH -> "⭐ HIGH QUALITY SIGNAL", GOOD -> "🟢 GOOD OPPORTUNITY",
+    WATCHLIST -> "🔴 WATCHLIST".
+Note: the request's example also mentioned "A+"/"A"/"B" tiers, which do
+not correspond to any quality_grade value analyze() actually produces
+(its five tiers are ELITE/PREMIUM/HIGH/GOOD/WATCHLIST). Mapped HIGH and
+GOOD to the "A+"/"A"-equivalent titles shown ("⭐ HIGH QUALITY SIGNAL",
+"🟢 GOOD OPPORTUNITY") rather than inventing new quality tiers, since
+Task 2's own instruction is to select a title "according to signal
+quality" - i.e. from what the engine already computes, not to change
+what it computes. Status line ("⚠️ WAIT FOR ENTRY" / "✅ READY TO
+ENTER") is derived from the existing early_text field (unchanged in
+analyze()) via simple text matching, not a new calculation. The
+message references "/trade {id}" as requested display text; no /trade
+command handler exists yet - only the text was added, since creating a
+new command was not part of the 9 tasks. Verified by rendering the new
+template against 3 realistic signals (PREMIUM/success, GOOD/failed
+save, WATCHLIST/success) - all three render cleanly with no KeyError
+or formatting error.
+
+--------------------------------------------------------------------------------
+TASK 3 - Scan Order
+--------------------------------------------------------------------------------
+Removed the "Signal Quality Summary" message (not part of the required
+sequence) and moved the Market Summary send from BEFORE the signal loop
+to immediately AFTER it. Order is now exactly: scanning message -> up
+to 3 signal messages -> Market Summary -> (unless there are zero
+results, in which case the existing single "No Opportunity" message is
+sent instead, as before). No other message sends anywhere in scan().
+
+--------------------------------------------------------------------------------
+TASK 4 - Market Summary
+--------------------------------------------------------------------------------
+Replaced the old, longer dashboard message with the exact compact
+format requested. "🌡 Market : BULL/BEAR/SIDEWAYS" is derived from the
+already-computed bull_pct/bear_pct/sideways_pct (picking whichever is
+largest) - a display-only derivation, not a new market-condition
+calculation.
+
+--------------------------------------------------------------------------------
+TASK 5 - Ranking Review: BUG FOUND AND FIXED
+--------------------------------------------------------------------------------
+`results = best_longs + best_shorts` simply concatenated the top-2 LONG
+list before the top-1 SHORT list, then assigned rank numbers by that
+concatenation order alone - NOT by a true sort of the combined set. This
+meant the single SHORT candidate could have a higher ranking_score than
+the second LONG candidate, yet still display as "Rank #3" (last),
+violating "Rank #2 >= Rank #3". Fixed with a single added line:
+`results = sorted(results, key=ranking_key, reverse=True)` right after
+the concatenation, before rank numbers are assigned. This only reorders
+the DISPLAY rank of the already-selected 3 candidates - it does not
+change WHICH candidates were selected (still best 2 LONG + best 1
+SHORT via the unchanged ranking_key/sorted/slicing above it). Verified
+with an isolated test: a SHORT candidate (ranking_score 80) correctly
+promoted to Rank #2 ahead of a weaker LONG candidate (ranking_score 60)
+that would otherwise have been mislabeled Rank #2 under the old
+concatenation-order logic.
+
+--------------------------------------------------------------------------------
+TASK 6 - Sector Review: NOT A BUG, DATA EXPANDED
+--------------------------------------------------------------------------------
+The sector lookup algorithm itself (in scan(), matching a symbol's root
+against the SECTORS dict) is correct and untouched. "UNKNOWN" was
+appearing on many strong signals simply because SECTORS previously
+listed only ~30 coin roots across 6 categories, while get_symbols()
+pulls OKX's entire live SWAP universe (typically hundreds of symbols) -
+most real symbols were mathematically guaranteed to match nothing.
+Per "if sector information can be determined, display the correct
+sector; if impossible, keep UNKNOWN; do not force fake sectors,"
+expanded SECTORS to 88 coins across 11 categories (added LAYER2,
+MAJORS, EXCHANGE, STORAGE, ORACLE; expanded the original 6). This is a
+static reference-data expansion only - the matching algorithm was not
+touched, and any symbol still not covered correctly remains UNKNOWN
+rather than being forced into a guessed category.
+
+--------------------------------------------------------------------------------
+TASK 7 - Final Score Review: CALCULATION IS CORRECT, KEPT AS-IS
+--------------------------------------------------------------------------------
+`score` (Final Score) and `brain_confidence` are two intentionally
+independent measures - brain_confidence reflects only the AI Brain's
+own directional conviction, while `score` is a much broader composite
+that also absorbs every penalty (Higher Trend, FOMO, Late Entry, Trap,
+Low Flow, RSI Extreme, Multi-TF extremes, Near Resistance/Support, Low
+RR, etc.) introduced across the REBORN refactor. Since v22.0.0 removed
+the old MIN_SCORE=68 hard reject, signals that previously would have
+been silently rejected (and thus never seen with a low score) now
+surface and get ranked even when Final Score has been driven all the
+way down to its clamped floor of 0 - while brain_confidence, computed
+from a completely different, independent part of analyze(), can
+legitimately remain high at the same time. This is the intended,
+expected result of "every mathematically valid candidate reaches the
+Ranking Engine" - not a display bug. Traced the full scoring path
+(STEP 4-9 of analyze()) to confirm there is no stray reassignment or
+incorrect clamp; the 0 values are mathematically consistent with
+stacked penalties. No change made, per "if calculation is correct,
+keep it."
+
+--------------------------------------------------------------------------------
+TASK 8 - Risk Grade Review: CONSISTENT, NO CHANGE
+--------------------------------------------------------------------------------
+risk_grade's three thresholds (rr>=3.0 & brain_conf>=70 & score>=85 ->
+LOW; rr>=2.0 & brain_conf>=50 & score>=70 -> MEDIUM; else -> HIGH) were
+checked against their own stated conditions directly - no undefined
+variables, no inverted comparisons, no off-by-one errors found. A
+high-score signal can still land in HIGH RISK if RR or brain_confidence
+don't also clear their thresholds; this is a multi-factor risk
+judgment, not an inconsistency. No change made.
+
+--------------------------------------------------------------------------------
+TASK 9 - Bull Trap Review: WEIGHTING ALREADY CONSISTENT, NO CHANGE
+--------------------------------------------------------------------------------
+The Trap penalty (18 points, flat, applied only when a detected
+BULL/BEAR trap matches the candidate's own direction) was compared
+against the magnitude of every other penalty in analyze(): Higher
+Trend (15), FOMO Overextended (20), Late Entry (scaled up to 30), Near
+Resistance/Support (12), RSI Extreme (~5-10). 18 sits squarely within
+this same range rather than standing out as disproportionate. No
+evidence of over-penalization relative to comparable-severity penalties
+was found, so the weighting was left unchanged, per "only review
+weighting consistency" and "do not remove Bull Trap detection."
+================================================================================
 """
 
 # ================================================
@@ -294,7 +430,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.1.2"
+VERSION = "v22.1.3"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -1003,12 +1139,17 @@ def run_web():
 # ================================================
 
 SECTORS = {
-    "AI": ["FET", "TAO", "WLD", "ARKM", "AI", "RENDER"],
-    "GAMING": ["APE", "SAND", "MANA", "GALA", "IMX", "AXS"],
-    "DEFI": ["UNI", "AAVE", "LINK", "CRV", "MKR", "COMP"],
-    "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI"],
-    "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA"],
-    "RWA": ["ONDO", "PENDLE", "ENA"]
+    "AI": ["FET", "TAO", "WLD", "ARKM", "AI", "RENDER", "RNDR", "AGIX", "OCEAN", "NMR", "PHB", "AIOZ"],
+    "GAMING": ["APE", "SAND", "MANA", "GALA", "IMX", "AXS", "GMT", "MAGIC", "PIXEL", "ILV", "YGG", "BEAM"],
+    "DEFI": ["UNI", "AAVE", "LINK", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "DYDX", "LDO", "RUNE", "BAL", "GMX"],
+    "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI", "WIF", "MEME", "BOME", "MEW", "POPCAT"],
+    "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA", "ATOM", "APT", "SUI", "SEI", "TON", "INJ", "TIA"],
+    "LAYER2": ["ARB", "OP", "MATIC", "STRK", "MANTA", "ZK", "METIS"],
+    "RWA": ["ONDO", "PENDLE", "ENA", "POLYX", "CFG"],
+    "MAJORS": ["BTC", "ETH", "XRP", "LTC", "BCH"],
+    "EXCHANGE": ["BNB", "OKB", "CRO", "GT", "KCS"],
+    "STORAGE": ["FIL", "AR", "STORJ"],
+    "ORACLE": ["PYTH", "BAND", "API3"]
 }
 
 
@@ -3375,34 +3516,9 @@ N/A — No signals passed the final filters.
     strongest_sector = sector_summary[0]['sector'] if sector_summary else "N/A"
     weakest_sector = sector_summary[-1]['sector'] if len(sector_summary) > 1 else "N/A"
 
-    # ====== SEND ONE DASHBOARD MESSAGE (v21.4.3 - Better Dashboard, Task 3) ======
-    dashboard_msg = f"""
-🌍 AHAD AI MARKET DASHBOARD
-
-❤️ Health Score : {market_health_score}/100 ({health_grade})
-🌡 Temperature  : {market_temp}
-
-📊 SCAN STATS
-Coins Analyzed  : {analyzed_coins}
-✅ Accepted     : {accepted_signals}
-❌ Rejected     : {rejected_signals}
-🟢 LONG         : {long_signals}
-🔴 SHORT        : {short_signals}
-🎯 Acceptance   : {acceptance_rate}%
-
-🐋 Avg Flow Ratio (5c) : {avg_flow:.2f}
-🧠 Avg Brain    : {avg_brain:.1f}
-
-🏆 Best Sector  : {strongest_sector}
-📉 Weakest      : {weakest_sector}
-
-📊 Top Sectors
-
-{top_sectors_display}
-{FOOTER}
-"""
-    bot.send_message(message.chat.id, dashboard_msg)
-    print("🔍 DEBUG: After sending dashboard")
+    # Task 4 (v22.1.3): Market Summary content is now built compactly and
+    # sent AFTER the signal messages (see Task 3 ordering) - not here.
+    print("🔍 DEBUG: Dashboard stats computed, will send after signals")
 
     # ====== CONTINUE WITH EXISTING DEBUG REPORT ======
     if debug.get("regimes"):
@@ -3629,6 +3745,16 @@ SHORT Signals   : {len(short_results)}
     )[:1]
 
     results = best_longs + best_shorts
+
+    # Task 5 (v22.1.3): rank numbers must reflect a true descending sort
+    # by ranking_score across the combined LONG+SHORT set. Concatenation
+    # order alone (LONG candidates first, then SHORT) does not guarantee
+    # this - e.g. the single SHORT candidate could score higher than the
+    # second LONG candidate. This re-sort only reorders the DISPLAY rank
+    # of the already-selected 3 candidates; it does not change WHICH
+    # candidates were selected (still best 2 LONG + best 1 SHORT).
+    results = sorted(results, key=ranking_key, reverse=True)
+
     print(f"🔍 DEBUG: After ranking - {len(results)} signals selected")
 
     for rank, signal in enumerate(results, start=1):
@@ -3650,99 +3776,52 @@ SHORT Signals   : {len(short_results)}
         clear_expired_cache()
         return
 
-    # ====== SIGNAL QUALITY SUMMARY ======
-    if all_results:
-        signal_quality = f"""
-📊 SIGNAL QUALITY SUMMARY
-Average Score       : {avg_score}
-Average Confidence  : {avg_brain}%
-Average RR          : {avg_rr}
-Average Momentum    : {avg_momentum}
-"""
-        bot.send_message(message.chat.id, signal_quality)
-        print("🔍 DEBUG: After sending signal quality summary")
-
     print(f"🔍 DEBUG: Before signal loop - {len(results)} signals to send")
 
-    # ====== SIGNAL MESSAGE NEW LAYOUT ======
+    # ====== SIGNAL MESSAGE - COMPACT DESIGN (v22.1.3, Tasks 1 & 2) ======
+    QUALITY_TITLES = {
+        "ELITE": "👑 ELITE OPPORTUNITY",
+        "PREMIUM": "💎 PREMIUM SIGNAL",
+        "HIGH": "⭐ HIGH QUALITY SIGNAL",
+        "GOOD": "🟢 GOOD OPPORTUNITY",
+        "WATCHLIST": "🔴 WATCHLIST",
+    }
+
     for s in results:
         brain_conf = s["brain_confidence"]
 
-        if brain_conf >= 80:
-            confidence_rank = "🔥 VERY HIGH"
-        elif brain_conf >= 60:
-            confidence_rank = "✅ HIGH"
-        elif brain_conf >= 40:
-            confidence_rank = "⚡ MEDIUM"
-        else:
-            confidence_rank = "⚠ LOW"
+        quality_title = QUALITY_TITLES.get(s.get('quality_grade'), "🔴 WATCHLIST")
+        status_text = "⚠️ WAIT FOR ENTRY" if "WAIT" in s.get('early_text', '') else "✅ READY TO ENTER"
 
-        msg = f"""
-🚨 AHAD AI {VERSION} – Adaptive Intelligence 🐋
-📅 Build: {BUILD_DATE}
+        msg = f"""{quality_title}
 
+--------------------------------
+
+{s['direction']} | {s['coin']}
 🏆 Rank #{s['rank']}
-⭐ Ranking Score: {s['ranking_score']}
 
-{s['direction']} | 🪙 {s['coin']}
-🏦 Sector: {s['sector']}
+━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━
+🎯 Entry
+{format_price(s['entry_low'])} → {format_price(s['entry_high'])}
 
-🎯 ENTRY PLAN
-Entry      : {format_price(s['entry_low'])} - {format_price(s['entry_high'])}
-Stop Loss  : {format_price(s['sl'])}
-🥇 TP1     : {format_price(s['tp1'])}
-🥈 TP2     : {format_price(s['tp2'])}
-🥉 TP3     : {format_price(s['tp3'])}
+🛑 Stop Loss
+{format_price(s['sl'])}
 
-━━━━━━━━━━━━━━━━━━━━━━
+🥇 TP1 {format_price(s['tp1'])}
+🥈 TP2 {format_price(s['tp2'])}
+🥉 TP3 {format_price(s['tp3'])}
 
-🏦 INSTITUTIONAL DASHBOARD
-├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
-├─ Smart Money : {s['money_status']}
-├─ Market      : {s['regime']['regime']}
-├─ Momentum    : {s['momentum_score']}/100 ({s['momentum_status']})
-├─ RR          : {s['rr']}
-├─ Quality Grade: {s.get('quality_grade', 'N/A')}
-├─ Ranking Score: {s.get('ranking_score', 0)}
-└─ Risk        : {s['risk_grade']}
+━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━
+🧠 Confidence {brain_conf}%
+⭐ Score {s['score']}
+🐋 Flow {s['flow_rating']}
+⚖️ RR {s['rr']}
 
-🧠 AI BRAIN
-📈 LONG Score  : {s['brain_long_score']}
-📉 SHORT Score : {s['brain_short_score']}
-🎯 Confidence  : {brain_conf}/100
-🏆 Level       : {confidence_rank}
+{status_text}
 
-━━━━━━━━━━━━━━━━━━━━━━
-
-📊 INSTITUTIONAL FLOW
-Flow         : {s['liquidity']}X
-Rating       : {s['flow_rating']}
-Flow Score   : {round(s['liquidity'] * 35, 0)}
-Temperature  : {s.get('market_temperature', 'N/A')}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📈 MARKET STATUS
-Final Score   : {s['score']}/100
-Trap Status   : {s['trap']}
-Market Regime : {s['regime']['regime']}
-Compression   : {s['volatility']['status']}
-Late Entry    : {s['late_score']}
-
-{s['warning']}
-{s['early_text']}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-💡 WHY THIS SIGNAL?
-{s['decision_summary']}
-
-{FOOTER}
-"""
+━━━━━━━━━━━━━━━━━━"""
 
         trade_id = None
         if s.get('trade_data'):
@@ -3756,12 +3835,42 @@ Late Entry    : {s['late_score']}
                 print(f"❌ Exception saving trade: {e}")
 
         if trade_id:
-            msg += f"\n\n💾 Trade ID: #{trade_id}"
+            msg += f"\n\n💾 Trade #{trade_id}\n📖 Full Analysis → /trade {trade_id}"
         else:
             msg += "\n\n❌ Failed to save trade"
 
+        msg += f"\n🤖 AHAD AI {VERSION}"
+
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")
+
+    # ====== MARKET SUMMARY - COMPACT DESIGN (v22.1.3, Task 4) ======
+    # Sent immediately after the signal messages, per the required order:
+    # scanning message -> signal #1 -> signal #2 -> signal #3 -> market
+    # summary, with nothing else in between.
+    if bull_pct >= bear_pct and bull_pct >= sideways_pct:
+        market_condition = "BULL"
+    elif bear_pct >= bull_pct and bear_pct >= sideways_pct:
+        market_condition = "BEAR"
+    else:
+        market_condition = "SIDEWAYS"
+
+    market_summary_msg = f"""📊 MARKET SUMMARY
+
+❤️ Health Score : {market_health_score}/100
+🌡 Market : {market_condition}
+
+🟢 LONG : {long_signals}
+🔴 SHORT : {short_signals}
+
+🏆 Best Sector : {strongest_sector}
+
+📈 Acceptance : {acceptance_rate}%
+
+🤖 AHAD AI {VERSION}"""
+
+    bot.send_message(message.chat.id, market_summary_msg)
+    print("🔍 DEBUG: Market summary sent")
 
     clear_expired_cache()
     print("🔍 DEBUG: Scan completed successfully")

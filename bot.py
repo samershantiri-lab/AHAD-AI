@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI REBORN v22.1.0 – Adaptive Ranking Engine
+# 🚀 AHAD AI REBORN v22.1.2 – Telegram Signal Hotfix
 # ================================================
 
 """
@@ -223,6 +223,54 @@ inside analyze() described in Tasks 1-4 above.
 
 FINAL VERDICT: READY FOR MERGE.
 ================================================================================
+
+
+================================================================================
+AHAD AI v22.1.2 - TELEGRAM SIGNAL HOTFIX
+================================================================================
+Note on version numbering: no "v22.1.1" was ever produced in this
+project's history - the prior delivered version was v22.1.0. This patch
+is applied directly on top of v22.1.0 and versioned v22.1.2 per this
+request; flagged here for the record rather than silently assumed.
+
+--------------------------------------------------------------------------------
+BUG
+--------------------------------------------------------------------------------
+scan()'s signal-message loop (`for s in results:`) referenced `trade_id`
+inside the message f-string BEFORE `trade_id = None` (the line that
+first assigns it) executed later in the same loop body. Because
+`trade_id` is assigned somewhere in scan()'s function body, Python
+treats it as local to the whole function - reading it before that
+assignment line runs raises `UnboundLocalError` on the very first
+iteration, before `bot.send_message()` for any signal is ever reached.
+This was a pre-existing bug, present before any refactor in this
+project's history - confirmed in the originally uploaded source.
+
+--------------------------------------------------------------------------------
+FIX
+--------------------------------------------------------------------------------
+Restored the correct execution order (matching the requested workflow):
+    1. Build the Telegram message WITHOUT any Trade ID line.
+    2. If trade_data exists: trade_id = save_trade(...)
+    3. If save succeeds: msg += f"\\n\\n💾 Trade ID: #{trade_id}"
+    4. If save fails: msg += "\\n\\n❌ Failed to save trade"
+    5. bot.send_message(message.chat.id, msg)
+No other line in the loop, and nothing outside it, was touched - not
+trading logic, ranking, Brain Engine, Score Engine, Long/Short
+selection, filters, Market Regime, Opportunity Mode, Heat Control, or
+any AI calculation.
+
+--------------------------------------------------------------------------------
+VERIFICATION
+--------------------------------------------------------------------------------
+Confirmed via isolated simulation of the exact fixed pattern across all
+three outcomes (save succeeds / save fails / no trade_data) - all three
+execute with zero exceptions. Confirmed via source diff against v22.1.0
+that only this one block changed (the message-building/save/send
+sequence for a single signal); every fatal gate, every penalty, Alpha
+Hunter, Heat Control, Opportunity Mode, and the ranking formula are
+byte-identical to v22.1.0.
+================================================================================
 """
 
 # ================================================
@@ -246,7 +294,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.1.0"
+VERSION = "v22.1.2"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -3693,10 +3741,6 @@ Late Entry    : {s['late_score']}
 💡 WHY THIS SIGNAL?
 {s['decision_summary']}
 
-━━━━━━━━━━━━━━━━━━━━━━
-
-💾 Trade ID: #{trade_id if trade_id else 'N/A'}
-
 {FOOTER}
 """
 
@@ -3712,9 +3756,9 @@ Late Entry    : {s['late_score']}
                 print(f"❌ Exception saving trade: {e}")
 
         if trade_id:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", f"💾 Trade ID: #{trade_id}")
+            msg += f"\n\n💾 Trade ID: #{trade_id}"
         else:
-            msg = msg.replace("💾 Trade ID: #{trade_id if trade_id else 'N/A'}", "💾 Trade ID: N/A")
+            msg += "\n\n❌ Failed to save trade"
 
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")

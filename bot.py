@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.1.3 – Final UX & Signal Quality Update
+# 🚀 AHAD AI v22.1.3 – Final Production Polish
 # ================================================
 
 """
@@ -516,6 +516,113 @@ skips Market Summary as before - not contradicted by these tasks).
 Market Summary content/format is unchanged from the prior update, which
 already matches this exact compact spec.
 ================================================================================
+
+
+================================================================================
+AHAD AI v22.1.3 - FINAL PRODUCTION POLISH
+================================================================================
+Version string stays v22.1.3, per explicit instruction. Diff-verified:
+the signal message template, Market Summary block, and the LONG/SHORT
+selection+ranking block are all byte-identical to the prior update
+(Task 8 - no redesign). The only changes are: two lines inside
+analyze() (an expanded blocklist + one new price gate), the two
+blocklists themselves, and format_price().
+
+--------------------------------------------------------------------------------
+TASK 1 - Score Display: RE-VERIFIED WITH CONCRETE EVIDENCE, NOT A BUG
+--------------------------------------------------------------------------------
+This has now been raised three times, so it was re-investigated with an
+actual runtime reproduction rather than re-asserting the prior
+conclusion. Traced every single line that touches `score` in analyze()
+(grep for every += / -= / = round(...) against it) - confirmed it is
+one continuous variable, correctly re-clamped after every stage, never
+reset or shadowed, and the exact same variable is read by both
+trade_data['score'] and the returned "score" field - no stale capture,
+no display/calculation mismatch of any kind.
+Then reproduced the exact reported symptom by running analyze() with
+concrete synthetic data: brain_confidence=90, flow=2.8, rr=2.1 (all
+individually strong) while triggering 6 real, independently-verified
+penalty conditions (FOMO Overextended -20, Higher Trend Against -15,
+Trap Detected -18, RSI Extreme -5, Late RSI Zone -20, Near Resistance
+-12 = -90 total). Result: Final Score = 0, exactly reproducing the
+complaint, with every contributing penalty printed and individually
+legitimate. This confirms conclusively: `score` and `brain_confidence`
+are intentionally independent measures, and Score=0 alongside strong
+Confidence/Flow/RR is mathematically correct output of the REBORN
+penalty system, not a bug. No change made to the calculation, per "if
+calculation is correct, keep it" - and Task 8 (no redesign, no extra
+text) rules out adding an explanatory note to the message itself.
+
+--------------------------------------------------------------------------------
+TASK 2 - Unify Quality Title: RE-VERIFIED, ALREADY CONSISTENT
+--------------------------------------------------------------------------------
+Re-checked the full ELITE/PREMIUM/HIGH/GOOD/WATCH/WATCHLIST ladder for
+gaps or overlaps: it is evaluated top-to-bottom as elif, GOOD's only
+condition is score>=70 so anything scoring 70+ always resolves to GOOD
+or higher, meaning the WATCH branch (added in the prior update for
+strong-Confidence/Flow/RR-but-low-score signals) can only ever be
+reached when score<70 - no gap, no contradiction, no signal can match
+two tiers. No further change made.
+
+--------------------------------------------------------------------------------
+TASK 3 - Smart Signal Order: CONFIRMED UNCHANGED
+--------------------------------------------------------------------------------
+Diff-verified byte-identical to the prior update, which already
+implements exactly this ordering (adaptive 2+1/1+2/3+0 by dominant
+direction, highest-ranking candidates within any split).
+
+--------------------------------------------------------------------------------
+TASK 4 - Remove Non-Crypto Instruments
+--------------------------------------------------------------------------------
+The core filter (instType=SWAP + ctType=="linear" + settleCcy=="USDT"
++ state=="live") is the correct OKX API combination for crypto
+perpetual futures specifically, and was already in place - confirmed
+unchanged. Modestly expanded the existing non-crypto blocklist (a
+defense-in-depth safety net beyond the core filter) with a few more
+well-known real tickers per existing category: indices (US30, US500,
+UK100, GER40, JPN225), commodities (XPT, XPD, NATGAS), forex (NZD,
+CNH, MXN) - applied identically to both copies of this list (one in
+get_symbols(), one as a redundant check inside analyze()) so they stay
+in sync. No fabricated tickers were added.
+
+--------------------------------------------------------------------------------
+TASK 5 - Ignore High Price Coins: IMPLEMENTED, TESTED
+--------------------------------------------------------------------------------
+New fatal gate in analyze(), placed immediately after `price` is
+computed: any symbol priced above 100 USD is rejected ("High Price
+Asset"), except BTC and ETH which are explicitly exempted by root
+symbol. This is an instrument-eligibility gate, the same category as
+the existing Blocked Assets/Candle-length checks - it does not touch
+AI Brain, scoring, or any signal-quality logic. Verified with 3 cases:
+a high-priced non-major altcoin is correctly rejected; BTC at a high
+price is correctly still accepted; a normal sub-$100 altcoin is
+unaffected.
+
+--------------------------------------------------------------------------------
+TASK 6 - Smart Price Formatting: IMPLEMENTED, TESTED
+--------------------------------------------------------------------------------
+Replaced the flat 6-decimal format_price() with adaptive precision by
+magnitude (>=10000: 0 decimals; >=10: 2; >=1: 3; >=0.01: 4; >=0.001: 5;
+>=0.0001: 6; smaller: 8). Verified against all 9 examples given in the
+request - exact match on every one. Applies automatically to Entry/SL/
+TP1/TP2/TP3 in the signal message (all of which already call this one
+function) and to the /open and /history commands' price displays,
+which reuse the same function - no separate formatting logic existed
+elsewhere to update.
+
+--------------------------------------------------------------------------------
+TASK 7 - Status Review: CONFIRMED UNCHANGED
+--------------------------------------------------------------------------------
+Diff-verified byte-identical to the prior update's determine_trade_
+status() - the 4 statuses are still derived deterministically from
+late_score, debug_reason, and early_text, in that priority order.
+
+--------------------------------------------------------------------------------
+TASK 8 - Keep Telegram Design: CONFIRMED
+--------------------------------------------------------------------------------
+Diff-verified byte-identical: the signal message template and the
+Market Summary block were not touched in any way this round.
+================================================================================
 """
 
 # ================================================
@@ -711,10 +818,44 @@ def get_total_trades():
 
 
 def format_price(value):
-    """Format price consistently with 6 decimal places"""
+    """
+    Task 6 (v22.1.3 Final Production Polish) - Smart Price Formatting.
+    Adaptive decimal precision by magnitude, so prices look professional
+    instead of always showing 6 raw decimals:
+        >= 10000    -> 0 decimals   (35000.12546 -> 35000)
+        >= 10       -> 2 decimals   (1210.92925  -> 1210.93)
+        >= 1        -> 3 decimals   (2.345678    -> 2.346)
+        >= 0.01     -> 4 decimals   (0.456781    -> 0.4568)
+        >= 0.001    -> 5 decimals   (0.00382156  -> 0.00382)
+        >= 0.0001   -> 6 decimals   (0.000138742 -> 0.000139)
+        <  0.0001   -> 8 decimals   (extends the same pattern further)
+    Verified against every example in the request - exact match on all 9.
+    """
     if value is None:
         return "N/A"
-    return f"{value:.6f}"
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+
+    abs_value = abs(value)
+
+    if abs_value >= 10000:
+        decimals = 0
+    elif abs_value >= 10:
+        decimals = 2
+    elif abs_value >= 1:
+        decimals = 3
+    elif abs_value >= 0.01:
+        decimals = 4
+    elif abs_value >= 0.001:
+        decimals = 5
+    elif abs_value >= 0.0001:
+        decimals = 6
+    else:
+        decimals = 8
+
+    return f"{value:.{decimals}f}"
 
 
 # ================================================
@@ -1275,9 +1416,9 @@ def get_symbols():
         blocked = [
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            "SPX", "NASDAQ", "DOW",
-            "XAU", "XAG", "WTI", "BRENT",
-            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
+            "SPX", "NASDAQ", "DOW", "US30", "US500", "UK100", "GER40", "JPN225",
+            "XAU", "XAG", "XPT", "XPD", "WTI", "BRENT", "NATGAS",
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNH", "MXN",
             "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
@@ -2256,9 +2397,9 @@ def analyze(symbol, sector, debug=None):
         blocked_assets = [
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            "SPX", "NASDAQ", "DOW",
-            "XAU", "XAG", "WTI", "BRENT",
-            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
+            "SPX", "NASDAQ", "DOW", "US30", "US500", "UK100", "GER40", "JPN225",
+            "XAU", "XAG", "XPT", "XPD", "WTI", "BRENT", "NATGAS",
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNH", "MXN",
             "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
@@ -2283,6 +2424,21 @@ def analyze(symbol, sector, debug=None):
             return None
 
         price = c15[-1]["close"]
+
+        # Task 5 (v22.1.3 Final Production Polish): ignore any crypto
+        # asset priced above 100 USD, except BTC and ETH which always
+        # remain supported. This is an instrument-eligibility gate (same
+        # category as the Blocked Assets / Candle-length checks above),
+        # not a signal-quality filter - it does not touch AI Brain,
+        # scoring, or any trading-decision logic.
+        if price > 100 and base not in ("BTC", "ETH"):
+            reject_reason = "High Price Asset"
+            if debug is not None:
+                debug["high_price"] = debug.get("high_price", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            return None
+
         closes15 = [x["close"] for x in c15]
         closes1h = [x["close"] for x in c1h]
         closes4h = [x["close"] for x in c4h]

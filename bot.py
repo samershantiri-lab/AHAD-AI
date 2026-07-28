@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.2.0 – Production Stability Release
+# 🚀 AHAD AI v22.2.1 – Production Stability (Phase 1)
 # ================================================
 
 """
@@ -773,6 +773,110 @@ FINAL VERIFICATION
   strictly additive (/trade, retry/backoff, failure-mode tracking) or
   a narrowly-scoped bound on an existing aggregate (Task 1).
 ================================================================================
+
+
+================================================================================
+AHAD AI v22.2.1 - PRODUCTION STABILITY, PHASE 1
+================================================================================
+Scope, confirmed by direct diff against v22.2.0: analyze(), ai_brain(),
+smart_money(), the DB layer (save_trade through update_trade), and
+/trade, /open, /history are all byte-identical. Zero pure deletions in
+the overall diff - every change is either additive or a narrowly
+targeted fix.
+
+--------------------------------------------------------------------------------
+1. TELEGRAM POLLING FIX
+--------------------------------------------------------------------------------
+- Entire startup tail (all threading.Thread(...).start() calls,
+  including telegram_engine) is now wrapped in
+  `if __name__ == "__main__":` - previously ran unconditionally at
+  module import time.
+- New `start_telegram_polling_once()` singleton guard: infinity_polling()
+  can only ever be entered once per process, regardless of how many
+  times telegram_engine() might be invoked.
+- `bot.delete_webhook(drop_pending_updates=True)` now runs once, before
+  polling begins - addresses the most likely root cause (a leftover
+  webhook registration, which requires no other running process to
+  explain a persistent 409 and is not cleared by regenerating the
+  token).
+- Startup logging now prints the webhook URL before cleanup (so a
+  stale webhook is directly visible in Render logs, not just inferred)
+  and confirms the delete_webhook() call's outcome.
+
+--------------------------------------------------------------------------------
+2. SCAN PERFORMANCE
+--------------------------------------------------------------------------------
+- Fixed the confirmed duplicate-fetch bug: top_flow_scanner() now calls
+  get_candles_cached() instead of the uncached get_candles(), so its
+  15m fetch is reusable instead of guaranteeing a second, redundant
+  15m fetch inside analyze() for every symbol that passes the flow
+  filter.
+- CACHE_TTL raised from 60s to 600s - the observed scan took ~485s,
+  far longer than the old 60s TTL, silently voiding sector_flow()'s
+  pre-fetched 1h candles before analyze() could reuse them.
+- New prefetch_candles_concurrently() (ThreadPoolExecutor, 15 workers)
+  called once in scan(), immediately before the existing sequential
+  analyze() loop. This is a pure data-scheduling change: it calls the
+  same get_candles_cached() function, fetching the same data in the
+  same format - only WHEN the network calls happen changes (upfront,
+  concurrently), so the existing sequential loop now hits an
+  already-warm cache instead of making requests one at a time. No
+  analysis logic, ordering, or content was touched.
+- Verified end-to-end with a mocked HTTP layer: 20 symbols x 4
+  timeframes (80 fetches) all correctly cached under concurrency with
+  zero errors and zero missing entries.
+- The 15-worker concurrency level is a reasonable starting point, not
+  a tuned final answer - it should be verified against real scan
+  telemetry (does it reduce wall-clock time as expected without
+  materially increasing rate-limit hits) and adjusted if needed.
+
+--------------------------------------------------------------------------------
+3. THREAD SAFETY
+--------------------------------------------------------------------------------
+- New `_scan_lock` + `prevent_concurrent_scans` decorator applied to
+  the /scan handler via `@prevent_concurrent_scans` - does not modify
+  a single line inside scan() itself. If a scan is already running, a
+  new /scan request is rejected with a clear message instead of being
+  allowed to run concurrently and corrupt shared globals like
+  _market_stats.
+- Verified: two overlapping scan invocations result in exactly one
+  actually running and one rejection message; the lock releases
+  correctly both after normal completion and after an exception
+  (try/finally); a third, later sequential call still works normally.
+
+--------------------------------------------------------------------------------
+4. REPORT CONSISTENCY
+--------------------------------------------------------------------------------
+- get_report_stats()'s main aggregate query now uses conditional
+  aggregation (`CASE WHEN status = 'CLOSED' THEN ... END` inside each
+  AVG/MAX/MIN) instead of computing performance metrics over the whole
+  table. This scopes avg RR, avg max profit, avg max drawdown, and
+  best/worst trade to CLOSED trades only - matching the scoping
+  already used by the sibling "highest ranking/brain/RR" query in the
+  same command - while total/open/closed counts correctly remain
+  computed across the whole table (those are record counts, not
+  performance statistics, and must not be scoped to CLOSED only).
+- Verified with an in-memory SQL test: an OPEN trade carrying an
+  extreme, still-unrealized rr/max_profit no longer dilutes the
+  averages or the best-trade figure; total/open/closed counts remain
+  accurate.
+- /history, /open, and /trade are untouched, confirmed byte-identical.
+
+--------------------------------------------------------------------------------
+5. VERSION
+--------------------------------------------------------------------------------
+VERSION bumped to v22.2.1. Every command already referenced the
+VERSION constant dynamically (confirmed in the prior round's audit),
+so this one change propagates to every user-visible display
+automatically - no other edits were needed for version consistency.
+
+--------------------------------------------------------------------------------
+EXPLICITLY NOT TOUCHED THIS PHASE (per instructions)
+--------------------------------------------------------------------------------
+Crypto filtering redesign, ranking normalization, quality grading
+changes, inline Telegram buttons, any UI redesign, new indicators, or
+any other new feature.
+================================================================================
 """
 
 # ================================================
@@ -783,7 +887,7 @@ MIN_FLOW_COINS = 50
 MAX_FLOW_COINS = 150
 FLOW_RATIO = 0.40
 MAX_SCAN_LIMIT = 200
-CACHE_TTL = 60
+CACHE_TTL = 600
 
 # AHAD AI REBORN v22.1.0 - Adaptive Ranking Engine (Task 4)
 # STANDARD: current ranking weights (unchanged).
@@ -796,7 +900,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.2.0"
+VERSION = "v22.2.1"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -810,6 +914,7 @@ import threading
 import traceback
 import requests
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 import psycopg2
 from datetime import datetime
 from collections import defaultdict
@@ -1383,11 +1488,11 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
-            AVG(rr) AS avg_rr,
-            AVG(max_profit) AS avg_max_profit,
-            AVG(max_drawdown) AS avg_max_drawdown,
-            MAX(max_profit) AS best_trade,
-            MIN(max_drawdown) AS worst_trade
+            AVG(CASE WHEN status = 'CLOSED' THEN rr END) AS avg_rr,
+            AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
+            AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown,
+            MAX(CASE WHEN status = 'CLOSED' THEN max_profit END) AS best_trade,
+            MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade
         FROM trades
         """)
 
@@ -1659,7 +1764,7 @@ def top_flow_scanner(symbols):
             break
             
         try:
-            c15 = get_candles(symbol, "15m")
+            c15 = get_candles_cached(symbol, "15m")
             if len(c15) < 50:
                 continue
 
@@ -1905,11 +2010,68 @@ def clear_expired_cache():
         print(f"🗑️ Cleared {len(expired_keys)} expired cache entries")
 
 
+def prefetch_candles_concurrently(symbols, timeframes=("15m", "1h", "4h", "1d"), max_workers=15):
+    """
+    Phase 1 (v22.2.1) - Scan Performance. Concurrently pre-populates the
+    candle cache for every symbol/timeframe about to be analyzed, so
+    the existing sequential analyze() loop hits a warm cache instead of
+    making network calls one at a time. This is a pure data-scheduling
+    change: it calls the exact same get_candles_cached() function that
+    analyze() already calls, fetching the exact same data in the exact
+    same format - only WHEN the network calls happen changes (upfront,
+    concurrently), not what is fetched or how it is parsed. Analysis
+    logic, order, and results are completely unaffected.
+
+    max_workers is intentionally modest (not one-worker-per-symbol) to
+    avoid trading a slow-but-working sequential scan for an unthrottled
+    burst that trips OKX's rate limits harder than before - this value
+    should be verified/tuned against real scan telemetry, not assumed
+    optimal on the first pass.
+    """
+    jobs = [(symbol, tf) for symbol in symbols for tf in timeframes]
+
+    def fetch_one(job):
+        symbol, tf = job
+        try:
+            get_candles_cached(symbol, tf)
+        except Exception as e:
+            print(f"⚠️ Prefetch error for {symbol} {tf}: {e}")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(fetch_one, jobs))
+
+
 # ================================================
 # 📊 MARKET STATS ENGINE
 # ================================================
 
 _market_stats = {}
+_scan_lock = threading.Lock()
+
+
+def prevent_concurrent_scans(func):
+    """
+    Phase 1 (v22.2.1) - Thread Safety. _market_stats (and other
+    scan-wide globals) are reset and accumulated over the course of
+    one /scan run. Telebot's default dispatch can run command handlers
+    on separate worker threads, so two overlapping /scan invocations
+    (two users, or a double-tap) could otherwise interleave and
+    corrupt each other's in-progress stats. This wraps the handler
+    without touching a single line inside it: if a scan is already
+    running, a new /scan request is politely rejected instead of being
+    allowed to run concurrently.
+    """
+    def wrapper(message):
+        if not _scan_lock.acquire(blocking=False):
+            bot.reply_to(message, "⏳ A scan is already in progress. Please wait for it to finish.")
+            return
+        try:
+            return func(message)
+        finally:
+            _scan_lock.release()
+    wrapper.__name__ = func.__name__
+    return wrapper
+
 
 def reset_market_stats():
     """Reset scan-wide market statistics before each /scan."""
@@ -3767,6 +3929,7 @@ Commands:
 
 
 @bot.message_handler(commands=["scan"])
+@prevent_concurrent_scans
 def scan(message):
     # ====== SHORT STARTUP MESSAGE ======
     bot.reply_to(message, f"""
@@ -3817,6 +3980,11 @@ def scan(message):
     flow_candidates_count = flow_candidates
     analyzed_count = len(symbols)
     scan_limit = MAX_SCAN_LIMIT
+
+    print("🔍 DEBUG: Prefetching candles concurrently for", len(symbols), "symbols")
+    prefetch_start = time.time()
+    prefetch_candles_concurrently(symbols)
+    print(f"🔍 DEBUG: Prefetch completed in {time.time() - prefetch_start:.2f}s")
 
     print("🔍 DEBUG: Before for symbol in symbols loop -", len(symbols), "symbols to analyze")
 
@@ -4855,7 +5023,50 @@ def keep_alive():
         time.sleep(300)
 
 
+_telegram_polling_started = False
+_telegram_polling_lock = threading.Lock()
+
+
+def start_telegram_polling_once():
+    """
+    Phase 1 (v22.2.1) - Telegram Polling Fix. Ensures infinity_polling()
+    can only ever be entered once per process, regardless of how many
+    times this function (or telegram_engine itself) might be invoked -
+    the last line of defense against a duplicate poller even if
+    something upstream ever calls this more than once.
+    """
+    global _telegram_polling_started
+    with _telegram_polling_lock:
+        if _telegram_polling_started:
+            print("⚠️ Telegram polling already started - ignoring duplicate start request")
+            return False
+        _telegram_polling_started = True
+    return True
+
+
 def telegram_engine():
+    if not start_telegram_polling_once():
+        return
+
+    # Phase 1 (v22.2.1): a leftover webhook registration is the most
+    # common cause of a persistent 409 Conflict on getUpdates, and -
+    # unlike a duplicate process - it requires nothing else to be
+    # running to explain it: Telegram keeps a webhook registered
+    # indefinitely until explicitly deleted, even from a single test
+    # months ago. Logging the status before cleanup makes this
+    # verifiable in the Render logs instead of only inferred.
+    try:
+        webhook_info = bot.get_webhook_info()
+        print(f"🔍 Webhook status before cleanup: url='{webhook_info.url or '(none)'}'")
+    except Exception as e:
+        print(f"⚠️ Could not retrieve webhook info: {e}")
+
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        print("✅ Webhook cleared (or was already clear) - safe to start long-polling")
+    except Exception as e:
+        print(f"⚠️ delete_webhook() failed: {e}")
+
     backoff = 5
     while True:
         try:
@@ -4880,85 +5091,86 @@ def cache_cleanup_thread():
         time.sleep(60)
 
 
-threading.Thread(target=cache_cleanup_thread, daemon=True).start()
-threading.Thread(target=run_web, daemon=True).start()
-threading.Thread(target=telegram_engine, daemon=True).start()
-threading.Thread(target=keep_alive, daemon=True).start()
-threading.Thread(target=update_open_trades, daemon=True).start()
+if __name__ == "__main__":
+    threading.Thread(target=cache_cleanup_thread, daemon=True).start()
+    threading.Thread(target=run_web, daemon=True).start()
+    threading.Thread(target=telegram_engine, daemon=True).start()
+    threading.Thread(target=keep_alive, daemon=True).start()
+    threading.Thread(target=update_open_trades, daemon=True).start()
 
-print(f"🔥 AHAD AI {VERSION} – Adaptive Intelligence ONLINE 🐋")
-print(f"📅 Build: {BUILD_DATE}")
-print(f"📅 Started at: {time.ctime()}")
-print(f"🐍 Python Version: {os.sys.version}")
-print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
-print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
-print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
-print(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
-print(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
-print("🛡️ Validation Layer ACTIVE")
-print("🗑️ Cache TTL-based (not full clear)")
-print("🧠 Brain v2.0 ACTIVE")
-print("🎯 Dynamic Late Entry v3 ACTIVE")
-print("🐞 Debug Reason ACTIVE")
-print(f"🗄️ PostgreSQL Database ACTIVE ({VERSION})")
-print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
-print("🔒 SSL Connection: ENABLED")
-print("⏰ TIMESTAMP Support ACTIVE")
-print("🔄 Duplicate Trade Protection ACTIVE")
-print("📈 Trade Tracker ACTIVE (With Backoff)")
-print("📊 Performance Analytics ACTIVE (Enhanced)")
-print("📊 Market Regime Engine ACTIVE (Fixed)")
-print("🔥 Volatility Compression Integration ACTIVE")
-print("🚀 Dynamic Momentum Weight ACTIVE")
-print("🎯 Dynamic RR Engine ACTIVE")
-print("🔄 Dual Direction Engine ACTIVE")
-print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
-print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
-print("💎 Quality Engine v2.0 ACTIVE")
-print("📊 Institutional Flow Rating ACTIVE")
-print("🛡️ Risk Grade System ACTIVE")
-print("🧠 AI Decision Summary ACTIVE (Grouped)")
-print("🐘 Market Health Report ACTIVE (Unified)")
-print("🏦 Institutional Dashboard ACTIVE")
-print("🐞 Enhanced Debug Report with Sorted Rejections")
-print("📦 Caching System ACTIVE (With TTL)")
-print("⚡ Scan Efficiency Tracking ACTIVE")
-print("🌡️ Market Temperature ACTIVE")
-print("🏦 Sector Summary ACTIVE")
-print("🏷️ Quality Grade System ACTIVE")
-print(f"🔄 UI Optimization ACTIVE ({VERSION})")
-print("📋 Enhanced Signal Layout ACTIVE")
-print("📊 Grouped Decision Summary ACTIVE")
-print("📈 Improved /history, /open, /report ACTIVE")
-print("⏱ Scan Duration Tracking ACTIVE")
-print("📈 Recorded Trades Display ACTIVE")
-print("📅 Build Information Display ACTIVE")
-print("🎯 Improved No Opportunity Message ACTIVE")
-print("📊 Hidden Empty Metrics ACTIVE")
-print("🏆 Sorted Rejection Reasons ACTIVE")
-print("🌍 Unified Market Health Language ACTIVE")
-print("🏷️ Market Health Score ACTIVE")
-print("🔢 Scan History Counter ACTIVE")
-print("⏱️ Runtime Information ACTIVE")
-print("🆔 Scan ID Display ACTIVE")
-print("📊 Signal Quality Summary ACTIVE")
-print("🏆 Sector Leader Summary ACTIVE")
-print("📊 Previous Scan Comparison ACTIVE")
-print("🌍 AHAD AI MARKET DASHBOARD ACTIVE")
-print("📋 Commands: /scan | /report | /open | /history")
-print("🎯 Best 2 LONG + Best 1 SHORT")
+    print(f"🔥 AHAD AI {VERSION} – Adaptive Intelligence ONLINE 🐋")
+    print(f"📅 Build: {BUILD_DATE}")
+    print(f"📅 Started at: {time.ctime()}")
+    print(f"🐍 Python Version: {os.sys.version}")
+    print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
+    print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
+    print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
+    print(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
+    print(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
+    print("🛡️ Validation Layer ACTIVE")
+    print("🗑️ Cache TTL-based (not full clear)")
+    print("🧠 Brain v2.0 ACTIVE")
+    print("🎯 Dynamic Late Entry v3 ACTIVE")
+    print("🐞 Debug Reason ACTIVE")
+    print(f"🗄️ PostgreSQL Database ACTIVE ({VERSION})")
+    print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
+    print("🔒 SSL Connection: ENABLED")
+    print("⏰ TIMESTAMP Support ACTIVE")
+    print("🔄 Duplicate Trade Protection ACTIVE")
+    print("📈 Trade Tracker ACTIVE (With Backoff)")
+    print("📊 Performance Analytics ACTIVE (Enhanced)")
+    print("📊 Market Regime Engine ACTIVE (Fixed)")
+    print("🔥 Volatility Compression Integration ACTIVE")
+    print("🚀 Dynamic Momentum Weight ACTIVE")
+    print("🎯 Dynamic RR Engine ACTIVE")
+    print("🔄 Dual Direction Engine ACTIVE")
+    print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
+    print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
+    print("💎 Quality Engine v2.0 ACTIVE")
+    print("📊 Institutional Flow Rating ACTIVE")
+    print("🛡️ Risk Grade System ACTIVE")
+    print("🧠 AI Decision Summary ACTIVE (Grouped)")
+    print("🐘 Market Health Report ACTIVE (Unified)")
+    print("🏦 Institutional Dashboard ACTIVE")
+    print("🐞 Enhanced Debug Report with Sorted Rejections")
+    print("📦 Caching System ACTIVE (With TTL)")
+    print("⚡ Scan Efficiency Tracking ACTIVE")
+    print("🌡️ Market Temperature ACTIVE")
+    print("🏦 Sector Summary ACTIVE")
+    print("🏷️ Quality Grade System ACTIVE")
+    print(f"🔄 UI Optimization ACTIVE ({VERSION})")
+    print("📋 Enhanced Signal Layout ACTIVE")
+    print("📊 Grouped Decision Summary ACTIVE")
+    print("📈 Improved /history, /open, /report ACTIVE")
+    print("⏱ Scan Duration Tracking ACTIVE")
+    print("📈 Recorded Trades Display ACTIVE")
+    print("📅 Build Information Display ACTIVE")
+    print("🎯 Improved No Opportunity Message ACTIVE")
+    print("📊 Hidden Empty Metrics ACTIVE")
+    print("🏆 Sorted Rejection Reasons ACTIVE")
+    print("🌍 Unified Market Health Language ACTIVE")
+    print("🏷️ Market Health Score ACTIVE")
+    print("🔢 Scan History Counter ACTIVE")
+    print("⏱️ Runtime Information ACTIVE")
+    print("🆔 Scan ID Display ACTIVE")
+    print("📊 Signal Quality Summary ACTIVE")
+    print("🏆 Sector Leader Summary ACTIVE")
+    print("📊 Previous Scan Comparison ACTIVE")
+    print("🌍 AHAD AI MARKET DASHBOARD ACTIVE")
+    print("📋 Commands: /scan | /report | /open | /history")
+    print("🎯 Best 2 LONG + Best 1 SHORT")
 
-# ====== v21.4.3 ADAPTIVE INTELLIGENCE FEATURE FLAGS ======
-print("🧠 Adaptive FOMO (Hard/Soft Levels) ACTIVE")
-print("📊 Market Scan Statistics ACTIVE")
-print("🌍 Better Dashboard (Stats + Health Grade) ACTIVE")
-print("📐 Robust Average Flow (Outlier-Resistant) ACTIVE")
-print("❤️ Health Score 2.0 ACTIVE")
-print("🏆 Ranking Sort Improvement ACTIVE")
-print("⚡ Duplicate Calculation Reduction ACTIVE")
+    # ====== v21.4.3 ADAPTIVE INTELLIGENCE FEATURE FLAGS ======
+    print("🧠 Adaptive FOMO (Hard/Soft Levels) ACTIVE")
+    print("📊 Market Scan Statistics ACTIVE")
+    print("🌍 Better Dashboard (Stats + Health Grade) ACTIVE")
+    print("📐 Robust Average Flow (Outlier-Resistant) ACTIVE")
+    print("❤️ Health Score 2.0 ACTIVE")
+    print("🏆 Ranking Sort Improvement ACTIVE")
+    print("⚡ Duplicate Calculation Reduction ACTIVE")
 
-print("✅ SYSTEM READY FOR PRODUCTION")
-print(f"🚀 {VERSION} – Adaptive Intelligence")
+    print("✅ SYSTEM READY FOR PRODUCTION")
+    print(f"🚀 {VERSION} – Adaptive Intelligence")
 
-while True:
-    time.sleep(60)
+    while True:
+        time.sleep(60)

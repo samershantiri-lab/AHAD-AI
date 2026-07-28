@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.1.3 – UX & Signal Quality Update
+# 🚀 AHAD AI v22.1.3 – Final UX & Signal Quality Update
 # ================================================
 
 """
@@ -406,6 +406,115 @@ this same range rather than standing out as disproportionate. No
 evidence of over-penalization relative to comparable-severity penalties
 was found, so the weighting was left unchanged, per "only review
 weighting consistency" and "do not remove Bull Trap detection."
+================================================================================
+
+
+================================================================================
+AHAD AI v22.1.3 - FINAL UX & SIGNAL QUALITY UPDATE
+================================================================================
+Version string stays v22.1.3, per explicit instruction to maintain
+compatibility with the same release. `analyze()` is unchanged except
+for one exact block (the quality-grade tier logic, Task 5 below) -
+confirmed by direct diff of everything before and after that block.
+
+--------------------------------------------------------------------------------
+TASK 1 & 2 - Official Signal Design + Quality Titles (incl. WATCH)
+--------------------------------------------------------------------------------
+Rebuilt the signal message to the exact official layout: no decorative
+separators, minimal blank lines, direction emoji + coin, rank line,
+compact Entry/SL/TP lines, one combined stats line ("🧠 X% | ⭐ X | 🐋
+X | ⚖️ XR"), status line, then Trade ID / /trade link / version footer.
+QUALITY_TITLES now has 6 entries (added "WATCH" -> "🟡 WATCH CLOSELY",
+matching the new quality_grade tier added in Task 5). Verified by
+rendering the template against the exact example values from the
+request - output matches character-for-character.
+
+--------------------------------------------------------------------------------
+TASK 3 - Trade Status (4 fixed states, deterministic)
+--------------------------------------------------------------------------------
+New `determine_trade_status()` maps to exactly the 4 required strings
+(READY TO ENTER / WAIT FOR ENTRY / PULLBACK NEEDED / LATE ENTRY) using
+ONLY fields analyze() already computes - late_score, debug_reason,
+early_text - checked in that priority order. No new calculation, no
+randomization: same inputs always produce the same status. Verified
+with one test per branch, all passing.
+
+--------------------------------------------------------------------------------
+TASK 4 - Smart Signal Order
+--------------------------------------------------------------------------------
+Replaced the fixed "always 2 LONG + 1 SHORT" split with an adaptive
+one: whichever direction has more valid candidates gets 2 of the 3
+slots (the other gets 1); if one side has zero candidates, the other
+takes all 3. Within any split, still always the highest-ranking
+candidates (sorted_longs/sorted_shorts by the unchanged ranking_key).
+Task 6's rank-consistency re-sort is preserved immediately after
+selection, so display rank numbers remain correct regardless of which
+split was used. Verified with 5 scenarios (LONG-dominant, SHORT-
+dominant, all-LONG, all-SHORT, and a tie) - all produced the expected
+selection and correct descending rank order.
+
+--------------------------------------------------------------------------------
+TASK 5 - Quality Engine Review: REAL MISMATCH FOUND AND FIXED
+--------------------------------------------------------------------------------
+Confirmed the reported symptom is real: quality_grade's tiers ALL gate
+on `score` first, and (per the Task 7 finding below) `score` can be
+driven to 0 by penalties (Higher Trend, Late Entry, Trap, etc.)
+entirely unrelated to Confidence/Flow/RR - so a signal with genuinely
+strong Confidence/Flow/RR could be forced into WATCHLIST purely
+because of an unrelated penalty. Fixed with ONE new branch inserted
+between the existing GOOD check and the WATCHLIST fallback: signals
+with brain_confidence>=70, RR>=2.5, and flow>=1.5 that don't otherwise
+qualify for GOOD or above now get the new "WATCH" tier ("🟡 WATCH
+CLOSELY") instead of being mislabeled WATCHLIST. The ELITE/PREMIUM/
+HIGH/GOOD criteria, and the final WATCHLIST fallback itself, are
+completely unchanged - confirmed by diff. Note: quality_grade IS a
+real, indexed database column (used in /report's GROUP BY aggregation)
+- this change does not touch the schema, the column, or the recording
+mechanism, but it does mean a new string value ("WATCH") can now be
+written to that existing TEXT column for a narrow set of borderline
+signals, as the direct and required outcome of fixing this exact
+mismatch. Verified: the exact reported symptom (score=0, brain=85,
+rr=3.0, flow=2.5) now correctly returns WATCH instead of WATCHLIST; a
+genuinely weak signal across the board still correctly returns
+WATCHLIST; GOOD and ELITE tiers verified unaffected.
+
+--------------------------------------------------------------------------------
+TASK 6 - Ranking Review
+--------------------------------------------------------------------------------
+The rank-consistency fix from the prior update (re-sorting the
+selected candidates by ranking_key before assigning rank numbers) is
+preserved and re-verified against the new Task 4 selection logic - Rank
+#1 >= Rank #2 >= Rank #3 by ranking_score holds regardless of which
+LONG/SHORT split was chosen.
+
+--------------------------------------------------------------------------------
+TASK 7 - Final Score Review: UNCHANGED FINDING, STILL CORRECT
+--------------------------------------------------------------------------------
+Same conclusion as the prior update: `score` and `brain_confidence` are
+intentionally independent, and Score=0 alongside strong Confidence/
+Flow/RR is a mathematically consistent result of the REBORN penalty
+system, not a display bug. This update addresses the user-facing
+CONSEQUENCE of that gap (the quality title mismatch, Task 5) without
+altering the score calculation itself, per "if calculation is correct,
+keep it."
+
+--------------------------------------------------------------------------------
+TASK 8 - Sector Review
+--------------------------------------------------------------------------------
+No new changes beyond the prior update's 88-coin, 11-category SECTORS
+expansion - no additional legitimate, verifiable coin/category data was
+available to add without fabricating entries, so the existing
+expansion was kept as-is rather than guessing further.
+
+--------------------------------------------------------------------------------
+TASK 9 & 10 - Scan Flow / Market Summary
+--------------------------------------------------------------------------------
+Order preserved from the prior update: scanning message -> up to 3
+signal messages -> Market Summary, with no other message in between
+(or the single "No Opportunity" message in the zero-result case, which
+skips Market Summary as before - not contradicted by these tasks).
+Market Summary content/format is unchanged from the prior update, which
+already matches this exact compact spec.
 ================================================================================
 """
 
@@ -2802,6 +2911,20 @@ def analyze(symbol, sector, debug=None):
         elif score >= 70:
             quality = "⚡ GOOD SETUP"
             quality_grade = "GOOD"
+        elif brain_conf >= 70 and rr >= 2.5 and flow >= 1.5:
+            # Task 5 (v22.1.3 Final Update) - Quality Engine Review:
+            # `score` can be dragged well below 70 by penalties entirely
+            # unrelated to Confidence/Flow/RR (Higher Trend, Late Entry,
+            # Trap, etc. - see the v22.1.3 Task 7 finding that `score`
+            # and `brain_confidence` are intentionally independent
+            # measures). Without this check, a signal with genuinely
+            # strong Confidence/Flow/RR would be labeled WATCHLIST purely
+            # because of an unrelated penalty, which does not match its
+            # real signal strength. This is the ONLY new branch added;
+            # every criterion above (ELITE/PREMIUM/HIGH/GOOD) and the
+            # final WATCHLIST fallback below are unchanged.
+            quality = "🟡 WATCH CLOSELY"
+            quality_grade = "WATCH"
         else:
             quality = "👀 WATCHLIST"
             quality_grade = "WATCHLIST"
@@ -3732,27 +3855,35 @@ SHORT Signals   : {len(short_results)}
             signal.get('rr', 0),
         )
 
-    best_longs = sorted(
-        long_results,
-        key=ranking_key,
-        reverse=True
-    )[:2]
+    sorted_longs = sorted(long_results, key=ranking_key, reverse=True)
+    sorted_shorts = sorted(short_results, key=ranking_key, reverse=True)
 
-    best_shorts = sorted(
-        short_results,
-        key=ranking_key,
-        reverse=True
-    )[:1]
+    # Task 4 (v22.1.3 Final Update) - Smart Signal Order. "Dominates" is
+    # determined by which side has more valid candidates (a presentation
+    # choice about how many of each direction to show, not a change to
+    # which candidates are valid or how they were scored/ranked).
+    if len(sorted_longs) == 0 and len(sorted_shorts) > 0:
+        best_longs = []
+        best_shorts = sorted_shorts[:3]
+    elif len(sorted_shorts) == 0 and len(sorted_longs) > 0:
+        best_longs = sorted_longs[:3]
+        best_shorts = []
+    elif len(sorted_longs) >= len(sorted_shorts):
+        best_longs = sorted_longs[:2]
+        best_shorts = sorted_shorts[:1]
+    else:
+        best_longs = sorted_longs[:1]
+        best_shorts = sorted_shorts[:2]
 
     results = best_longs + best_shorts
 
-    # Task 5 (v22.1.3): rank numbers must reflect a true descending sort
-    # by ranking_score across the combined LONG+SHORT set. Concatenation
-    # order alone (LONG candidates first, then SHORT) does not guarantee
-    # this - e.g. the single SHORT candidate could score higher than the
-    # second LONG candidate. This re-sort only reorders the DISPLAY rank
-    # of the already-selected 3 candidates; it does not change WHICH
-    # candidates were selected (still best 2 LONG + best 1 SHORT).
+    # Task 6 (v22.1.3 Final Update / Ranking Review): rank numbers must
+    # reflect a true descending sort by ranking_score across the combined
+    # LONG+SHORT set. Concatenation order alone does not guarantee this -
+    # e.g. a SHORT candidate could score higher than a LONG candidate
+    # selected above. This re-sort only reorders the DISPLAY rank of the
+    # already-selected candidates; it does not change WHICH candidates
+    # were selected (still governed by the Smart Signal Order above).
     results = sorted(results, key=ranking_key, reverse=True)
 
     print(f"🔍 DEBUG: After ranking - {len(results)} signals selected")
@@ -3778,50 +3909,53 @@ SHORT Signals   : {len(short_results)}
 
     print(f"🔍 DEBUG: Before signal loop - {len(results)} signals to send")
 
-    # ====== SIGNAL MESSAGE - COMPACT DESIGN (v22.1.3, Tasks 1 & 2) ======
+    # ====== SIGNAL MESSAGE - OFFICIAL DESIGN (v22.1.3 Final Update, Tasks 1 & 2) ======
     QUALITY_TITLES = {
         "ELITE": "👑 ELITE OPPORTUNITY",
         "PREMIUM": "💎 PREMIUM SIGNAL",
         "HIGH": "⭐ HIGH QUALITY SIGNAL",
         "GOOD": "🟢 GOOD OPPORTUNITY",
+        "WATCH": "🟡 WATCH CLOSELY",
         "WATCHLIST": "🔴 WATCHLIST",
     }
+
+    def determine_trade_status(signal):
+        # Task 3 (v22.1.3 Final Update): deterministic mapping onto the
+        # 4 official statuses, using ONLY fields analyze() already
+        # computes (late_score, debug_reason, early_text) - no new
+        # calculation, no randomization.
+        reasons_text = " ".join(signal.get('debug_reason', []) or [])
+        if signal.get('late_score', 0) >= 30:
+            return "🔴 LATE ENTRY"
+        if "Near Resistance" in reasons_text or "Near Support" in reasons_text:
+            return "🟠 PULLBACK NEEDED"
+        if "WAIT" in signal.get('early_text', ''):
+            return "🟡 WAIT FOR ENTRY"
+        return "🟢 READY TO ENTER"
 
     for s in results:
         brain_conf = s["brain_confidence"]
 
         quality_title = QUALITY_TITLES.get(s.get('quality_grade'), "🔴 WATCHLIST")
-        status_text = "⚠️ WAIT FOR ENTRY" if "WAIT" in s.get('early_text', '') else "✅ READY TO ENTER"
+        direction_word = "LONG" if "LONG" in s['direction'] else "SHORT"
+        direction_emoji = "🟢" if direction_word == "LONG" else "🔴"
+        status_text = determine_trade_status(s)
 
         msg = f"""{quality_title}
 
---------------------------------
+{direction_emoji} {s['coin']}
+🏆 {direction_word} • Rank #{s['rank']}
 
-{s['direction']} | {s['coin']}
-🏆 Rank #{s['rank']}
+🎯 Entry : {format_price(s['entry_low'])} → {format_price(s['entry_high'])}
+🛑 SL    : {format_price(s['sl'])}
 
-━━━━━━━━━━━━━━━━━━
+🥇 TP1 : {format_price(s['tp1'])}
+🥈 TP2 : {format_price(s['tp2'])}
+🥉 TP3 : {format_price(s['tp3'])}
 
-🎯 Entry
-{format_price(s['entry_low'])} → {format_price(s['entry_high'])}
+🧠 {brain_conf}% | ⭐ {s['score']} | 🐋 {s['flow_rating']} | ⚖️ {s['rr']}R
 
-🛑 Stop Loss
-{format_price(s['sl'])}
-
-🥇 TP1 {format_price(s['tp1'])}
-🥈 TP2 {format_price(s['tp2'])}
-🥉 TP3 {format_price(s['tp3'])}
-
-━━━━━━━━━━━━━━━━━━
-
-🧠 Confidence {brain_conf}%
-⭐ Score {s['score']}
-🐋 Flow {s['flow_rating']}
-⚖️ RR {s['rr']}
-
-{status_text}
-
-━━━━━━━━━━━━━━━━━━"""
+{status_text}"""
 
         trade_id = None
         if s.get('trade_data'):
@@ -3835,11 +3969,11 @@ SHORT Signals   : {len(short_results)}
                 print(f"❌ Exception saving trade: {e}")
 
         if trade_id:
-            msg += f"\n\n💾 Trade #{trade_id}\n📖 Full Analysis → /trade {trade_id}"
+            msg += f"\n\n💾 Trade #{trade_id}   📖 /trade {trade_id}"
         else:
             msg += "\n\n❌ Failed to save trade"
 
-        msg += f"\n🤖 AHAD AI {VERSION}"
+        msg += f"\n\n🤖 AHAD AI {VERSION}"
 
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")

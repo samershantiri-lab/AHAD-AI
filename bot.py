@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.2.3 – Production Stabilization Patch (Audit Round 2)
+# 🚀 AHAD AI v22.2.4 – Critical Production Hotfix (Trade Tracker)
 # ================================================
 
 """
@@ -1039,7 +1039,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.2.3"
+VERSION = "v22.2.4"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -1583,6 +1583,22 @@ _trade_tracker_cache = {}
 def get_trade_tracker_candles(symbol, tf="15m", ttl=CACHE_TTL):
     """
     Cache candles for Trade Tracker with TTL.
+
+    CRITICAL FIX (v22.2.4): this function called get_candles() directly
+    and returned its result unmodified. Since the Task 6 Data Layer
+    Reliability redesign, get_candles() returns a dict
+    ({"success": bool, "candles": [...], "status": str}), not a bare
+    list - get_candles_cached() was updated at that time to unwrap this
+    correctly, but this separate, parallel caching function (used only
+    by the Trade Tracker) was missed, so it was returning the raw dict
+    to update_open_trades(). Evaluating dict[-1] looks up the integer
+    key -1 (not a list index), which the dict never has - producing
+    exactly "KeyError: -1" on candles[-1]['close'], on every iteration,
+    for every open trade. Fixed by applying the same unwrap-and-only-
+    cache-on-success pattern already used (and already tested) in
+    get_candles_cached() - this function's own external contract
+    (returns a bare list, empty on failure) is unchanged, so
+    update_open_trades() and every other caller need no changes.
     """
     now = time.time()
     key = f"{symbol}_{tf}"
@@ -1592,11 +1608,16 @@ def get_trade_tracker_candles(symbol, tf="15m", ttl=CACHE_TTL):
         if now - cached["time"] <= ttl:
             return cached["candles"]
 
-    candles = get_candles(symbol, tf)
-    _trade_tracker_cache[key] = {
-        "time": now,
-        "candles": candles
-    }
+    result = get_candles(symbol, tf)
+    candles = result["candles"] if result.get("success") else []
+
+    # Only cache a genuine success - never cache a failed fetch as if
+    # it were valid, consistent with get_candles_cached()'s own fix.
+    if result.get("success"):
+        _trade_tracker_cache[key] = {
+            "time": now,
+            "candles": candles
+        }
 
     return candles
 

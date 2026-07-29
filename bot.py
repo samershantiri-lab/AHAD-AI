@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.2.2 – Production Stabilization Patch
+# 🚀 AHAD AI v22.2.3 – Production Stabilization Patch (Audit Round 2)
 # ================================================
 
 """
@@ -1039,7 +1039,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.2.2"
+VERSION = "v22.2.3"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -1332,7 +1332,7 @@ def save_trade(trade_data):
                 ranking_score = %s,
                 quality_grade = %s,
                 market_temperature = %s
-            WHERE id = %s
+            WHERE id = %s AND status = 'OPEN'
             """, (
                 datetime.now(),
                 trade_data['entry'], trade_data['sl'], trade_data['tp1'],
@@ -1357,9 +1357,20 @@ def save_trade(trade_data):
                 trade_data.get('market_temperature', 'N/A'),
                 existing_id
             ))
-            conn.commit()
-            print(f"🔄 Existing trade updated: {trade_data['symbol']} ({trade_data['side']}) -> ID {existing_id}")
-            return existing_id, True
+
+            if cur.rowcount == 0:
+                # Race condition: the trade was closed by the Trade
+                # Tracker between our SELECT and this UPDATE. It is no
+                # longer actually open, so this is not really a
+                # duplicate - fall through to inserting a fresh trade
+                # instead of silently doing nothing or corrupting a
+                # now-closed record.
+                conn.rollback()
+                print(f"⚠️ Trade {existing_id} was closed concurrently - inserting a new trade instead of updating")
+            else:
+                conn.commit()
+                print(f"🔄 Existing trade updated: {trade_data['symbol']} ({trade_data['side']}) -> ID {existing_id}")
+                return existing_id, True
 
         cur.execute("""
         INSERT INTO trades (
@@ -1450,7 +1461,12 @@ def save_trade(trade_data):
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ Error saving trade: {e}")
+        print(f"Trade Recorder error | Operation: save_trade | "
+              f"Symbol: {trade_data.get('symbol', 'unknown')} | "
+              f"Side: {trade_data.get('side', 'unknown')}")
+        print(type(e).__name__)
+        print(str(e))
+        traceback.print_exc()
         raise
     finally:
         if cur:
@@ -1500,7 +1516,10 @@ def get_open_trades():
         return trades
 
     except Exception as e:
-        print(f"❌ Error getting open trades: {e}")
+        print("Trade Recorder error | Operation: get_open_trades")
+        print(type(e).__name__)
+        print(str(e))
+        traceback.print_exc()
         raise
     finally:
         if cur:
@@ -1542,7 +1561,11 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ Error updating trade {trade_id}: {e}")
+        print(f"Trade Recorder error | Operation: update_trade | "
+              f"Trade ID: {trade_id} | Target Status: {status}")
+        print(type(e).__name__)
+        print(str(e))
+        traceback.print_exc()
         raise
     finally:
         if cur:
@@ -1675,7 +1698,9 @@ def update_open_trades():
                         )
 
                 except Exception as e:
-                    print(f"Trade {trade.get('id', 'unknown')} failed")
+                    print(f"Trade Tracker error | Operation: process_open_trade | "
+                          f"Trade ID: {trade.get('id', 'unknown')} | "
+                          f"Symbol: {trade.get('symbol', 'unknown')}")
                     print(type(e).__name__)
                     print(str(e))
                     traceback.print_exc()
@@ -1684,7 +1709,7 @@ def update_open_trades():
             time.sleep(backoff)
 
         except Exception as e:
-            print("Trade Tracker loop failed")
+            print("Trade Tracker error | Operation: update_open_trades main loop")
             print(type(e).__name__)
             print(str(e))
             traceback.print_exc()
@@ -1718,7 +1743,9 @@ def get_report_stats():
             AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
             AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown,
             MAX(CASE WHEN status = 'CLOSED' THEN max_profit END) AS best_trade,
-            MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade
+            MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade,
+            AVG(CASE WHEN status = 'CLOSED' THEN brain_confidence END) AS avg_brain_confidence,
+            AVG(CASE WHEN status = 'CLOSED' THEN score END) AS avg_final_score
         FROM trades
         """)
 
@@ -1736,6 +1763,8 @@ def get_report_stats():
         avg_max_drawdown = round(row[9] or 0, 2)
         best_trade = round(row[10] or 0, 2)
         worst_trade = round(row[11] or 0, 2)
+        avg_brain_confidence = round(row[12] or 0, 1)
+        avg_final_score = round(row[13] or 0, 1)
 
         wins = tp1 + tp2 + tp3
 
@@ -1803,6 +1832,8 @@ def get_report_stats():
             "avg_rr": avg_rr,
             "avg_max_profit": avg_max_profit,
             "avg_max_drawdown": avg_max_drawdown,
+            "avg_brain_confidence": avg_brain_confidence,
+            "avg_final_score": avg_final_score,
             "best_trade": best_trade,
             "worst_trade": worst_trade,
             "long_total": long_total,
@@ -4978,6 +5009,8 @@ def report_command(message):
 
 🎯 Overall Win Rate : {stats['win_rate']}%
 📊 Avg RR           : {stats['avg_rr']}
+🧠 Avg Brain Score  : {stats['avg_brain_confidence']}
+⭐ Avg Final Score  : {stats['avg_final_score']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 

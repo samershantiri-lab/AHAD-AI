@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.2.1 – Production Stability (Phase 1)
+# 🚀 AHAD AI REBORN v22.1.2 – Telegram Signal Hotfix
 # ================================================
 
 """
@@ -271,612 +271,6 @@ sequence for a single signal); every fatal gate, every penalty, Alpha
 Hunter, Heat Control, Opportunity Mode, and the ranking formula are
 byte-identical to v22.1.0.
 ================================================================================
-
-
-================================================================================
-AHAD AI v22.1.3 - UX & SIGNAL QUALITY UPDATE
-================================================================================
-Every change in this version is confined to `scan()`'s message-building
-and ordering, plus the static SECTORS reference table. `analyze()` -
-every fatal gate, penalty, engine call, and the ranking formula - is
-byte-identical to v22.1.2 (confirmed by direct diff before release).
-
---------------------------------------------------------------------------------
-TASK 1 & 2 - New Signal Design + Quality Titles
---------------------------------------------------------------------------------
-Replaced the old verbose signal message with the compact design
-specified, using a QUALITY_TITLES lookup:
-    ELITE -> "👑 ELITE OPPORTUNITY", PREMIUM -> "💎 PREMIUM SIGNAL",
-    HIGH -> "⭐ HIGH QUALITY SIGNAL", GOOD -> "🟢 GOOD OPPORTUNITY",
-    WATCHLIST -> "🔴 WATCHLIST".
-Note: the request's example also mentioned "A+"/"A"/"B" tiers, which do
-not correspond to any quality_grade value analyze() actually produces
-(its five tiers are ELITE/PREMIUM/HIGH/GOOD/WATCHLIST). Mapped HIGH and
-GOOD to the "A+"/"A"-equivalent titles shown ("⭐ HIGH QUALITY SIGNAL",
-"🟢 GOOD OPPORTUNITY") rather than inventing new quality tiers, since
-Task 2's own instruction is to select a title "according to signal
-quality" - i.e. from what the engine already computes, not to change
-what it computes. Status line ("⚠️ WAIT FOR ENTRY" / "✅ READY TO
-ENTER") is derived from the existing early_text field (unchanged in
-analyze()) via simple text matching, not a new calculation. The
-message references "/trade {id}" as requested display text; no /trade
-command handler exists yet - only the text was added, since creating a
-new command was not part of the 9 tasks. Verified by rendering the new
-template against 3 realistic signals (PREMIUM/success, GOOD/failed
-save, WATCHLIST/success) - all three render cleanly with no KeyError
-or formatting error.
-
---------------------------------------------------------------------------------
-TASK 3 - Scan Order
---------------------------------------------------------------------------------
-Removed the "Signal Quality Summary" message (not part of the required
-sequence) and moved the Market Summary send from BEFORE the signal loop
-to immediately AFTER it. Order is now exactly: scanning message -> up
-to 3 signal messages -> Market Summary -> (unless there are zero
-results, in which case the existing single "No Opportunity" message is
-sent instead, as before). No other message sends anywhere in scan().
-
---------------------------------------------------------------------------------
-TASK 4 - Market Summary
---------------------------------------------------------------------------------
-Replaced the old, longer dashboard message with the exact compact
-format requested. "🌡 Market : BULL/BEAR/SIDEWAYS" is derived from the
-already-computed bull_pct/bear_pct/sideways_pct (picking whichever is
-largest) - a display-only derivation, not a new market-condition
-calculation.
-
---------------------------------------------------------------------------------
-TASK 5 - Ranking Review: BUG FOUND AND FIXED
---------------------------------------------------------------------------------
-`results = best_longs + best_shorts` simply concatenated the top-2 LONG
-list before the top-1 SHORT list, then assigned rank numbers by that
-concatenation order alone - NOT by a true sort of the combined set. This
-meant the single SHORT candidate could have a higher ranking_score than
-the second LONG candidate, yet still display as "Rank #3" (last),
-violating "Rank #2 >= Rank #3". Fixed with a single added line:
-`results = sorted(results, key=ranking_key, reverse=True)` right after
-the concatenation, before rank numbers are assigned. This only reorders
-the DISPLAY rank of the already-selected 3 candidates - it does not
-change WHICH candidates were selected (still best 2 LONG + best 1
-SHORT via the unchanged ranking_key/sorted/slicing above it). Verified
-with an isolated test: a SHORT candidate (ranking_score 80) correctly
-promoted to Rank #2 ahead of a weaker LONG candidate (ranking_score 60)
-that would otherwise have been mislabeled Rank #2 under the old
-concatenation-order logic.
-
---------------------------------------------------------------------------------
-TASK 6 - Sector Review: NOT A BUG, DATA EXPANDED
---------------------------------------------------------------------------------
-The sector lookup algorithm itself (in scan(), matching a symbol's root
-against the SECTORS dict) is correct and untouched. "UNKNOWN" was
-appearing on many strong signals simply because SECTORS previously
-listed only ~30 coin roots across 6 categories, while get_symbols()
-pulls OKX's entire live SWAP universe (typically hundreds of symbols) -
-most real symbols were mathematically guaranteed to match nothing.
-Per "if sector information can be determined, display the correct
-sector; if impossible, keep UNKNOWN; do not force fake sectors,"
-expanded SECTORS to 88 coins across 11 categories (added LAYER2,
-MAJORS, EXCHANGE, STORAGE, ORACLE; expanded the original 6). This is a
-static reference-data expansion only - the matching algorithm was not
-touched, and any symbol still not covered correctly remains UNKNOWN
-rather than being forced into a guessed category.
-
---------------------------------------------------------------------------------
-TASK 7 - Final Score Review: CALCULATION IS CORRECT, KEPT AS-IS
---------------------------------------------------------------------------------
-`score` (Final Score) and `brain_confidence` are two intentionally
-independent measures - brain_confidence reflects only the AI Brain's
-own directional conviction, while `score` is a much broader composite
-that also absorbs every penalty (Higher Trend, FOMO, Late Entry, Trap,
-Low Flow, RSI Extreme, Multi-TF extremes, Near Resistance/Support, Low
-RR, etc.) introduced across the REBORN refactor. Since v22.0.0 removed
-the old MIN_SCORE=68 hard reject, signals that previously would have
-been silently rejected (and thus never seen with a low score) now
-surface and get ranked even when Final Score has been driven all the
-way down to its clamped floor of 0 - while brain_confidence, computed
-from a completely different, independent part of analyze(), can
-legitimately remain high at the same time. This is the intended,
-expected result of "every mathematically valid candidate reaches the
-Ranking Engine" - not a display bug. Traced the full scoring path
-(STEP 4-9 of analyze()) to confirm there is no stray reassignment or
-incorrect clamp; the 0 values are mathematically consistent with
-stacked penalties. No change made, per "if calculation is correct,
-keep it."
-
---------------------------------------------------------------------------------
-TASK 8 - Risk Grade Review: CONSISTENT, NO CHANGE
---------------------------------------------------------------------------------
-risk_grade's three thresholds (rr>=3.0 & brain_conf>=70 & score>=85 ->
-LOW; rr>=2.0 & brain_conf>=50 & score>=70 -> MEDIUM; else -> HIGH) were
-checked against their own stated conditions directly - no undefined
-variables, no inverted comparisons, no off-by-one errors found. A
-high-score signal can still land in HIGH RISK if RR or brain_confidence
-don't also clear their thresholds; this is a multi-factor risk
-judgment, not an inconsistency. No change made.
-
---------------------------------------------------------------------------------
-TASK 9 - Bull Trap Review: WEIGHTING ALREADY CONSISTENT, NO CHANGE
---------------------------------------------------------------------------------
-The Trap penalty (18 points, flat, applied only when a detected
-BULL/BEAR trap matches the candidate's own direction) was compared
-against the magnitude of every other penalty in analyze(): Higher
-Trend (15), FOMO Overextended (20), Late Entry (scaled up to 30), Near
-Resistance/Support (12), RSI Extreme (~5-10). 18 sits squarely within
-this same range rather than standing out as disproportionate. No
-evidence of over-penalization relative to comparable-severity penalties
-was found, so the weighting was left unchanged, per "only review
-weighting consistency" and "do not remove Bull Trap detection."
-================================================================================
-
-
-================================================================================
-AHAD AI v22.1.3 - FINAL UX & SIGNAL QUALITY UPDATE
-================================================================================
-Version string stays v22.1.3, per explicit instruction to maintain
-compatibility with the same release. `analyze()` is unchanged except
-for one exact block (the quality-grade tier logic, Task 5 below) -
-confirmed by direct diff of everything before and after that block.
-
---------------------------------------------------------------------------------
-TASK 1 & 2 - Official Signal Design + Quality Titles (incl. WATCH)
---------------------------------------------------------------------------------
-Rebuilt the signal message to the exact official layout: no decorative
-separators, minimal blank lines, direction emoji + coin, rank line,
-compact Entry/SL/TP lines, one combined stats line ("🧠 X% | ⭐ X | 🐋
-X | ⚖️ XR"), status line, then Trade ID / /trade link / version footer.
-QUALITY_TITLES now has 6 entries (added "WATCH" -> "🟡 WATCH CLOSELY",
-matching the new quality_grade tier added in Task 5). Verified by
-rendering the template against the exact example values from the
-request - output matches character-for-character.
-
---------------------------------------------------------------------------------
-TASK 3 - Trade Status (4 fixed states, deterministic)
---------------------------------------------------------------------------------
-New `determine_trade_status()` maps to exactly the 4 required strings
-(READY TO ENTER / WAIT FOR ENTRY / PULLBACK NEEDED / LATE ENTRY) using
-ONLY fields analyze() already computes - late_score, debug_reason,
-early_text - checked in that priority order. No new calculation, no
-randomization: same inputs always produce the same status. Verified
-with one test per branch, all passing.
-
---------------------------------------------------------------------------------
-TASK 4 - Smart Signal Order
---------------------------------------------------------------------------------
-Replaced the fixed "always 2 LONG + 1 SHORT" split with an adaptive
-one: whichever direction has more valid candidates gets 2 of the 3
-slots (the other gets 1); if one side has zero candidates, the other
-takes all 3. Within any split, still always the highest-ranking
-candidates (sorted_longs/sorted_shorts by the unchanged ranking_key).
-Task 6's rank-consistency re-sort is preserved immediately after
-selection, so display rank numbers remain correct regardless of which
-split was used. Verified with 5 scenarios (LONG-dominant, SHORT-
-dominant, all-LONG, all-SHORT, and a tie) - all produced the expected
-selection and correct descending rank order.
-
---------------------------------------------------------------------------------
-TASK 5 - Quality Engine Review: REAL MISMATCH FOUND AND FIXED
---------------------------------------------------------------------------------
-Confirmed the reported symptom is real: quality_grade's tiers ALL gate
-on `score` first, and (per the Task 7 finding below) `score` can be
-driven to 0 by penalties (Higher Trend, Late Entry, Trap, etc.)
-entirely unrelated to Confidence/Flow/RR - so a signal with genuinely
-strong Confidence/Flow/RR could be forced into WATCHLIST purely
-because of an unrelated penalty. Fixed with ONE new branch inserted
-between the existing GOOD check and the WATCHLIST fallback: signals
-with brain_confidence>=70, RR>=2.5, and flow>=1.5 that don't otherwise
-qualify for GOOD or above now get the new "WATCH" tier ("🟡 WATCH
-CLOSELY") instead of being mislabeled WATCHLIST. The ELITE/PREMIUM/
-HIGH/GOOD criteria, and the final WATCHLIST fallback itself, are
-completely unchanged - confirmed by diff. Note: quality_grade IS a
-real, indexed database column (used in /report's GROUP BY aggregation)
-- this change does not touch the schema, the column, or the recording
-mechanism, but it does mean a new string value ("WATCH") can now be
-written to that existing TEXT column for a narrow set of borderline
-signals, as the direct and required outcome of fixing this exact
-mismatch. Verified: the exact reported symptom (score=0, brain=85,
-rr=3.0, flow=2.5) now correctly returns WATCH instead of WATCHLIST; a
-genuinely weak signal across the board still correctly returns
-WATCHLIST; GOOD and ELITE tiers verified unaffected.
-
---------------------------------------------------------------------------------
-TASK 6 - Ranking Review
---------------------------------------------------------------------------------
-The rank-consistency fix from the prior update (re-sorting the
-selected candidates by ranking_key before assigning rank numbers) is
-preserved and re-verified against the new Task 4 selection logic - Rank
-#1 >= Rank #2 >= Rank #3 by ranking_score holds regardless of which
-LONG/SHORT split was chosen.
-
---------------------------------------------------------------------------------
-TASK 7 - Final Score Review: UNCHANGED FINDING, STILL CORRECT
---------------------------------------------------------------------------------
-Same conclusion as the prior update: `score` and `brain_confidence` are
-intentionally independent, and Score=0 alongside strong Confidence/
-Flow/RR is a mathematically consistent result of the REBORN penalty
-system, not a display bug. This update addresses the user-facing
-CONSEQUENCE of that gap (the quality title mismatch, Task 5) without
-altering the score calculation itself, per "if calculation is correct,
-keep it."
-
---------------------------------------------------------------------------------
-TASK 8 - Sector Review
---------------------------------------------------------------------------------
-No new changes beyond the prior update's 88-coin, 11-category SECTORS
-expansion - no additional legitimate, verifiable coin/category data was
-available to add without fabricating entries, so the existing
-expansion was kept as-is rather than guessing further.
-
---------------------------------------------------------------------------------
-TASK 9 & 10 - Scan Flow / Market Summary
---------------------------------------------------------------------------------
-Order preserved from the prior update: scanning message -> up to 3
-signal messages -> Market Summary, with no other message in between
-(or the single "No Opportunity" message in the zero-result case, which
-skips Market Summary as before - not contradicted by these tasks).
-Market Summary content/format is unchanged from the prior update, which
-already matches this exact compact spec.
-================================================================================
-
-
-================================================================================
-AHAD AI v22.1.3 - FINAL PRODUCTION POLISH
-================================================================================
-Version string stays v22.1.3, per explicit instruction. Diff-verified:
-the signal message template, Market Summary block, and the LONG/SHORT
-selection+ranking block are all byte-identical to the prior update
-(Task 8 - no redesign). The only changes are: two lines inside
-analyze() (an expanded blocklist + one new price gate), the two
-blocklists themselves, and format_price().
-
---------------------------------------------------------------------------------
-TASK 1 - Score Display: RE-VERIFIED WITH CONCRETE EVIDENCE, NOT A BUG
---------------------------------------------------------------------------------
-This has now been raised three times, so it was re-investigated with an
-actual runtime reproduction rather than re-asserting the prior
-conclusion. Traced every single line that touches `score` in analyze()
-(grep for every += / -= / = round(...) against it) - confirmed it is
-one continuous variable, correctly re-clamped after every stage, never
-reset or shadowed, and the exact same variable is read by both
-trade_data['score'] and the returned "score" field - no stale capture,
-no display/calculation mismatch of any kind.
-Then reproduced the exact reported symptom by running analyze() with
-concrete synthetic data: brain_confidence=90, flow=2.8, rr=2.1 (all
-individually strong) while triggering 6 real, independently-verified
-penalty conditions (FOMO Overextended -20, Higher Trend Against -15,
-Trap Detected -18, RSI Extreme -5, Late RSI Zone -20, Near Resistance
--12 = -90 total). Result: Final Score = 0, exactly reproducing the
-complaint, with every contributing penalty printed and individually
-legitimate. This confirms conclusively: `score` and `brain_confidence`
-are intentionally independent measures, and Score=0 alongside strong
-Confidence/Flow/RR is mathematically correct output of the REBORN
-penalty system, not a bug. No change made to the calculation, per "if
-calculation is correct, keep it" - and Task 8 (no redesign, no extra
-text) rules out adding an explanatory note to the message itself.
-
---------------------------------------------------------------------------------
-TASK 2 - Unify Quality Title: RE-VERIFIED, ALREADY CONSISTENT
---------------------------------------------------------------------------------
-Re-checked the full ELITE/PREMIUM/HIGH/GOOD/WATCH/WATCHLIST ladder for
-gaps or overlaps: it is evaluated top-to-bottom as elif, GOOD's only
-condition is score>=70 so anything scoring 70+ always resolves to GOOD
-or higher, meaning the WATCH branch (added in the prior update for
-strong-Confidence/Flow/RR-but-low-score signals) can only ever be
-reached when score<70 - no gap, no contradiction, no signal can match
-two tiers. No further change made.
-
---------------------------------------------------------------------------------
-TASK 3 - Smart Signal Order: CONFIRMED UNCHANGED
---------------------------------------------------------------------------------
-Diff-verified byte-identical to the prior update, which already
-implements exactly this ordering (adaptive 2+1/1+2/3+0 by dominant
-direction, highest-ranking candidates within any split).
-
---------------------------------------------------------------------------------
-TASK 4 - Remove Non-Crypto Instruments
---------------------------------------------------------------------------------
-The core filter (instType=SWAP + ctType=="linear" + settleCcy=="USDT"
-+ state=="live") is the correct OKX API combination for crypto
-perpetual futures specifically, and was already in place - confirmed
-unchanged. Modestly expanded the existing non-crypto blocklist (a
-defense-in-depth safety net beyond the core filter) with a few more
-well-known real tickers per existing category: indices (US30, US500,
-UK100, GER40, JPN225), commodities (XPT, XPD, NATGAS), forex (NZD,
-CNH, MXN) - applied identically to both copies of this list (one in
-get_symbols(), one as a redundant check inside analyze()) so they stay
-in sync. No fabricated tickers were added.
-
---------------------------------------------------------------------------------
-TASK 5 - Ignore High Price Coins: IMPLEMENTED, TESTED
---------------------------------------------------------------------------------
-New fatal gate in analyze(), placed immediately after `price` is
-computed: any symbol priced above 100 USD is rejected ("High Price
-Asset"), except BTC and ETH which are explicitly exempted by root
-symbol. This is an instrument-eligibility gate, the same category as
-the existing Blocked Assets/Candle-length checks - it does not touch
-AI Brain, scoring, or any signal-quality logic. Verified with 3 cases:
-a high-priced non-major altcoin is correctly rejected; BTC at a high
-price is correctly still accepted; a normal sub-$100 altcoin is
-unaffected.
-
---------------------------------------------------------------------------------
-TASK 6 - Smart Price Formatting: IMPLEMENTED, TESTED
---------------------------------------------------------------------------------
-Replaced the flat 6-decimal format_price() with adaptive precision by
-magnitude (>=10000: 0 decimals; >=10: 2; >=1: 3; >=0.01: 4; >=0.001: 5;
->=0.0001: 6; smaller: 8). Verified against all 9 examples given in the
-request - exact match on every one. Applies automatically to Entry/SL/
-TP1/TP2/TP3 in the signal message (all of which already call this one
-function) and to the /open and /history commands' price displays,
-which reuse the same function - no separate formatting logic existed
-elsewhere to update.
-
---------------------------------------------------------------------------------
-TASK 7 - Status Review: CONFIRMED UNCHANGED
---------------------------------------------------------------------------------
-Diff-verified byte-identical to the prior update's determine_trade_
-status() - the 4 statuses are still derived deterministically from
-late_score, debug_reason, and early_text, in that priority order.
-
---------------------------------------------------------------------------------
-TASK 8 - Keep Telegram Design: CONFIRMED
---------------------------------------------------------------------------------
-Diff-verified byte-identical: the signal message template and the
-Market Summary block were not touched in any way this round.
-================================================================================
-
-
-================================================================================
-AHAD AI v22.2.0 - PRODUCTION STABILITY RELEASE
-================================================================================
-Diff-verified scope: AI Brain, Smart Money, the DB layer (save_trade
-through update_trade), the signal message template, Market Summary,
-and the LONG/SHORT selection/ranking block are all byte-identical to
-v22.1.3. The only functional changes are: one bounded fix inside
-analyze()'s scoring (Task 1), the new /trade command, a redesigned
-get_symbols()/get_candles()/get_candles_cached() data layer, and the
-VERSION bump itself.
-
---------------------------------------------------------------------------------
-TASK 1 - Score Display Bug: ROOT CAUSE IDENTIFIED AND FIXED
---------------------------------------------------------------------------------
-This was raised four times across prior rounds. Each time, direct
-tracing of every line touching `score` confirmed no stale variable,
-no shadowing, no display/calculation mismatch - the returned score
-always equaled the truly final computed value. That conclusion was
-correct as far as it went, but it was answering "is the code wrong"
-rather than "is the outcome acceptable" - and on this pass the actual
-root cause was identified: the AGGREGATE ceiling on how much penalty
-could stack onto one signal was never bounded. Individually, every
-penalty (Low Flow -20, FOMO -20, Higher Trend -15, Late Entry up to
--30, Trap -18, RSI Extreme up to -10, Late RSI Zone -20, Pump/Dump
--15, Multi-TF up to -25, Near Resistance/Support -12, Low RR up to
--30) is reasonable on its own. But nothing capped how many could
-apply to the SAME signal at once, and the worst-case sum comfortably
-exceeds 100 - meaning any signal, however strong its Brain
-Confidence/Flow/RR, could be driven to a displayed Score of exactly 0
-whenever enough of these co-occurred, discarding the real difference
-between "several genuine risk factors" and "everything stacked at
-once."
-
-FIX: `pre_penalty_score` captures the score from quality/confidence/
-momentum/structure alone, before any risk-penalty stage runs. After
-every penalty stage has applied (unchanged, at full individual
-magnitude), a single floor - `score = max(score, pre_penalty_score -
-60)` - bounds the AGGREGATE reduction to 60 points, without touching
-any individual penalty's trigger condition or magnitude, and without
-changing the scoring weights (brain_conf*0.3, flow_score*1.5, etc.)
-at all. This is a bug fix to an unbounded aggregation, not a scoring-
-philosophy change - explicitly permitted under "unless required to
-fix a bug."
-
-VERIFIED: reproduced the exact original symptom with concrete synthetic
-data (brain_confidence=90, flow=2.8, rr=3.06, 6 real penalties totaling
--90) - the signal now scores 10 (previously 0), with every penalty
-still individually listed at full strength. Re-tested a genuinely weak
-signal (brain_confidence=25, flow=0.85) to confirm the floor has NO
-effect there - it still correctly scores 0, since a low
-pre_penalty_score minus 60 stays below the already-low actual score
-and the floor never engages. The fix is self-limiting: it only ever
-raises the floor for signals whose underlying quality was genuinely
-strong to begin with.
-
---------------------------------------------------------------------------------
-TASK 2 - Version Consistency
---------------------------------------------------------------------------------
-Audited every version reference in the file: /start, /scan (signal
-messages, Market Summary), /report, /open, /history, /debug (via the
-cached debug report), the FOOTER, and trade_data's own 'version' field
-all already reference the VERSION constant directly rather than a
-hardcoded string - confirmed via grep, no hardcoded version string
-found anywhere in a live user-facing message. This was already
-architecturally correct; only the VERSION constant and header banner
-needed bumping this round, and every display point updates from that
-one source automatically. File name follows the same version (see
-delivery).
-
---------------------------------------------------------------------------------
-TASK 3 - /trade <id>: IMPLEMENTED
---------------------------------------------------------------------------------
-New command, following the exact same DB connection try/except/finally
-pattern as /open and /report. Parses and validates the id argument,
-queries the trades table by id (including every column added across
-prior migrations - brain scores, regime, compression, ranking_score,
-quality_grade, risk_grade, etc.), and renders a complete report; shows
-an additional Result/Max Profit/Max Drawdown/Closed section only when
-the trade's status is CLOSED. Verified by rendering the message against
-both a mocked OPEN and a mocked CLOSED row - both render cleanly with
-no missing/None-related formatting errors.
-
---------------------------------------------------------------------------------
-TASK 4 - Crypto-Only Filtering: REDESIGNED
---------------------------------------------------------------------------------
-Replaced the blacklist-primary approach with a structure/attribute-
-based positive validation (`is_valid_crypto_perpetual()`) as the
-PRIMARY filter: settleCcy=="USDT", state=="live", ctType=="linear"
-(unchanged, already correct), PLUS a strict instId pattern check
-("{BASE}-USDT-SWAP" exactly, nothing else), a plausible-ticker-format
-check (2-10 uppercase alphanumeric characters), a cross-check that the
-`uly` (underlying) field agrees with the instId's own base, and the
-existing generic "USD"-residue guard. The blocklist is retained only
-as a secondary, defense-in-depth backstop, per "do not rely only on a
-blacklist" - modestly expanded with a few more real tickers, applied
-identically in both places it appears (get_symbols() and the redundant
-check inside analyze()). Verified with 11 synthetic test cases
-covering genuine perpetuals, suspended/inverse contracts, hypothetical
-stock/forex/commodity perpetuals, a malformed instId, an underlying
-mismatch, and a punctuation-containing ticker - all 11 correctly
-classified.
-
---------------------------------------------------------------------------------
-TASK 5 - Signal Ordering: RE-VERIFIED, ALREADY CORRECT
---------------------------------------------------------------------------------
-Diff-confirmed byte-identical to v22.1.3's selection/ranking block: the
-adaptive LONG/SHORT split plus the final re-sort by ranking_key before
-rank numbers are assigned (established and tested across two prior
-rounds) is untouched and still guarantees Rank #1 >= Rank #2 >= Rank #3
-by ranking_score regardless of which split was chosen.
-
---------------------------------------------------------------------------------
-TASK 6 - Data Layer Reliability: REDESIGNED (HIGHEST PRIORITY)
---------------------------------------------------------------------------------
-get_candles() now retries up to 3 times with exponential backoff
-(0.5s/1s/2s) and returns a result that distinguishes RATE_LIMIT (HTTP
-429 or an OKX API error code), TIMEOUT, CONNECTION_ERROR, API_ERROR,
-and a genuinely-empty-but-well-formed response (real information -
-likely a brand-new listing - returned as success, never retried and
-never confused with a failure) from each other, instead of collapsing
-all of them into the same bare empty list. get_candles_cached() now
-ONLY caches a genuine success - a failed fetch is never cached, fixing
-the confirmed prior defect where a single transient API hiccup could
-be cached as an empty result for the full 60-second TTL and misread as
-"insufficient history." External signature of get_candles_cached() is
-completely unchanged (still returns a bare candle list), so analyze()'s
-Candles gate and every other caller required zero changes. Failure
-reasons are tracked in `_fetch_failure_stats` for operational
-visibility. VERIFIED with mocked HTTP responses: successful parsing
-matches the original exactly; rate-limit/timeout/connection-error
-paths each correctly exhaust retries and report the right status
-without crashing; a genuinely empty valid response returns success
-after exactly one call (never retried); and, critically, a failed
-fetch is confirmed NOT cached - a second call after a failure retries
-fresh and succeeds, rather than reusing a false-empty cached result.
-
---------------------------------------------------------------------------------
-FINAL VERIFICATION
---------------------------------------------------------------------------------
-- All Telegram commands present and unchanged in structure: /start,
-  /scan, /report, /open, /history, /debug, plus the new /trade.
-- AI Brain, Smart Money, the database schema, and the scoring
-  philosophy (every individual weight/penalty/condition) are
-  byte-identical to v22.1.3 - confirmed by direct diff, not assertion.
-- No existing feature was removed; every change this round is either
-  strictly additive (/trade, retry/backoff, failure-mode tracking) or
-  a narrowly-scoped bound on an existing aggregate (Task 1).
-================================================================================
-
-
-================================================================================
-AHAD AI v22.2.1 - PRODUCTION STABILITY, PHASE 1
-================================================================================
-Scope, confirmed by direct diff against v22.2.0: analyze(), ai_brain(),
-smart_money(), the DB layer (save_trade through update_trade), and
-/trade, /open, /history are all byte-identical. Zero pure deletions in
-the overall diff - every change is either additive or a narrowly
-targeted fix.
-
---------------------------------------------------------------------------------
-1. TELEGRAM POLLING FIX
---------------------------------------------------------------------------------
-- Entire startup tail (all threading.Thread(...).start() calls,
-  including telegram_engine) is now wrapped in
-  `if __name__ == "__main__":` - previously ran unconditionally at
-  module import time.
-- New `start_telegram_polling_once()` singleton guard: infinity_polling()
-  can only ever be entered once per process, regardless of how many
-  times telegram_engine() might be invoked.
-- `bot.delete_webhook(drop_pending_updates=True)` now runs once, before
-  polling begins - addresses the most likely root cause (a leftover
-  webhook registration, which requires no other running process to
-  explain a persistent 409 and is not cleared by regenerating the
-  token).
-- Startup logging now prints the webhook URL before cleanup (so a
-  stale webhook is directly visible in Render logs, not just inferred)
-  and confirms the delete_webhook() call's outcome.
-
---------------------------------------------------------------------------------
-2. SCAN PERFORMANCE
---------------------------------------------------------------------------------
-- Fixed the confirmed duplicate-fetch bug: top_flow_scanner() now calls
-  get_candles_cached() instead of the uncached get_candles(), so its
-  15m fetch is reusable instead of guaranteeing a second, redundant
-  15m fetch inside analyze() for every symbol that passes the flow
-  filter.
-- CACHE_TTL raised from 60s to 600s - the observed scan took ~485s,
-  far longer than the old 60s TTL, silently voiding sector_flow()'s
-  pre-fetched 1h candles before analyze() could reuse them.
-- New prefetch_candles_concurrently() (ThreadPoolExecutor, 15 workers)
-  called once in scan(), immediately before the existing sequential
-  analyze() loop. This is a pure data-scheduling change: it calls the
-  same get_candles_cached() function, fetching the same data in the
-  same format - only WHEN the network calls happen changes (upfront,
-  concurrently), so the existing sequential loop now hits an
-  already-warm cache instead of making requests one at a time. No
-  analysis logic, ordering, or content was touched.
-- Verified end-to-end with a mocked HTTP layer: 20 symbols x 4
-  timeframes (80 fetches) all correctly cached under concurrency with
-  zero errors and zero missing entries.
-- The 15-worker concurrency level is a reasonable starting point, not
-  a tuned final answer - it should be verified against real scan
-  telemetry (does it reduce wall-clock time as expected without
-  materially increasing rate-limit hits) and adjusted if needed.
-
---------------------------------------------------------------------------------
-3. THREAD SAFETY
---------------------------------------------------------------------------------
-- New `_scan_lock` + `prevent_concurrent_scans` decorator applied to
-  the /scan handler via `@prevent_concurrent_scans` - does not modify
-  a single line inside scan() itself. If a scan is already running, a
-  new /scan request is rejected with a clear message instead of being
-  allowed to run concurrently and corrupt shared globals like
-  _market_stats.
-- Verified: two overlapping scan invocations result in exactly one
-  actually running and one rejection message; the lock releases
-  correctly both after normal completion and after an exception
-  (try/finally); a third, later sequential call still works normally.
-
---------------------------------------------------------------------------------
-4. REPORT CONSISTENCY
---------------------------------------------------------------------------------
-- get_report_stats()'s main aggregate query now uses conditional
-  aggregation (`CASE WHEN status = 'CLOSED' THEN ... END` inside each
-  AVG/MAX/MIN) instead of computing performance metrics over the whole
-  table. This scopes avg RR, avg max profit, avg max drawdown, and
-  best/worst trade to CLOSED trades only - matching the scoping
-  already used by the sibling "highest ranking/brain/RR" query in the
-  same command - while total/open/closed counts correctly remain
-  computed across the whole table (those are record counts, not
-  performance statistics, and must not be scoped to CLOSED only).
-- Verified with an in-memory SQL test: an OPEN trade carrying an
-  extreme, still-unrealized rr/max_profit no longer dilutes the
-  averages or the best-trade figure; total/open/closed counts remain
-  accurate.
-- /history, /open, and /trade are untouched, confirmed byte-identical.
-
---------------------------------------------------------------------------------
-5. VERSION
---------------------------------------------------------------------------------
-VERSION bumped to v22.2.1. Every command already referenced the
-VERSION constant dynamically (confirmed in the prior round's audit),
-so this one change propagates to every user-visible display
-automatically - no other edits were needed for version consistency.
-
---------------------------------------------------------------------------------
-EXPLICITLY NOT TOUCHED THIS PHASE (per instructions)
---------------------------------------------------------------------------------
-Crypto filtering redesign, ranking normalization, quality grading
-changes, inline Telegram buttons, any UI redesign, new indicators, or
-any other new feature.
-================================================================================
 """
 
 # ================================================
@@ -887,7 +281,7 @@ MIN_FLOW_COINS = 50
 MAX_FLOW_COINS = 150
 FLOW_RATIO = 0.40
 MAX_SCAN_LIMIT = 200
-CACHE_TTL = 600
+CACHE_TTL = 60
 
 # AHAD AI REBORN v22.1.0 - Adaptive Ranking Engine (Task 4)
 # STANDARD: current ranking weights (unchanged).
@@ -900,7 +294,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.2.1"
+VERSION = "v22.1.2"
 BUILD_DATE = "2026-07-28"
 
 # ================================================
@@ -909,12 +303,10 @@ BUILD_DATE = "2026-07-28"
 
 import os
 import time
-import re
 import threading
 import traceback
 import requests
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 import psycopg2
 from datetime import datetime
 from collections import defaultdict
@@ -1074,44 +466,10 @@ def get_total_trades():
 
 
 def format_price(value):
-    """
-    Task 6 (v22.1.3 Final Production Polish) - Smart Price Formatting.
-    Adaptive decimal precision by magnitude, so prices look professional
-    instead of always showing 6 raw decimals:
-        >= 10000    -> 0 decimals   (35000.12546 -> 35000)
-        >= 10       -> 2 decimals   (1210.92925  -> 1210.93)
-        >= 1        -> 3 decimals   (2.345678    -> 2.346)
-        >= 0.01     -> 4 decimals   (0.456781    -> 0.4568)
-        >= 0.001    -> 5 decimals   (0.00382156  -> 0.00382)
-        >= 0.0001   -> 6 decimals   (0.000138742 -> 0.000139)
-        <  0.0001   -> 8 decimals   (extends the same pattern further)
-    Verified against every example in the request - exact match on all 9.
-    """
+    """Format price consistently with 6 decimal places"""
     if value is None:
         return "N/A"
-    try:
-        value = float(value)
-    except (TypeError, ValueError):
-        return "N/A"
-
-    abs_value = abs(value)
-
-    if abs_value >= 10000:
-        decimals = 0
-    elif abs_value >= 10:
-        decimals = 2
-    elif abs_value >= 1:
-        decimals = 3
-    elif abs_value >= 0.01:
-        decimals = 4
-    elif abs_value >= 0.001:
-        decimals = 5
-    elif abs_value >= 0.0001:
-        decimals = 6
-    else:
-        decimals = 8
-
-    return f"{value:.{decimals}f}"
+    return f"{value:.6f}"
 
 
 # ================================================
@@ -1488,11 +846,11 @@ def get_report_stats():
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
-            AVG(CASE WHEN status = 'CLOSED' THEN rr END) AS avg_rr,
-            AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
-            AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown,
-            MAX(CASE WHEN status = 'CLOSED' THEN max_profit END) AS best_trade,
-            MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade
+            AVG(rr) AS avg_rr,
+            AVG(max_profit) AS avg_max_profit,
+            AVG(max_drawdown) AS avg_max_drawdown,
+            MAX(max_profit) AS best_trade,
+            MIN(max_drawdown) AS worst_trade
         FROM trades
         """)
 
@@ -1645,82 +1003,18 @@ def run_web():
 # ================================================
 
 SECTORS = {
-    "AI": ["FET", "TAO", "WLD", "ARKM", "AI", "RENDER", "RNDR", "AGIX", "OCEAN", "NMR", "PHB", "AIOZ"],
-    "GAMING": ["APE", "SAND", "MANA", "GALA", "IMX", "AXS", "GMT", "MAGIC", "PIXEL", "ILV", "YGG", "BEAM"],
-    "DEFI": ["UNI", "AAVE", "LINK", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "DYDX", "LDO", "RUNE", "BAL", "GMX"],
-    "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI", "WIF", "MEME", "BOME", "MEW", "POPCAT"],
-    "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA", "ATOM", "APT", "SUI", "SEI", "TON", "INJ", "TIA"],
-    "LAYER2": ["ARB", "OP", "MATIC", "STRK", "MANTA", "ZK", "METIS"],
-    "RWA": ["ONDO", "PENDLE", "ENA", "POLYX", "CFG"],
-    "MAJORS": ["BTC", "ETH", "XRP", "LTC", "BCH"],
-    "EXCHANGE": ["BNB", "OKB", "CRO", "GT", "KCS"],
-    "STORAGE": ["FIL", "AR", "STORJ"],
-    "ORACLE": ["PYTH", "BAND", "API3"]
+    "AI": ["FET", "TAO", "WLD", "ARKM", "AI", "RENDER"],
+    "GAMING": ["APE", "SAND", "MANA", "GALA", "IMX", "AXS"],
+    "DEFI": ["UNI", "AAVE", "LINK", "CRV", "MKR", "COMP"],
+    "MEME": ["DOGE", "SHIB", "PEPE", "BONK", "FLOKI"],
+    "LAYER1": ["SOL", "AVAX", "DOT", "NEAR", "ADA"],
+    "RWA": ["ONDO", "PENDLE", "ENA"]
 }
 
 
 # ================================================
 # ⬛ OKX FUTURES CRYPTO ONLY
 # ================================================
-
-CRYPTO_TICKER_PATTERN = re.compile(r'^[A-Z0-9]{2,10}$')
-
-
-def is_valid_crypto_perpetual(instrument, base, blocked):
-    """
-    Task 4 (v22.2.0 Production Stability): robust, structure-based
-    crypto perpetual futures validation. This is the PRIMARY filter -
-    it positively verifies an instrument looks like a genuine crypto
-    perpetual swap (correct settlement/contract type, exact instId
-    pattern, plausible ticker format, underlying cross-check) rather
-    than relying only on excluding known-bad tickers. The blocklist is
-    kept only as a secondary, defense-in-depth safety net below.
-    """
-    inst_id = instrument.get("instId", "")
-
-    # 1. Must be a live, linear (crypto-margined), USDT-settled swap.
-    if instrument.get("settleCcy") != "USDT":
-        return False
-    if instrument.get("state") != "live":
-        return False
-    if instrument.get("ctType") != "linear":
-        return False
-
-    # 2. instId must match the exact expected crypto perpetual pattern
-    # "{BASE}-USDT-SWAP" - nothing else. This alone rules out anything
-    # with unexpected structure regardless of what it's named.
-    parts = inst_id.split("-")
-    if len(parts) != 3 or parts[1] != "USDT" or parts[2] != "SWAP":
-        return False
-
-    # 3. The base ticker itself must look like a plausible crypto
-    # ticker: 2-10 uppercase alphanumeric characters, no punctuation.
-    if not CRYPTO_TICKER_PATTERN.match(base):
-        return False
-
-    # 4. Cross-check the underlying (`uly`) field, when present, agrees
-    # with the instId's own base+quote - catches any mismatch between
-    # what OKX calls the instrument and what it's actually built on.
-    uly = instrument.get("uly", "")
-    if uly and uly != f"{base}-USDT":
-        return False
-
-    # 5. Generic USD-pair guard: excludes any base/quote combination
-    # that still contains "USD" after removing the USDT settlement
-    # suffix (catches forex-style pairs generically, without needing
-    # every such pair individually blacklisted).
-    if "USD" in inst_id.replace("USDT", ""):
-        return False
-
-    # 6. Blocklist - SECONDARY safety net only, not the primary
-    # mechanism (per "do not rely only on a blacklist"). Defense-in-
-    # depth backstop for known non-crypto tickers that might otherwise
-    # still structurally resemble a valid pattern.
-    if base in blocked or any(b in inst_id for b in blocked):
-        return False
-
-    return True
-
 
 def get_symbols():
     try:
@@ -1731,17 +1025,24 @@ def get_symbols():
         blocked = [
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            "SPX", "NASDAQ", "DOW", "US30", "US500", "UK100", "GER40", "JPN225",
-            "XAU", "XAG", "XPT", "XPD", "WTI", "BRENT", "NATGAS",
-            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNH", "MXN",
+            "SPX", "NASDAQ", "DOW",
+            "XAU", "XAG", "WTI", "BRENT",
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
             "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
         result = []
-        for x in data.get("data", []):
-            base = x.get("instId", "").split("-")[0]
-            if is_valid_crypto_perpetual(x, base, blocked):
-                result.append(x["instId"])
+        for x in data["data"]:
+            symbol = x["instId"]
+            if (
+                x["settleCcy"] == "USDT"
+                and x["state"] == "live"
+                and x.get("ctType") == "linear"
+                and "USD" not in x["instId"].replace("USDT", "")
+                and not any(b in symbol for b in blocked)
+                and not any(b in symbol.split("-")[0] for b in blocked)
+            ):
+                result.append(symbol)
 
         print(f"🐋 MARKETS FOUND: {len(result)}")
         return result
@@ -1764,7 +1065,7 @@ def top_flow_scanner(symbols):
             break
             
         try:
-            c15 = get_candles_cached(symbol, "15m")
+            c15 = get_candles(symbol, "15m")
             if len(c15) < 50:
                 continue
 
@@ -1819,93 +1120,31 @@ def top_flow_scanner(symbols):
 # ================================================
 
 def get_candles(symbol, tf):
-    """
-    Task 6 (v22.2.0 Production Stability) - Data Layer Reliability.
-    Fetches candles from OKX with retry + exponential backoff.
-    Returns a dict that clearly distinguishes success from every
-    failure mode, instead of collapsing "insufficient history",
-    "rate limited", "timed out", and "connection failed" into the
-    same bare empty list (which was the root cause of transient API
-    issues being indistinguishable from genuinely new listings):
-        {"success": True,  "candles": [...], "status": "OK"}
-        {"success": False, "candles": [],    "status": "<reason>"}
-    <reason> is one of: RATE_LIMIT, TIMEOUT, CONNECTION_ERROR,
-    API_ERROR, EMPTY_RESPONSE, UNKNOWN_ERROR.
+    try:
+        frames = {"15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D"}
+        url = "https://www.okx.com/api/v5/market/candles"
+        params = {"instId": symbol, "bar": frames[tf], "limit": 200}
 
-    A well-formed response that legitimately contains zero candles
-    (most likely a brand-new listing) is returned as success=True with
-    an empty candle list - that is real information, not a failure,
-    and must not be retried or treated the same as a fetch error.
-    """
-    frames = {"15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D"}
-    url = "https://www.okx.com/api/v5/market/candles"
-    params = {"instId": symbol, "bar": frames.get(tf, tf), "limit": 200}
+        data = requests.get(url, params=params, timeout=10).json()
 
-    max_retries = 3
-    base_backoff = 0.5  # seconds; doubles each retry attempt
-    last_status = "UNKNOWN_ERROR"
+        if not data or "data" not in data or not data["data"]:
+            return []
 
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, params=params, timeout=10)
+        candles = []
+        for c in data["data"][::-1]:
+            candles.append({
+                "open": float(c[1]),
+                "high": float(c[2]),
+                "low": float(c[3]),
+                "close": float(c[4]),
+                "volume": float(c[5])
+            })
 
-            if response.status_code == 429:
-                last_status = "RATE_LIMIT"
-                time.sleep(base_backoff * (2 ** attempt))
-                continue
+        return candles
 
-            if response.status_code != 200:
-                last_status = "API_ERROR"
-                time.sleep(base_backoff * (2 ** attempt))
-                continue
-
-            data = response.json()
-
-            # OKX can signal an API-level error via a non-"0" code even
-            # on HTTP 200 - treat this the same as a retryable failure
-            # rather than silently accepting it as "no data".
-            code = data.get("code")
-            if code is not None and code != "0":
-                last_status = "RATE_LIMIT" if code in ("50011", "50013") else "API_ERROR"
-                time.sleep(base_backoff * (2 ** attempt))
-                continue
-
-            raw = data.get("data")
-            if raw is None:
-                last_status = "EMPTY_RESPONSE"
-                time.sleep(base_backoff * (2 ** attempt))
-                continue
-
-            if not raw:
-                # Well-formed response, genuinely zero candles - real
-                # information (likely a brand-new listing), not a
-                # fetch failure. Do not retry, do not treat as an error.
-                return {"success": True, "candles": [], "status": "OK"}
-
-            candles = []
-            for c in raw[::-1]:
-                candles.append({
-                    "open": float(c[1]),
-                    "high": float(c[2]),
-                    "low": float(c[3]),
-                    "close": float(c[4]),
-                    "volume": float(c[5]),
-                })
-
-            return {"success": True, "candles": candles, "status": "OK"}
-
-        except requests.exceptions.Timeout:
-            last_status = "TIMEOUT"
-        except requests.exceptions.ConnectionError:
-            last_status = "CONNECTION_ERROR"
-        except Exception as e:
-            last_status = "UNKNOWN_ERROR"
-            print(f"CANDLE ERROR: {symbol} {tf} - {e}")
-
-        time.sleep(base_backoff * (2 ** attempt))
-
-    print(f"❌ CANDLE FETCH FAILED: {symbol} {tf} after {max_retries} attempts - {last_status}")
-    return {"success": False, "candles": [], "status": last_status}
+    except Exception as e:
+        print("CANDLE ERROR:", symbol, e)
+        return []
 
 
 init_database()
@@ -1967,36 +1206,20 @@ def macd_simple(closes, fast=12, slow=26, signal=9):
 
 _candle_cache = {}
 _cache_timestamps = {}
-_fetch_failure_stats = {}
 
 def get_candles_cached(symbol, tf):
-    """
-    Task 6 (v22.2.0 Production Stability): TTL-based cache that ONLY
-    caches genuine successful fetches (result["success"] is True). A
-    failed fetch (rate limit, timeout, connection error, API error) is
-    NEVER cached - the next call retries fresh instead of being stuck
-    with a false-empty result for the full CACHE_TTL, which previously
-    let a single transient API issue masquerade as "insufficient
-    history" for up to a minute. External signature is unchanged (still
-    returns a bare candle list) - fully backward compatible with every
-    existing caller.
-    """
+    """Get candles with TTL-based cache"""
     key = f"{symbol}_{tf}"
     now = time.time()
-
+    
     if key in _candle_cache and key in _cache_timestamps:
         if now - _cache_timestamps[key] <= CACHE_TTL:
             return _candle_cache[key]
-
-    result = get_candles(symbol, tf)
-
-    if result["success"]:
-        _candle_cache[key] = result["candles"]
-        _cache_timestamps[key] = now
-    else:
-        _fetch_failure_stats[result["status"]] = _fetch_failure_stats.get(result["status"], 0) + 1
-
-    return result["candles"]
+    
+    candles = get_candles(symbol, tf)
+    _candle_cache[key] = candles
+    _cache_timestamps[key] = now
+    return candles
 
 
 def clear_expired_cache():
@@ -2010,68 +1233,11 @@ def clear_expired_cache():
         print(f"🗑️ Cleared {len(expired_keys)} expired cache entries")
 
 
-def prefetch_candles_concurrently(symbols, timeframes=("15m", "1h", "4h", "1d"), max_workers=15):
-    """
-    Phase 1 (v22.2.1) - Scan Performance. Concurrently pre-populates the
-    candle cache for every symbol/timeframe about to be analyzed, so
-    the existing sequential analyze() loop hits a warm cache instead of
-    making network calls one at a time. This is a pure data-scheduling
-    change: it calls the exact same get_candles_cached() function that
-    analyze() already calls, fetching the exact same data in the exact
-    same format - only WHEN the network calls happen changes (upfront,
-    concurrently), not what is fetched or how it is parsed. Analysis
-    logic, order, and results are completely unaffected.
-
-    max_workers is intentionally modest (not one-worker-per-symbol) to
-    avoid trading a slow-but-working sequential scan for an unthrottled
-    burst that trips OKX's rate limits harder than before - this value
-    should be verified/tuned against real scan telemetry, not assumed
-    optimal on the first pass.
-    """
-    jobs = [(symbol, tf) for symbol in symbols for tf in timeframes]
-
-    def fetch_one(job):
-        symbol, tf = job
-        try:
-            get_candles_cached(symbol, tf)
-        except Exception as e:
-            print(f"⚠️ Prefetch error for {symbol} {tf}: {e}")
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(executor.map(fetch_one, jobs))
-
-
 # ================================================
 # 📊 MARKET STATS ENGINE
 # ================================================
 
 _market_stats = {}
-_scan_lock = threading.Lock()
-
-
-def prevent_concurrent_scans(func):
-    """
-    Phase 1 (v22.2.1) - Thread Safety. _market_stats (and other
-    scan-wide globals) are reset and accumulated over the course of
-    one /scan run. Telebot's default dispatch can run command handlers
-    on separate worker threads, so two overlapping /scan invocations
-    (two users, or a double-tap) could otherwise interleave and
-    corrupt each other's in-progress stats. This wraps the handler
-    without touching a single line inside it: if a scan is already
-    running, a new /scan request is politely rejected instead of being
-    allowed to run concurrently.
-    """
-    def wrapper(message):
-        if not _scan_lock.acquire(blocking=False):
-            bot.reply_to(message, "⏳ A scan is already in progress. Please wait for it to finish.")
-            return
-        try:
-            return func(message)
-        finally:
-            _scan_lock.release()
-    wrapper.__name__ = func.__name__
-    return wrapper
-
 
 def reset_market_stats():
     """Reset scan-wide market statistics before each /scan."""
@@ -2840,9 +2006,9 @@ def analyze(symbol, sector, debug=None):
         blocked_assets = [
             "TSLA", "AMZN", "AAPL", "NVDA", "META", "GOOGL", "MSFT", "NFLX",
             "AMD", "COIN", "MSTR", "BABA", "PLTR", "HOOD",
-            "SPX", "NASDAQ", "DOW", "US30", "US500", "UK100", "GER40", "JPN225",
-            "XAU", "XAG", "XPT", "XPD", "WTI", "BRENT", "NATGAS",
-            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNH", "MXN",
+            "SPX", "NASDAQ", "DOW",
+            "XAU", "XAG", "WTI", "BRENT",
+            "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
             "USDT_ETF", "BTC_ETF", "ETH_ETF"
         ]
 
@@ -2867,21 +2033,6 @@ def analyze(symbol, sector, debug=None):
             return None
 
         price = c15[-1]["close"]
-
-        # Task 5 (v22.1.3 Final Production Polish): ignore any crypto
-        # asset priced above 100 USD, except BTC and ETH which always
-        # remain supported. This is an instrument-eligibility gate (same
-        # category as the Blocked Assets / Candle-length checks above),
-        # not a signal-quality filter - it does not touch AI Brain,
-        # scoring, or any trading-decision logic.
-        if price > 100 and base not in ("BTC", "ETH"):
-            reject_reason = "High Price Asset"
-            if debug is not None:
-                debug["high_price"] = debug.get("high_price", 0) + 1
-                debug.setdefault("reject_reasons", {})
-                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
-            return None
-
         closes15 = [x["close"] for x in c15]
         closes1h = [x["close"] for x in c1h]
         closes4h = [x["close"] for x in c4h]
@@ -3251,12 +2402,6 @@ def analyze(symbol, sector, debug=None):
 
         score -= brain_penalty
 
-        # Task 1 (v22.2.0 Production Stability) - captures the score as
-        # it stands from quality/confidence/momentum/structure alone,
-        # before ANY risk-related penalty is applied. Used below to
-        # bound the aggregate effect of all penalty stages combined.
-        pre_penalty_score = max(0, min(100, score))
-
         # All Higher Trend / FOMO / Late Entry / Low Flow / Trap penalties
         # accumulated above (STEP 2-4) are applied here, in one place,
         # now that `score` exists. This replaces the old separate
@@ -3487,27 +2632,6 @@ def analyze(symbol, sector, debug=None):
 
         score = round(max(0, min(100, score)))
 
-        # Task 1 (v22.2.0 Production Stability) - Score Display Bug: ROOT
-        # CAUSE FIX. No single penalty was ever incorrect, but the TOTAL
-        # possible combined reduction across every penalty stage (Low
-        # Flow, FOMO, Higher Trend, Late Entry, Trap, RSI Extreme, Late
-        # RSI Zone, Pump/Dump, Multi-TF extremes, Near Resistance/
-        # Support, Low RR) was never bounded as an aggregate. With
-        # enough of these co-occurring on one signal, the cumulative
-        # reduction could exceed 100 points outright - unconditionally
-        # erasing even a signal with strong Brain Confidence/Flow/RR
-        # down to a displayed Score of 0, discarding the real
-        # difference between "several genuine risk factors present" and
-        # "everything stacked at once". This bounds the AGGREGATE
-        # reduction only - every individual penalty's own trigger
-        # condition and magnitude above is completely unchanged, and a
-        # genuinely weak signal (low pre_penalty_score to begin with)
-        # is unaffected by this floor.
-        MAX_AGGREGATE_PENALTY = 60
-        score = max(score, pre_penalty_score - MAX_AGGREGATE_PENALTY)
-
-        score = round(max(0, min(100, score)))
-
         if validation_errors:
             # FATAL - unchanged (structural/mathematical validation)
             reject_reason = f"Validation Failed: {', '.join(validation_errors)}"
@@ -3537,20 +2661,6 @@ def analyze(symbol, sector, debug=None):
         elif score >= 70:
             quality = "⚡ GOOD SETUP"
             quality_grade = "GOOD"
-        elif brain_conf >= 70 and rr >= 2.5 and flow >= 1.5:
-            # Task 5 (v22.1.3 Final Update) - Quality Engine Review:
-            # `score` can be dragged well below 70 by penalties entirely
-            # unrelated to Confidence/Flow/RR (Higher Trend, Late Entry,
-            # Trap, etc. - see the v22.1.3 Task 7 finding that `score`
-            # and `brain_confidence` are intentionally independent
-            # measures). Without this check, a signal with genuinely
-            # strong Confidence/Flow/RR would be labeled WATCHLIST purely
-            # because of an unrelated penalty, which does not match its
-            # real signal strength. This is the ONLY new branch added;
-            # every criterion above (ELITE/PREMIUM/HIGH/GOOD) and the
-            # final WATCHLIST fallback below are unchanged.
-            quality = "🟡 WATCH CLOSELY"
-            quality_grade = "WATCH"
         else:
             quality = "👀 WATCHLIST"
             quality_grade = "WATCHLIST"
@@ -3929,7 +3039,6 @@ Commands:
 
 
 @bot.message_handler(commands=["scan"])
-@prevent_concurrent_scans
 def scan(message):
     # ====== SHORT STARTUP MESSAGE ======
     bot.reply_to(message, f"""
@@ -3980,11 +3089,6 @@ def scan(message):
     flow_candidates_count = flow_candidates
     analyzed_count = len(symbols)
     scan_limit = MAX_SCAN_LIMIT
-
-    print("🔍 DEBUG: Prefetching candles concurrently for", len(symbols), "symbols")
-    prefetch_start = time.time()
-    prefetch_candles_concurrently(symbols)
-    print(f"🔍 DEBUG: Prefetch completed in {time.time() - prefetch_start:.2f}s")
 
     print("🔍 DEBUG: Before for symbol in symbols loop -", len(symbols), "symbols to analyze")
 
@@ -4271,9 +3375,34 @@ N/A — No signals passed the final filters.
     strongest_sector = sector_summary[0]['sector'] if sector_summary else "N/A"
     weakest_sector = sector_summary[-1]['sector'] if len(sector_summary) > 1 else "N/A"
 
-    # Task 4 (v22.1.3): Market Summary content is now built compactly and
-    # sent AFTER the signal messages (see Task 3 ordering) - not here.
-    print("🔍 DEBUG: Dashboard stats computed, will send after signals")
+    # ====== SEND ONE DASHBOARD MESSAGE (v21.4.3 - Better Dashboard, Task 3) ======
+    dashboard_msg = f"""
+🌍 AHAD AI MARKET DASHBOARD
+
+❤️ Health Score : {market_health_score}/100 ({health_grade})
+🌡 Temperature  : {market_temp}
+
+📊 SCAN STATS
+Coins Analyzed  : {analyzed_coins}
+✅ Accepted     : {accepted_signals}
+❌ Rejected     : {rejected_signals}
+🟢 LONG         : {long_signals}
+🔴 SHORT        : {short_signals}
+🎯 Acceptance   : {acceptance_rate}%
+
+🐋 Avg Flow Ratio (5c) : {avg_flow:.2f}
+🧠 Avg Brain    : {avg_brain:.1f}
+
+🏆 Best Sector  : {strongest_sector}
+📉 Weakest      : {weakest_sector}
+
+📊 Top Sectors
+
+{top_sectors_display}
+{FOOTER}
+"""
+    bot.send_message(message.chat.id, dashboard_msg)
+    print("🔍 DEBUG: After sending dashboard")
 
     # ====== CONTINUE WITH EXISTING DEBUG REPORT ======
     if debug.get("regimes"):
@@ -4487,37 +3616,19 @@ SHORT Signals   : {len(short_results)}
             signal.get('rr', 0),
         )
 
-    sorted_longs = sorted(long_results, key=ranking_key, reverse=True)
-    sorted_shorts = sorted(short_results, key=ranking_key, reverse=True)
+    best_longs = sorted(
+        long_results,
+        key=ranking_key,
+        reverse=True
+    )[:2]
 
-    # Task 4 (v22.1.3 Final Update) - Smart Signal Order. "Dominates" is
-    # determined by which side has more valid candidates (a presentation
-    # choice about how many of each direction to show, not a change to
-    # which candidates are valid or how they were scored/ranked).
-    if len(sorted_longs) == 0 and len(sorted_shorts) > 0:
-        best_longs = []
-        best_shorts = sorted_shorts[:3]
-    elif len(sorted_shorts) == 0 and len(sorted_longs) > 0:
-        best_longs = sorted_longs[:3]
-        best_shorts = []
-    elif len(sorted_longs) >= len(sorted_shorts):
-        best_longs = sorted_longs[:2]
-        best_shorts = sorted_shorts[:1]
-    else:
-        best_longs = sorted_longs[:1]
-        best_shorts = sorted_shorts[:2]
+    best_shorts = sorted(
+        short_results,
+        key=ranking_key,
+        reverse=True
+    )[:1]
 
     results = best_longs + best_shorts
-
-    # Task 6 (v22.1.3 Final Update / Ranking Review): rank numbers must
-    # reflect a true descending sort by ranking_score across the combined
-    # LONG+SHORT set. Concatenation order alone does not guarantee this -
-    # e.g. a SHORT candidate could score higher than a LONG candidate
-    # selected above. This re-sort only reorders the DISPLAY rank of the
-    # already-selected candidates; it does not change WHICH candidates
-    # were selected (still governed by the Smart Signal Order above).
-    results = sorted(results, key=ranking_key, reverse=True)
-
     print(f"🔍 DEBUG: After ranking - {len(results)} signals selected")
 
     for rank, signal in enumerate(results, start=1):
@@ -4539,55 +3650,99 @@ SHORT Signals   : {len(short_results)}
         clear_expired_cache()
         return
 
+    # ====== SIGNAL QUALITY SUMMARY ======
+    if all_results:
+        signal_quality = f"""
+📊 SIGNAL QUALITY SUMMARY
+Average Score       : {avg_score}
+Average Confidence  : {avg_brain}%
+Average RR          : {avg_rr}
+Average Momentum    : {avg_momentum}
+"""
+        bot.send_message(message.chat.id, signal_quality)
+        print("🔍 DEBUG: After sending signal quality summary")
+
     print(f"🔍 DEBUG: Before signal loop - {len(results)} signals to send")
 
-    # ====== SIGNAL MESSAGE - OFFICIAL DESIGN (v22.1.3 Final Update, Tasks 1 & 2) ======
-    QUALITY_TITLES = {
-        "ELITE": "👑 ELITE OPPORTUNITY",
-        "PREMIUM": "💎 PREMIUM SIGNAL",
-        "HIGH": "⭐ HIGH QUALITY SIGNAL",
-        "GOOD": "🟢 GOOD OPPORTUNITY",
-        "WATCH": "🟡 WATCH CLOSELY",
-        "WATCHLIST": "🔴 WATCHLIST",
-    }
-
-    def determine_trade_status(signal):
-        # Task 3 (v22.1.3 Final Update): deterministic mapping onto the
-        # 4 official statuses, using ONLY fields analyze() already
-        # computes (late_score, debug_reason, early_text) - no new
-        # calculation, no randomization.
-        reasons_text = " ".join(signal.get('debug_reason', []) or [])
-        if signal.get('late_score', 0) >= 30:
-            return "🔴 LATE ENTRY"
-        if "Near Resistance" in reasons_text or "Near Support" in reasons_text:
-            return "🟠 PULLBACK NEEDED"
-        if "WAIT" in signal.get('early_text', ''):
-            return "🟡 WAIT FOR ENTRY"
-        return "🟢 READY TO ENTER"
-
+    # ====== SIGNAL MESSAGE NEW LAYOUT ======
     for s in results:
         brain_conf = s["brain_confidence"]
 
-        quality_title = QUALITY_TITLES.get(s.get('quality_grade'), "🔴 WATCHLIST")
-        direction_word = "LONG" if "LONG" in s['direction'] else "SHORT"
-        direction_emoji = "🟢" if direction_word == "LONG" else "🔴"
-        status_text = determine_trade_status(s)
+        if brain_conf >= 80:
+            confidence_rank = "🔥 VERY HIGH"
+        elif brain_conf >= 60:
+            confidence_rank = "✅ HIGH"
+        elif brain_conf >= 40:
+            confidence_rank = "⚡ MEDIUM"
+        else:
+            confidence_rank = "⚠ LOW"
 
-        msg = f"""{quality_title}
+        msg = f"""
+🚨 AHAD AI {VERSION} – Adaptive Intelligence 🐋
+📅 Build: {BUILD_DATE}
 
-{direction_emoji} {s['coin']}
-🏆 {direction_word} • Rank #{s['rank']}
+🏆 Rank #{s['rank']}
+⭐ Ranking Score: {s['ranking_score']}
 
-🎯 Entry : {format_price(s['entry_low'])} → {format_price(s['entry_high'])}
-🛑 SL    : {format_price(s['sl'])}
+{s['direction']} | 🪙 {s['coin']}
+🏦 Sector: {s['sector']}
 
-🥇 TP1 : {format_price(s['tp1'])}
-🥈 TP2 : {format_price(s['tp2'])}
-🥉 TP3 : {format_price(s['tp3'])}
+━━━━━━━━━━━━━━━━━━━━━━
 
-🧠 {brain_conf}% | ⭐ {s['score']} | 🐋 {s['flow_rating']} | ⚖️ {s['rr']}R
+🎯 ENTRY PLAN
+Entry      : {format_price(s['entry_low'])} - {format_price(s['entry_high'])}
+Stop Loss  : {format_price(s['sl'])}
+🥇 TP1     : {format_price(s['tp1'])}
+🥈 TP2     : {format_price(s['tp2'])}
+🥉 TP3     : {format_price(s['tp3'])}
 
-{status_text}"""
+━━━━━━━━━━━━━━━━━━━━━━
+
+🏦 INSTITUTIONAL DASHBOARD
+├─ AI Brain    : {brain_conf}/100 ({confidence_rank})
+├─ Smart Money : {s['money_status']}
+├─ Market      : {s['regime']['regime']}
+├─ Momentum    : {s['momentum_score']}/100 ({s['momentum_status']})
+├─ RR          : {s['rr']}
+├─ Quality Grade: {s.get('quality_grade', 'N/A')}
+├─ Ranking Score: {s.get('ranking_score', 0)}
+└─ Risk        : {s['risk_grade']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 AI BRAIN
+📈 LONG Score  : {s['brain_long_score']}
+📉 SHORT Score : {s['brain_short_score']}
+🎯 Confidence  : {brain_conf}/100
+🏆 Level       : {confidence_rank}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 INSTITUTIONAL FLOW
+Flow         : {s['liquidity']}X
+Rating       : {s['flow_rating']}
+Flow Score   : {round(s['liquidity'] * 35, 0)}
+Temperature  : {s.get('market_temperature', 'N/A')}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📈 MARKET STATUS
+Final Score   : {s['score']}/100
+Trap Status   : {s['trap']}
+Market Regime : {s['regime']['regime']}
+Compression   : {s['volatility']['status']}
+Late Entry    : {s['late_score']}
+
+{s['warning']}
+{s['early_text']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+💡 WHY THIS SIGNAL?
+{s['decision_summary']}
+
+{FOOTER}
+"""
 
         trade_id = None
         if s.get('trade_data'):
@@ -4601,42 +3756,12 @@ SHORT Signals   : {len(short_results)}
                 print(f"❌ Exception saving trade: {e}")
 
         if trade_id:
-            msg += f"\n\n💾 Trade #{trade_id}   📖 /trade {trade_id}"
+            msg += f"\n\n💾 Trade ID: #{trade_id}"
         else:
             msg += "\n\n❌ Failed to save trade"
 
-        msg += f"\n\n🤖 AHAD AI {VERSION}"
-
         bot.send_message(message.chat.id, msg)
         print(f"🔍 DEBUG: Signal sent for {s['coin']}")
-
-    # ====== MARKET SUMMARY - COMPACT DESIGN (v22.1.3, Task 4) ======
-    # Sent immediately after the signal messages, per the required order:
-    # scanning message -> signal #1 -> signal #2 -> signal #3 -> market
-    # summary, with nothing else in between.
-    if bull_pct >= bear_pct and bull_pct >= sideways_pct:
-        market_condition = "BULL"
-    elif bear_pct >= bull_pct and bear_pct >= sideways_pct:
-        market_condition = "BEAR"
-    else:
-        market_condition = "SIDEWAYS"
-
-    market_summary_msg = f"""📊 MARKET SUMMARY
-
-❤️ Health Score : {market_health_score}/100
-🌡 Market : {market_condition}
-
-🟢 LONG : {long_signals}
-🔴 SHORT : {short_signals}
-
-🏆 Best Sector : {strongest_sector}
-
-📈 Acceptance : {acceptance_rate}%
-
-🤖 AHAD AI {VERSION}"""
-
-    bot.send_message(message.chat.id, market_summary_msg)
-    print("🔍 DEBUG: Market summary sent")
 
     clear_expired_cache()
     print("🔍 DEBUG: Scan completed successfully")
@@ -4833,104 +3958,6 @@ def debug_command(message):
 
 
 # ================================================
-# 📄 TASK: /trade <id> (v22.2.0 - Task 3 - Production Stability)
-# ================================================
-
-@bot.message_handler(commands=["trade"])
-def trade_command(message):
-    conn = None
-    cur = None
-
-    try:
-        parts = message.text.strip().split()
-        if len(parts) < 2 or not parts[1].isdigit():
-            bot.reply_to(message, f"Usage: /trade <id>\nExample: /trade 123\n{FOOTER}")
-            return
-
-        trade_id = int(parts[1])
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-        SELECT
-            id, symbol, side, signal_time, entry, sl, tp1, tp2, tp3,
-            sector, score, brain_long, brain_short, flow, momentum, rr,
-            confidence, late_score, version, status, result, max_profit,
-            max_drawdown, close_time, brain_confidence, market_regime,
-            compression_score, compression_status, momentum_weight,
-            flow_score, volume_acceleration, flow_rating, risk_grade,
-            decision_summary, ranking_score, quality_grade,
-            market_temperature
-        FROM trades
-        WHERE id = %s
-        """, (trade_id,))
-
-        row = cur.fetchone()
-
-        if not row:
-            bot.reply_to(message, f"❌ Trade #{trade_id} not found.\n{FOOTER}")
-            return
-
-        (t_id, symbol, side, signal_time, entry, sl, tp1, tp2, tp3,
-         sector, score, brain_long, brain_short, flow, momentum, rr,
-         confidence, late_score, version, status, result, max_profit,
-         max_drawdown, close_time, brain_confidence, market_regime,
-         compression_score, compression_status, momentum_weight,
-         flow_score, volume_acceleration, flow_rating, risk_grade,
-         decision_summary, ranking_score, quality_grade,
-         market_temperature) = row
-
-        status_display = status if status else "UNKNOWN"
-
-        msg = f"""📄 TRADE #{t_id}
-
-{symbol} | {side}
-Status: {status_display}
-
-🎯 Entry : {format_price(entry)}
-🛑 SL    : {format_price(sl)}
-
-🥇 TP1 : {format_price(tp1)}
-🥈 TP2 : {format_price(tp2)}
-🥉 TP3 : {format_price(tp3)}
-
-🧠 Brain : {brain_confidence if brain_confidence is not None else 'N/A'}% (L:{brain_long} / S:{brain_short})
-⭐ Score : {score}
-🏅 Quality : {quality_grade if quality_grade else 'N/A'}
-⚖️ RR : {rr}
-🐋 Flow : {flow} ({flow_rating if flow_rating else 'N/A'})
-⚡ Momentum : {momentum}
-📊 Regime : {market_regime if market_regime else 'N/A'}
-🌡 Compression : {compression_status if compression_status else 'N/A'}
-🎯 Ranking Score : {ranking_score if ranking_score is not None else 'N/A'}
-🛡 Risk : {risk_grade if risk_grade else 'N/A'}
-🏦 Sector : {sector if sector else 'UNKNOWN'}
-
-🕐 Signal Time : {signal_time}"""
-
-        if status_display == "CLOSED":
-            msg += f"""
-
-✅ Result : {result if result else 'N/A'}
-📈 Max Profit : {max_profit if max_profit is not None else 'N/A'}
-📉 Max Drawdown : {max_drawdown if max_drawdown is not None else 'N/A'}
-🕐 Closed : {close_time if close_time else 'N/A'}"""
-
-        msg += f"\n\n🤖 AHAD AI {VERSION}"
-
-        bot.reply_to(message, msg)
-
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error retrieving trade: {e}")
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
-
-# ================================================
 # 📜 TASK: IMPROVED /history
 # ================================================
 
@@ -5023,50 +4050,7 @@ def keep_alive():
         time.sleep(300)
 
 
-_telegram_polling_started = False
-_telegram_polling_lock = threading.Lock()
-
-
-def start_telegram_polling_once():
-    """
-    Phase 1 (v22.2.1) - Telegram Polling Fix. Ensures infinity_polling()
-    can only ever be entered once per process, regardless of how many
-    times this function (or telegram_engine itself) might be invoked -
-    the last line of defense against a duplicate poller even if
-    something upstream ever calls this more than once.
-    """
-    global _telegram_polling_started
-    with _telegram_polling_lock:
-        if _telegram_polling_started:
-            print("⚠️ Telegram polling already started - ignoring duplicate start request")
-            return False
-        _telegram_polling_started = True
-    return True
-
-
 def telegram_engine():
-    if not start_telegram_polling_once():
-        return
-
-    # Phase 1 (v22.2.1): a leftover webhook registration is the most
-    # common cause of a persistent 409 Conflict on getUpdates, and -
-    # unlike a duplicate process - it requires nothing else to be
-    # running to explain it: Telegram keeps a webhook registered
-    # indefinitely until explicitly deleted, even from a single test
-    # months ago. Logging the status before cleanup makes this
-    # verifiable in the Render logs instead of only inferred.
-    try:
-        webhook_info = bot.get_webhook_info()
-        print(f"🔍 Webhook status before cleanup: url='{webhook_info.url or '(none)'}'")
-    except Exception as e:
-        print(f"⚠️ Could not retrieve webhook info: {e}")
-
-    try:
-        bot.delete_webhook(drop_pending_updates=True)
-        print("✅ Webhook cleared (or was already clear) - safe to start long-polling")
-    except Exception as e:
-        print(f"⚠️ delete_webhook() failed: {e}")
-
     backoff = 5
     while True:
         try:
@@ -5091,86 +4075,85 @@ def cache_cleanup_thread():
         time.sleep(60)
 
 
-if __name__ == "__main__":
-    threading.Thread(target=cache_cleanup_thread, daemon=True).start()
-    threading.Thread(target=run_web, daemon=True).start()
-    threading.Thread(target=telegram_engine, daemon=True).start()
-    threading.Thread(target=keep_alive, daemon=True).start()
-    threading.Thread(target=update_open_trades, daemon=True).start()
+threading.Thread(target=cache_cleanup_thread, daemon=True).start()
+threading.Thread(target=run_web, daemon=True).start()
+threading.Thread(target=telegram_engine, daemon=True).start()
+threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=update_open_trades, daemon=True).start()
 
-    print(f"🔥 AHAD AI {VERSION} – Adaptive Intelligence ONLINE 🐋")
-    print(f"📅 Build: {BUILD_DATE}")
-    print(f"📅 Started at: {time.ctime()}")
-    print(f"🐍 Python Version: {os.sys.version}")
-    print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
-    print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
-    print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
-    print(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
-    print(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
-    print("🛡️ Validation Layer ACTIVE")
-    print("🗑️ Cache TTL-based (not full clear)")
-    print("🧠 Brain v2.0 ACTIVE")
-    print("🎯 Dynamic Late Entry v3 ACTIVE")
-    print("🐞 Debug Reason ACTIVE")
-    print(f"🗄️ PostgreSQL Database ACTIVE ({VERSION})")
-    print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
-    print("🔒 SSL Connection: ENABLED")
-    print("⏰ TIMESTAMP Support ACTIVE")
-    print("🔄 Duplicate Trade Protection ACTIVE")
-    print("📈 Trade Tracker ACTIVE (With Backoff)")
-    print("📊 Performance Analytics ACTIVE (Enhanced)")
-    print("📊 Market Regime Engine ACTIVE (Fixed)")
-    print("🔥 Volatility Compression Integration ACTIVE")
-    print("🚀 Dynamic Momentum Weight ACTIVE")
-    print("🎯 Dynamic RR Engine ACTIVE")
-    print("🔄 Dual Direction Engine ACTIVE")
-    print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
-    print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
-    print("💎 Quality Engine v2.0 ACTIVE")
-    print("📊 Institutional Flow Rating ACTIVE")
-    print("🛡️ Risk Grade System ACTIVE")
-    print("🧠 AI Decision Summary ACTIVE (Grouped)")
-    print("🐘 Market Health Report ACTIVE (Unified)")
-    print("🏦 Institutional Dashboard ACTIVE")
-    print("🐞 Enhanced Debug Report with Sorted Rejections")
-    print("📦 Caching System ACTIVE (With TTL)")
-    print("⚡ Scan Efficiency Tracking ACTIVE")
-    print("🌡️ Market Temperature ACTIVE")
-    print("🏦 Sector Summary ACTIVE")
-    print("🏷️ Quality Grade System ACTIVE")
-    print(f"🔄 UI Optimization ACTIVE ({VERSION})")
-    print("📋 Enhanced Signal Layout ACTIVE")
-    print("📊 Grouped Decision Summary ACTIVE")
-    print("📈 Improved /history, /open, /report ACTIVE")
-    print("⏱ Scan Duration Tracking ACTIVE")
-    print("📈 Recorded Trades Display ACTIVE")
-    print("📅 Build Information Display ACTIVE")
-    print("🎯 Improved No Opportunity Message ACTIVE")
-    print("📊 Hidden Empty Metrics ACTIVE")
-    print("🏆 Sorted Rejection Reasons ACTIVE")
-    print("🌍 Unified Market Health Language ACTIVE")
-    print("🏷️ Market Health Score ACTIVE")
-    print("🔢 Scan History Counter ACTIVE")
-    print("⏱️ Runtime Information ACTIVE")
-    print("🆔 Scan ID Display ACTIVE")
-    print("📊 Signal Quality Summary ACTIVE")
-    print("🏆 Sector Leader Summary ACTIVE")
-    print("📊 Previous Scan Comparison ACTIVE")
-    print("🌍 AHAD AI MARKET DASHBOARD ACTIVE")
-    print("📋 Commands: /scan | /report | /open | /history")
-    print("🎯 Best 2 LONG + Best 1 SHORT")
+print(f"🔥 AHAD AI {VERSION} – Adaptive Intelligence ONLINE 🐋")
+print(f"📅 Build: {BUILD_DATE}")
+print(f"📅 Started at: {time.ctime()}")
+print(f"🐍 Python Version: {os.sys.version}")
+print(f"⚙️ MIN_FLOW_COINS: {MIN_FLOW_COINS}")
+print(f"⚙️ MAX_FLOW_COINS: {MAX_FLOW_COINS}")
+print(f"⚙️ FLOW_RATIO: {FLOW_RATIO}")
+print(f"⚙️ MAX_SCAN_LIMIT: {MAX_SCAN_LIMIT}")
+print(f"⚙️ CACHE_TTL: {CACHE_TTL}s")
+print("🛡️ Validation Layer ACTIVE")
+print("🗑️ Cache TTL-based (not full clear)")
+print("🧠 Brain v2.0 ACTIVE")
+print("🎯 Dynamic Late Entry v3 ACTIVE")
+print("🐞 Debug Reason ACTIVE")
+print(f"🗄️ PostgreSQL Database ACTIVE ({VERSION})")
+print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
+print("🔒 SSL Connection: ENABLED")
+print("⏰ TIMESTAMP Support ACTIVE")
+print("🔄 Duplicate Trade Protection ACTIVE")
+print("📈 Trade Tracker ACTIVE (With Backoff)")
+print("📊 Performance Analytics ACTIVE (Enhanced)")
+print("📊 Market Regime Engine ACTIVE (Fixed)")
+print("🔥 Volatility Compression Integration ACTIVE")
+print("🚀 Dynamic Momentum Weight ACTIVE")
+print("🎯 Dynamic RR Engine ACTIVE")
+print("🔄 Dual Direction Engine ACTIVE")
+print("📊 Trade Data Expansion ACTIVE (13 New Fields)")
+print("🏆 Professional Ranking Engine ACTIVE (Enhanced)")
+print("💎 Quality Engine v2.0 ACTIVE")
+print("📊 Institutional Flow Rating ACTIVE")
+print("🛡️ Risk Grade System ACTIVE")
+print("🧠 AI Decision Summary ACTIVE (Grouped)")
+print("🐘 Market Health Report ACTIVE (Unified)")
+print("🏦 Institutional Dashboard ACTIVE")
+print("🐞 Enhanced Debug Report with Sorted Rejections")
+print("📦 Caching System ACTIVE (With TTL)")
+print("⚡ Scan Efficiency Tracking ACTIVE")
+print("🌡️ Market Temperature ACTIVE")
+print("🏦 Sector Summary ACTIVE")
+print("🏷️ Quality Grade System ACTIVE")
+print(f"🔄 UI Optimization ACTIVE ({VERSION})")
+print("📋 Enhanced Signal Layout ACTIVE")
+print("📊 Grouped Decision Summary ACTIVE")
+print("📈 Improved /history, /open, /report ACTIVE")
+print("⏱ Scan Duration Tracking ACTIVE")
+print("📈 Recorded Trades Display ACTIVE")
+print("📅 Build Information Display ACTIVE")
+print("🎯 Improved No Opportunity Message ACTIVE")
+print("📊 Hidden Empty Metrics ACTIVE")
+print("🏆 Sorted Rejection Reasons ACTIVE")
+print("🌍 Unified Market Health Language ACTIVE")
+print("🏷️ Market Health Score ACTIVE")
+print("🔢 Scan History Counter ACTIVE")
+print("⏱️ Runtime Information ACTIVE")
+print("🆔 Scan ID Display ACTIVE")
+print("📊 Signal Quality Summary ACTIVE")
+print("🏆 Sector Leader Summary ACTIVE")
+print("📊 Previous Scan Comparison ACTIVE")
+print("🌍 AHAD AI MARKET DASHBOARD ACTIVE")
+print("📋 Commands: /scan | /report | /open | /history")
+print("🎯 Best 2 LONG + Best 1 SHORT")
 
-    # ====== v21.4.3 ADAPTIVE INTELLIGENCE FEATURE FLAGS ======
-    print("🧠 Adaptive FOMO (Hard/Soft Levels) ACTIVE")
-    print("📊 Market Scan Statistics ACTIVE")
-    print("🌍 Better Dashboard (Stats + Health Grade) ACTIVE")
-    print("📐 Robust Average Flow (Outlier-Resistant) ACTIVE")
-    print("❤️ Health Score 2.0 ACTIVE")
-    print("🏆 Ranking Sort Improvement ACTIVE")
-    print("⚡ Duplicate Calculation Reduction ACTIVE")
+# ====== v21.4.3 ADAPTIVE INTELLIGENCE FEATURE FLAGS ======
+print("🧠 Adaptive FOMO (Hard/Soft Levels) ACTIVE")
+print("📊 Market Scan Statistics ACTIVE")
+print("🌍 Better Dashboard (Stats + Health Grade) ACTIVE")
+print("📐 Robust Average Flow (Outlier-Resistant) ACTIVE")
+print("❤️ Health Score 2.0 ACTIVE")
+print("🏆 Ranking Sort Improvement ACTIVE")
+print("⚡ Duplicate Calculation Reduction ACTIVE")
 
-    print("✅ SYSTEM READY FOR PRODUCTION")
-    print(f"🚀 {VERSION} – Adaptive Intelligence")
+print("✅ SYSTEM READY FOR PRODUCTION")
+print(f"🚀 {VERSION} – Adaptive Intelligence")
 
-    while True:
-        time.sleep(60)
+while True:
+    time.sleep(60)

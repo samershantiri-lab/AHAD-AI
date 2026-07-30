@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.2.4 – Critical Production Hotfix (Trade Tracker)
+# 🚀 AHAD AI v22.3.0 – Version-Aware Database
 # ================================================
 
 """
@@ -1016,6 +1016,140 @@ in /report currently, so there was nothing further to check there;
 trade counts (total/open/closed) were already confirmed correct in
 the prior round and remain unchanged.
 ================================================================================
+
+
+================================================================================
+AHAD AI v22.3.0 - VERSION-AWARE DATABASE
+================================================================================
+Confirmed by direct diff against v22.2.4: ai_brain(), smart_money(),
+the ranking_score formula, the quality-grade logic, the scanner main
+loop, /trade, /history, /open, update_trade(), and the v22.2.4 critical
+hotfix in get_trade_tracker_candles() are all byte-identical. Within
+analyze(), the diff is 100% additive (new snapshot_data construction +
+3 new trade_data keys) - not one existing line was changed or removed.
+Across the entire file, the only pure deletions are the two lines
+removed from the duplicate-trade UPDATE as the write-once fix below -
+confirmed by direct diff, nothing else was removed anywhere.
+
+--------------------------------------------------------------------------------
+REFINEMENTS INCORPORATED
+--------------------------------------------------------------------------------
+- version_id is the canonical reference for all joins/analytics/
+  reporting; version/build_date remain stored on trades for historical
+  readability but are not used as the join key anywhere.
+- Deferred engine_version/snapshot_version entirely - only version and
+  build_date exist as identity fields for now.
+- Hybrid snapshot: no new SQL columns for Task 3 at all - every field
+  /report already aggregates (score, rr, brain_confidence,
+  ranking_score, quality_grade, risk_grade, flow, momentum,
+  market_regime, sector) stays exactly as-is; RSI/ATR/EMA/volume/
+  timeframe plus reserved future fields (Universe Source, Reason For
+  Entry, Priority Score) live in the new snapshot_data JSONB column.
+- Legacy handling combines both requested approaches: trades.version/
+  build_date stay NULL for pre-tracking rows (never the literal string
+  "Legacy"); trades.version_id points at a permanently reserved id=0
+  registry row (version='Legacy', status='Archived') so version-
+  comparison reports have a real, queryable Legacy bucket without the
+  string living in the trade data itself.
+- versions.status is a constrained CHECK (Development/Testing/Stable/
+  Deprecated/Archived) - a typo cannot silently create an untracked
+  status. Auto-registration always inserts as Development; promotion
+  is a deliberate, separate action, never automatic.
+- snapshot_created_at lives inside snapshot_data (not a top-level SQL
+  column), representing the moment the analysis itself was captured -
+  distinct from signal_time, and refreshed independently whenever
+  snapshot_data itself refreshes (e.g. on a duplicate-trade update).
+
+--------------------------------------------------------------------------------
+TASK 1/7 - Version Registry + Legacy Handling
+--------------------------------------------------------------------------------
+New `versions` table (id, version UNIQUE, build_date, status with
+CHECK constraint, description, created_at). id=0 is seeded once
+(ON CONFLICT DO NOTHING) as the permanent Legacy row. Existing trades
+are backfilled to version_id=0 via `UPDATE ... WHERE version_id IS
+NULL` - idempotent, verified safe to run on every startup/redeploy
+across multiple simulated runs with zero duplicate rows or incorrect
+resets of already-migrated data.
+
+--------------------------------------------------------------------------------
+TASK 2 - Trade Version Tracking + Write-Once Fix
+--------------------------------------------------------------------------------
+trades gains build_date and version_id (version already existed).
+CRITICAL FIX applied as part of this same change (per the approved
+refinement): the duplicate-trade UPDATE path previously included
+`version = %s` in its SET clause, which would have silently overwritten
+a trade's original version on every refresh - directly violating "must
+never change after creation." Removed from the UPDATE entirely
+(build_date/version_id were never added to it either) - these three
+fields are now write-once, set only at INSERT. snapshot_data DOES
+refresh on update (it represents current analysis context, which is
+legitimately new), with its own new snapshot_created_at. Verified
+directly: after a simulated refresh, version/build_date/version_id are
+unchanged while score/snapshot_data correctly update.
+
+--------------------------------------------------------------------------------
+TASK 3 - Hybrid Snapshot
+--------------------------------------------------------------------------------
+New snapshot_data JSONB column. Built inside analyze() from variables
+already computed there (rsi_15m, move/ATR, ema20_15/50/100, volume_
+acceleration) - a purely descriptive EMA-alignment label is computed
+independently for the snapshot and does not feed any scoring/bonus
+logic. Includes snapshot_created_at (ISO timestamp) and reserved
+None-valued keys (universe_source, reason_for_entry, priority_score)
+so those can be populated later with zero schema migration.
+
+--------------------------------------------------------------------------------
+TASK 4/6 - Version Analytics + /report version
+--------------------------------------------------------------------------------
+get_report_stats() gained an optional version_id parameter (default
+None = every existing behavior unchanged, verified by direct diff of
+its one existing caller). "/report version [vX.Y.Z]" branches inside
+report_command() before any existing logic runs - bare "/report" is
+untouched. A specific version reuses get_report_stats(version_id=...)
+(the same, already-tested engine); the no-argument comparison view
+uses one dedicated GROUP BY query across all registered versions
+rather than calling get_report_stats() in a loop, avoiding N+1 query
+overhead as the versions table grows. Verified the version_id filter
+correctly scopes results with a direct query test (unfiltered vs.
+scoped-to-version-1 vs. scoped-to-version-2, all producing the correct
+distinct aggregates).
+
+--------------------------------------------------------------------------------
+TASK 5 - /version Command
+--------------------------------------------------------------------------------
+New command showing current VERSION, its registry status, BUILD_DATE,
+and a "Database Version" check comparing the running VERSION against
+the most recently registered row (reports "Behind" with the actual
+latest version if they ever diverge, e.g. after a rollback deploy).
+
+--------------------------------------------------------------------------------
+PERFORMANCE
+--------------------------------------------------------------------------------
+Added idx_trades_version_id, idx_trades_version_id_status, and
+idx_versions_status - every new query path added in this release
+filters or joins on exactly these columns.
+
+--------------------------------------------------------------------------------
+SELF-REVIEW SUMMARY (requested before delivery)
+--------------------------------------------------------------------------------
+- Migration safety: every DDL statement is CREATE TABLE IF NOT EXISTS /
+  ADD COLUMN IF NOT EXISTS / ON CONFLICT DO NOTHING; the backfill only
+  touches NULL rows. Verified idempotent across 3 simulated consecutive
+  runs with no duplicate Legacy rows and no incorrect resets.
+- Backward compatibility: get_report_stats()'s only existing caller
+  passes zero arguments and is untouched; bare /report, /trade,
+  /history, /open are byte-identical; every existing trades column and
+  trade_data key is untouched, only new keys added.
+- Duplicate-update behavior: write-once fields verified immutable
+  across a refresh; snapshot_data verified to correctly refresh
+  alongside score/rr/etc.
+- SQL performance: indexes added for every new access pattern; the
+  version-comparison report uses one query, not one query per version.
+- No existing production functionality changed: confirmed by direct
+  diff - ai_brain(), smart_money(), ranking_score, quality-grade logic,
+  the scanner loop, and the v22.2.4 critical hotfix are all
+  byte-identical; analyze()'s diff is 100% additive.
+================================================================================
 """
 
 # ================================================
@@ -1039,8 +1173,8 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.2.4"
-BUILD_DATE = "2026-07-28"
+VERSION = "v22.3.0"
+BUILD_DATE = "2026-07-30"
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -1049,6 +1183,7 @@ BUILD_DATE = "2026-07-28"
 import os
 import time
 import re
+import json
 import threading
 import traceback
 import requests
@@ -1176,15 +1311,113 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_trades_quality_grade ON trades(quality_grade)
         """)
 
+        # ================================================
+        # 🔄 DATABASE MIGRATION (v22.3.0) - Version-Aware Database
+        # ================================================
+
+        # Version registry: the central record of every AHAD AI release.
+        # id=0 is reserved permanently for "Legacy" (trades that predate
+        # version tracking) - never reused for a real release.
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS versions (
+            id SERIAL PRIMARY KEY,
+            version TEXT NOT NULL UNIQUE,
+            build_date TEXT,
+            status TEXT NOT NULL DEFAULT 'Development'
+                CHECK (status IN ('Development', 'Testing', 'Stable', 'Deprecated', 'Archived')),
+            description TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+
+        cur.execute("""
+        INSERT INTO versions (id, version, build_date, status, description)
+        VALUES (0, 'Legacy', NULL, 'Archived', 'Reserved: trades created before version tracking existed')
+        ON CONFLICT (id) DO NOTHING
+        """)
+
+        # New trades columns. `version` already existed (TEXT) before this
+        # release and is left completely untouched. `build_date` and
+        # `version_id` are new, write-once identity fields (never updated
+        # by the duplicate-trade refresh path - see save_trade()).
+        # `snapshot_data` is a JSONB column for extensible analysis
+        # context (RSI/ATR/EMA/volume today; Universe Source/Reason For
+        # Entry/Priority Score whenever those ship) - adding a new field
+        # to it never requires a schema migration.
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS build_date TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS version_id INTEGER REFERENCES versions(id)")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS snapshot_data JSONB")
+
+        # Backfill: any existing trade with no version_id predates this
+        # migration - assign it to the reserved Legacy registry row.
+        # Idempotent (only touches NULL rows), safe to run on every
+        # startup.
+        cur.execute("UPDATE trades SET version_id = 0 WHERE version_id IS NULL")
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_version_id ON trades(version_id)
+        """)
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_version_id_status ON trades(version_id, status)
+        """)
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_versions_status ON versions(status)
+        """)
+
         conn.commit()
         print("🟢 PostgreSQL Connected")
         print("🔄 Database migration checked")
         print(f"🗄 AHAD AI DATABASE READY ({VERSION})")
-        print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade")
+        print("📊 Indexes: status, result, signal_time, symbol, status_symbol, market_regime, brain_confidence, quality_grade, version_id, version_id_status, versions_status")
 
     except Exception as e:
         print(f"❌ Database Error: {e}")
         raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+_current_version_id = None
+
+
+def register_current_version():
+    """
+    Version-Aware Database (v22.3.0): auto-registers the currently
+    running VERSION/BUILD_DATE into the versions registry at startup -
+    insert-if-not-exists, NEVER an overwrite, so a human-set status
+    (e.g. marking a version "Stable" after testing) is never silently
+    reset just because the same version restarts. New versions are
+    registered as "Development" by default; promoting to
+    Testing/Stable/Deprecated/Archived is a deliberate, separate action.
+    Populates the module-level _current_version_id used when building
+    trade_data, so every trade going forward can reference its creating
+    version by id.
+    """
+    global _current_version_id
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO versions (version, build_date, status, description)
+        VALUES (%s, %s, 'Development', 'Auto-registered on startup')
+        ON CONFLICT (version) DO NOTHING
+        """, (VERSION, BUILD_DATE))
+        conn.commit()
+
+        cur.execute("SELECT id FROM versions WHERE version = %s", (VERSION,))
+        row = cur.fetchone()
+        _current_version_id = row[0] if row else None
+        print(f"🏷 Version registered: {VERSION} (id={_current_version_id})")
+
+    except Exception as e:
+        print(f"⚠️ Version registration failed: {e}")
+        _current_version_id = None
     finally:
         if cur:
             cur.close()
@@ -1318,7 +1551,6 @@ def save_trade(trade_data):
                 brain_long = %s, brain_short = %s,
                 flow = %s, momentum = %s, rr = %s,
                 confidence = %s, late_score = %s,
-                version = %s,
                 brain_confidence = %s,
                 market_regime = %s,
                 compression_score = %s,
@@ -1331,7 +1563,8 @@ def save_trade(trade_data):
                 decision_summary = %s,
                 ranking_score = %s,
                 quality_grade = %s,
-                market_temperature = %s
+                market_temperature = %s,
+                snapshot_data = %s
             WHERE id = %s AND status = 'OPEN'
             """, (
                 datetime.now(),
@@ -1341,7 +1574,6 @@ def save_trade(trade_data):
                 trade_data['brain_long'], trade_data['brain_short'],
                 trade_data['flow'], trade_data['momentum'], trade_data['rr'],
                 trade_data['confidence'], trade_data['late_score'],
-                trade_data.get('version', VERSION),
                 trade_data.get('brain_confidence', 0),
                 trade_data.get('market_regime', 'UNKNOWN'),
                 trade_data.get('compression_score', 0),
@@ -1355,6 +1587,7 @@ def save_trade(trade_data):
                 trade_data.get('ranking_score', 0.0),
                 trade_data.get('quality_grade', 'N/A'),
                 trade_data.get('market_temperature', 'N/A'),
+                json.dumps(trade_data.get('snapshot_data', {})),
                 existing_id
             ))
 
@@ -1396,7 +1629,10 @@ def save_trade(trade_data):
             decision_summary,
             ranking_score,
             quality_grade,
-            market_temperature
+            market_temperature,
+            build_date,
+            version_id,
+            snapshot_data
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -1409,6 +1645,7 @@ def save_trade(trade_data):
             %s, %s,
             %s,
             %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s,
             %s, %s, %s,
             %s, %s, %s
         )
@@ -1449,7 +1686,10 @@ def save_trade(trade_data):
             trade_data.get('decision_summary', ''),
             trade_data.get('ranking_score', 0.0),
             trade_data.get('quality_grade', 'N/A'),
-            trade_data.get('market_temperature', 'N/A')
+            trade_data.get('market_temperature', 'N/A'),
+            trade_data.get('build_date', BUILD_DATE),
+            trade_data.get('version_id') if trade_data.get('version_id') is not None else 0,
+            json.dumps(trade_data.get('snapshot_data', {}))
         ))
 
         trade_id = cur.fetchone()[0]
@@ -1742,8 +1982,16 @@ def update_open_trades():
 # 📊 PERFORMANCE ANALYTICS
 # ================================================
 
-def get_report_stats():
-    """Get AHAD AI performance statistics with enhanced fields"""
+def get_report_stats(version_id=None):
+    """
+    Get AHAD AI performance statistics with enhanced fields.
+
+    version_id=None (default): aggregates across ALL trades, exactly as
+    before this change - fully backward compatible, zero behavior
+    change for the existing /report command.
+    version_id=<int>: scopes every statistic to trades created by that
+    specific version only (Version Analytics, v22.3.0 Task 4/6).
+    """
     conn = None
     cur = None
     
@@ -1751,7 +1999,10 @@ def get_report_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        cur.execute("""
+        main_filter = "WHERE version_id = %s" if version_id is not None else ""
+        main_params = (version_id,) if version_id is not None else ()
+
+        cur.execute(f"""
         SELECT
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'OPEN' THEN 1 END) AS open_trades,
@@ -1768,7 +2019,8 @@ def get_report_stats():
             AVG(CASE WHEN status = 'CLOSED' THEN brain_confidence END) AS avg_brain_confidence,
             AVG(CASE WHEN status = 'CLOSED' THEN score END) AS avg_final_score
         FROM trades
-        """)
+        {main_filter}
+        """, main_params)
 
         row = cur.fetchone()
 
@@ -1794,8 +2046,11 @@ def get_report_stats():
         else:
             win_rate = 0
 
+        long_version_filter = "AND version_id = %s" if version_id is not None else ""
+        long_params = (version_id,) if version_id is not None else ()
+
         # LONG statistics
-        cur.execute("""
+        cur.execute(f"""
         SELECT
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
@@ -1804,8 +2059,8 @@ def get_report_stats():
             AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
             AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown
         FROM trades
-        WHERE side = 'LONG'
-        """)
+        WHERE side = 'LONG' {long_version_filter}
+        """, long_params)
 
         long_row = cur.fetchone()
         long_total = long_row[0] or 0
@@ -1818,7 +2073,7 @@ def get_report_stats():
         long_win_rate = round((long_wins / long_closed) * 100, 2) if long_closed > 0 else 0
 
         # SHORT statistics
-        cur.execute("""
+        cur.execute(f"""
         SELECT
             COUNT(*) AS total,
             COUNT(CASE WHEN status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3') THEN 1 END) AS wins,
@@ -1827,8 +2082,8 @@ def get_report_stats():
             AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
             AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown
         FROM trades
-        WHERE side = 'SHORT'
-        """)
+        WHERE side = 'SHORT' {long_version_filter}
+        """, long_params)
 
         short_row = cur.fetchone()
         short_total = short_row[0] or 0
@@ -2188,6 +2443,7 @@ def get_candles(symbol, tf):
 
 
 init_database()
+register_current_version()
 print(f"🔥 AHAD AI {VERSION} – Adaptive Intelligence CORE READY 🐋")
 
 
@@ -4012,6 +4268,34 @@ def analyze(symbol, sector, debug=None):
             decision_summary += "⚠️ Risk Factors\n" + "\n".join(risk_reasons)
 
         # ====== STEP 10: TRADE DATA ======
+        # Version-Aware Database (v22.3.0): descriptive-only EMA
+        # alignment label for the snapshot - independent of, and does
+        # not affect, any scoring/bonus logic elsewhere in analyze().
+        if ema20_15 > ema50_15 > ema100_15:
+            snapshot_ema_alignment = "BULLISH"
+        elif ema20_15 < ema50_15 < ema100_15:
+            snapshot_ema_alignment = "BEARISH"
+        else:
+            snapshot_ema_alignment = "MIXED"
+
+        snapshot_data = {
+            "snapshot_created_at": datetime.now().isoformat(),
+            "symbol": symbol,
+            "timeframe": "15m",
+            "rsi_15m": round(rsi_15m, 2),
+            "atr": round(move, 6),
+            "ema_alignment": snapshot_ema_alignment,
+            "ema20": round(ema20_15, 6),
+            "ema50": round(ema50_15, 6),
+            "ema100": round(ema100_15, 6),
+            "volume_acceleration": round(volume_acceleration, 2),
+            # Reserved for future features (Universe Builder / AI
+            # Favorites) - populated later with zero schema change.
+            "universe_source": None,
+            "reason_for_entry": None,
+            "priority_score": None,
+        }
+
         trade_data = {
             'symbol': symbol,
             'side': direction_clean,
@@ -4031,6 +4315,9 @@ def analyze(symbol, sector, debug=None):
             'confidence': confidence_level,
             'late_score': late_score,
             'version': VERSION,
+            'build_date': BUILD_DATE,
+            'version_id': _current_version_id,
+            'snapshot_data': snapshot_data,
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -4943,8 +5230,162 @@ SHORT Signals   : {len(short_results)}
 # 📊 TASK: IMPROVED /report
 # ================================================
 
+@bot.message_handler(commands=["version"])
+def version_command(message):
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT status FROM versions WHERE version = %s", (VERSION,))
+        row = cur.fetchone()
+        current_status = row[0] if row else "Unknown"
+
+        cur.execute("SELECT version FROM versions ORDER BY id DESC LIMIT 1")
+        latest_row = cur.fetchone()
+        latest_version = latest_row[0] if latest_row else "Unknown"
+        db_version_status = "Latest" if latest_version == VERSION else f"Behind (latest registered: {latest_version})"
+
+        msg = f"""🤖 AHAD AI
+
+Current Version
+{VERSION}
+
+Status
+{current_status}
+
+Build Date
+{BUILD_DATE}
+
+Database Version
+{db_version_status}"""
+
+        bot.reply_to(message, msg)
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error retrieving version info: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def send_version_report(message, target_version=None):
+    """
+    Version Analytics (v22.3.0, Task 6): "/report version" support.
+    With no target_version, shows a compact comparison across every
+    registered version (one dedicated GROUP BY query). With a specific
+    target_version, reuses get_report_stats(version_id=...) - the same,
+    already-tested report engine used by bare /report.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if target_version:
+            cur.execute("SELECT id, version, status FROM versions WHERE version = %s", (target_version,))
+            row = cur.fetchone()
+            if not row:
+                bot.reply_to(message, f"❌ Version '{target_version}' not found in the registry.\n{FOOTER}")
+                return
+
+            version_id, version_label, version_status = row
+            stats = get_report_stats(version_id=version_id)
+
+            cur.execute("""
+            SELECT symbol, COUNT(*) AS wins
+            FROM trades
+            WHERE version_id = %s AND status = 'CLOSED' AND result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3')
+            GROUP BY symbol
+            ORDER BY wins DESC
+            LIMIT 1
+            """, (version_id,))
+            best_row = cur.fetchone()
+            best_symbol = best_row[0] if best_row else "N/A"
+
+            cur.execute("""
+            SELECT symbol, COUNT(*) AS losses
+            FROM trades
+            WHERE version_id = %s AND status = 'CLOSED' AND result = 'LOSS_SL'
+            GROUP BY symbol
+            ORDER BY losses DESC
+            LIMIT 1
+            """, (version_id,))
+            worst_row = cur.fetchone()
+            worst_symbol = worst_row[0] if worst_row else "N/A"
+
+            msg = f"""📊 Version Report
+
+Current Version
+{version_label} ({version_status})
+
+Total Trades      : {stats['total']}
+Closed Trades      : {stats['closed']}
+Open Trades       : {stats['open']}
+
+Win Rate          : {stats['win_rate']}%
+Average RR        : {stats['avg_rr']}
+Average Brain     : {stats['avg_brain_confidence']}
+Average Score     : {stats['avg_final_score']}
+
+Best Performing Symbol  : {best_symbol}
+Worst Performing Symbol : {worst_symbol}
+
+{FOOTER}"""
+            bot.reply_to(message, msg)
+            return
+
+        # No specific version - comparison across all registered
+        # versions. One GROUP BY query, not N+1 calls to get_report_stats().
+        cur.execute("""
+        SELECT
+            v.version,
+            v.status,
+            COUNT(t.id) AS total,
+            COUNT(CASE WHEN t.status = 'CLOSED' THEN 1 END) AS closed,
+            COUNT(CASE WHEN t.status = 'CLOSED' AND t.result IN ('WIN_TP1','WIN_TP2','WIN_TP3') THEN 1 END) AS wins,
+            AVG(CASE WHEN t.status = 'CLOSED' THEN t.rr END) AS avg_rr
+        FROM versions v
+        LEFT JOIN trades t ON t.version_id = v.id
+        GROUP BY v.id, v.version, v.status
+        ORDER BY v.id DESC
+        """)
+        rows = cur.fetchall()
+
+        lines = ["📊 VERSION COMPARISON", ""]
+        for version_label, status, total, closed, wins, avg_rr in rows:
+            win_rate = round((wins / closed) * 100, 1) if closed else 0
+            avg_rr_display = round(avg_rr, 2) if avg_rr is not None else "N/A"
+            lines.append(f"{version_label} [{status}] - Trades: {total or 0} | Closed: {closed or 0} | Win Rate: {win_rate}% | Avg RR: {avg_rr_display}")
+
+        lines.append("")
+        lines.append(FOOTER)
+        bot.reply_to(message, "\n".join(lines))
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error building version report: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @bot.message_handler(commands=['report'])
 def report_command(message):
+    # Version Analytics (v22.3.0, Task 6): "/report version [vX.Y.Z]"
+    # branches here before any existing /report logic runs. Bare
+    # "/report" (no arguments) falls through unchanged below.
+    parts = message.text.strip().split()
+    if len(parts) >= 2 and parts[1].lower() == "version":
+        target_version = parts[2] if len(parts) >= 3 else None
+        send_version_report(message, target_version)
+        return
+
     try:
         stats = get_report_stats()
 

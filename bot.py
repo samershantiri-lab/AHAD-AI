@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v22.4.0 – Intelligence Layer Foundation
+# 🚀 AHAD AI v23.0.0 – Validation Engine
 # ================================================
 
 """
@@ -1269,6 +1269,123 @@ Rotation, and Opportunity Score can each populate their own key later
 without restructuring anything built in this release - exactly as
 requested, none of them implemented yet.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.0.0 - VALIDATION ENGINE
+================================================================================
+Confirmed by direct diff against v22.4.0: ai_brain(), the ranking_score
+formula, quality-grade logic, top_flow_scanner(), the Intelligence
+Layer builder, the scanner main loop, /history, /open, /version, and
+the v22.2.4 critical hotfix in get_trade_tracker_candles() are all
+byte-identical. analyze()'s diff is 100% additive (46 lines, 0
+deletions, 0 replace blocks) - not one existing line of scoring,
+AI Brain, Ranking, or Flow logic was touched. Across the entire file:
+0 pure deletions, 161 pure additions, 17 targeted replace blocks -
+every one of them adding or extending, never removing, existing
+behavior.
+
+--------------------------------------------------------------------------------
+TWO IMPLEMENTATION DETAILS FLAGGED AND RESOLVED DURING BUILD
+--------------------------------------------------------------------------------
+Per "stop and explain if you discover an architectural issue" - neither
+of these changes the approved architecture, both are implementation
+gaps the design didn't fully specify:
+1. AI Brain Version / Validation Engine Version / Rule Set Version
+   inside initial_snapshot are all set to the same _current_version_id.
+   Independent per-engine versioning was deliberately deferred in the
+   Version-Aware Database work and doesn't exist yet - storing three
+   fabricated distinct numbers would be dishonest; storing one real,
+   shared value and saying so explicitly is not.
+2. Decision ID uses the trade's own database id (DEC-{date}-{id:06d})
+   rather than a daily-resetting counter. The requested example format
+   implied a per-day reset, which needs its own tracked state (today's
+   count, midnight reset logic) for a purely cosmetic benefit. The id-
+   based version is globally unique with zero extra bookkeeping and
+   satisfies "identify exactly which decision created the trade" just
+   as well - it simply climbs across days instead of resetting.
+
+--------------------------------------------------------------------------------
+VERSION BOUNDARY (Decision 1, approved)
+--------------------------------------------------------------------------------
+get_report_stats() gained new_generation_only (default True): when no
+specific version_id is requested, every query - main stats, LONG
+breakdown, SHORT breakdown, using identical filter logic across all
+three - now scopes to `version_id >= (SELECT id FROM versions WHERE
+version = 'v23.0.0')`, excluding pre-v23.0.0 trades from the default
+/report view. An explicit version_id lookup (e.g. /report version
+v22.4.0) still takes priority over this boundary and correctly shows
+that archived version's real data - it's an intentional archive query,
+not the default overview. This is a deliberate, approved change to
+/report's default output, not a backward-compatibility break. Verified
+directly: default view excludes a simulated pre-v23.0.0 trade; an
+explicit old-version lookup still shows it; new_generation_only=False
+shows everything.
+
+--------------------------------------------------------------------------------
+DUAL SNAPSHOT ARCHITECTURE (Decision 2, approved)
+--------------------------------------------------------------------------------
+New initial_snapshot (JSONB, write-once): captured once inside
+analyze(), covering AI Brain Score/Confidence/Smart Money Status/Heat
+Score/Flow Score/Compression Status/Market Regime/Session/Score/
+Ranking Score/Quality Grade/Risk Grade/RR - everything requested that
+already exists in this codebase. Market Context/Trend State/Relative
+Strength are reserved as honest None placeholders (Layer 1/2 concepts
+discussed but not yet built), following the same reserved-key pattern
+already used for Universe Source/Reason For Entry/Priority Score.
+snapshot_data (the pre-existing column) is completely unchanged and
+still refreshes on a duplicate-trade update, exactly as before -
+serving its original, different purpose of "latest analysis of a
+still-open position." Verified directly: after a simulated duplicate-
+trade refresh, version/build_date/version_id/decision_id/
+initial_snapshot/holding_period_limit are all unchanged, while
+snapshot_data/score/etc. correctly update - confirmed by inspecting
+the actual UPDATE statement's SET clause, not just by test outcome.
+
+--------------------------------------------------------------------------------
+DECISION ID (Decision 3, approved)
+--------------------------------------------------------------------------------
+Generated in save_trade() immediately after the INSERT (needs the real
+trade id), written via one follow-up UPDATE in the same transaction
+before commit - a trade is never visible without its decision_id
+already attached. Unique-constrained and indexed. Displayed in
+/trade <id>.
+
+--------------------------------------------------------------------------------
+TRADE LIFECYCLE: TIMEOUT (approved design, Q5/Q6 from the design review)
+--------------------------------------------------------------------------------
+New TIMEOUT exit condition in update_open_trades(), added strictly
+AFTER all existing TP1/TP2/TP3/SL price-based checks - verified
+directly that a trade already resolved by price is never overridden by
+timeout even when both conditions would technically apply on the same
+poll. holding_period_limit (default 24h, "around one day" per the
+stated trading style) is captured once at trade creation, write-once,
+so a later config change never reinterprets an already-open trade
+under different rules. `result` required no schema change to accept
+'TIMEOUT' (confirmed no CHECK constraint exists on that column).
+
+--------------------------------------------------------------------------------
+VALIDATION ENGINE (pure computation, no database access)
+--------------------------------------------------------------------------------
+validation_compute_outcome() computes time_to_target (populated ONLY
+for WIN_TP1/TP2/TP3 closes - None for SL/TIMEOUT, so AVG() correctly
+excludes them rather than being skewed by a false zero) and a small
+validation_data record, from signal_time/close_time/exit_reason alone.
+update_trade() remains the ONLY writer of these fields - this section
+never touches the database, deliberately, per the same "two things
+touching one row inconsistently" failure pattern that caused several
+previously-fixed bugs in this codebase. Verified directly: TP close
+computes the correct elapsed seconds; TIMEOUT/SL closes correctly
+return time_to_target=None.
+
+--------------------------------------------------------------------------------
+NEW REPORTING
+--------------------------------------------------------------------------------
+/report: added Timeout count to the win/loss breakdown, plus Avg Time
+To Target and Timeout Rate. /trade <id>: added Decision ID and (for
+closed trades) Time To Target. get_open_trades() extended to fetch
+signal_time/holding_period_limit, needed by the new timeout check.
+================================================================================
 """
 
 # ================================================
@@ -1292,8 +1409,8 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v22.4.0"
-BUILD_DATE = "2026-07-30"
+VERSION = "v23.0.0"
+BUILD_DATE = "2026-07-31"
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -1467,6 +1584,21 @@ def init_database():
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS version_id INTEGER REFERENCES versions(id)")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS snapshot_data JSONB")
 
+        # Validation Engine (v23.0.0): decision_id, initial_snapshot, and
+        # holding_period_limit are write-once - set only at creation,
+        # never touched by the duplicate-trade refresh path (see
+        # save_trade()). initial_snapshot represents the exact system
+        # state that made the trading decision (Trade Validation +
+        # System Validation) and must never change afterward - distinct
+        # from snapshot_data above, which legitimately keeps refreshing
+        # to reflect the latest analysis of a still-open position.
+        # time_to_target/validation_data are populated once, at close.
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_id TEXT UNIQUE")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS initial_snapshot JSONB")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS holding_period_limit INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS time_to_target INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS validation_data JSONB")
+
         # Backfill: any existing trade with no version_id predates this
         # migration - assign it to the reserved Legacy registry row.
         # Idempotent (only touches NULL rows), safe to run on every
@@ -1481,6 +1613,9 @@ def init_database():
         """)
         cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_versions_status ON versions(status)
+        """)
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_decision_id ON trades(decision_id)
         """)
 
         conn.commit()
@@ -1578,6 +1713,23 @@ INTELLIGENCE_UNIVERSE_FILE = "market_universe.json"
 INTELLIGENCE_UPDATE_INTERVAL = 1800  # 30 minutes - independent of /scan's own cadence
 INTELLIGENCE_CORE_WATCHLIST = ["BTC", "ETH", "SOL", "SUI", "ADA", "LINK", "CRV", "AVAX"]
 INTELLIGENCE_TOP_N = 15
+
+# ================================================
+# 🧪 VALIDATION ENGINE (v23.0.0)
+# ================================================
+# HOLDING_PERIOD_LIMIT_SECONDS: the maximum time a position stays open
+# before Trade Tracker times it out regardless of P&L, matching the
+# stated trading style ("maximum around one day"). Captured onto each
+# trade at creation (write-once) rather than read fresh at close time,
+# so a later change to this setting never reinterprets an
+# already-open trade under different rules.
+HOLDING_PERIOD_LIMIT_SECONDS = 86400  # 24 hours
+
+# NEW_GENERATION_START_VERSION: trades created under this version or
+# later are the "new generation" - the version-boundary decision
+# approved for the Validation Engine. Trades before it remain archived
+# for reference and are excluded from default /report statistics.
+NEW_GENERATION_START_VERSION = "v23.0.0"
 
 # Reserved keys for future modules (Follow-Up Engine, AI Favorites,
 # Market Memory, Priority Engine, Sector Rotation, Opportunity Score) -
@@ -1822,6 +1974,43 @@ def format_price(value):
 
 
 # ================================================
+# 🧪 VALIDATION ENGINE (v23.0.0)
+# ================================================
+# Trade Validation + System Validation. Pure computation only - no
+# database access anywhere in this section. Trade Recorder
+# (update_trade()) remains the ONLY writer to `trades`; this section
+# only computes what gets written, keeping the "two things touching
+# the same row inconsistently" failure pattern (the root cause behind
+# several previously-fixed bugs in this codebase) structurally
+# impossible for the new validation fields.
+
+def validation_compute_outcome(signal_time, close_time, exit_reason):
+    """
+    Computes time_to_target and a small validation_data record for a
+    trade that just closed, given its exit_reason (WIN_TP1/WIN_TP2/
+    WIN_TP3/LOSS_SL/TIMEOUT/MANUAL).
+
+    time_to_target is populated ONLY for TP-type closes (a target was
+    actually reached) - None otherwise, so AVG() correctly excludes
+    SL/TIMEOUT closes rather than being skewed by a 0 that would imply
+    an impossibly instant close.
+    """
+    time_to_target = None
+    if exit_reason in ("WIN_TP1", "WIN_TP2", "WIN_TP3"):
+        time_to_target = int((close_time - signal_time).total_seconds())
+
+    holding_seconds = int((close_time - signal_time).total_seconds())
+
+    validation_data = {
+        "exit_reason": exit_reason,
+        "holding_seconds": holding_seconds,
+        "closed_at": close_time.isoformat(),
+    }
+
+    return time_to_target, validation_data
+
+
+# ================================================
 # 💾 TRADE RECORDER
 # ================================================
 
@@ -1941,7 +2130,9 @@ def save_trade(trade_data):
             market_temperature,
             build_date,
             version_id,
-            snapshot_data
+            snapshot_data,
+            initial_snapshot,
+            holding_period_limit
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -1956,7 +2147,8 @@ def save_trade(trade_data):
             %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s,
             %s, %s, %s,
-            %s, %s, %s
+            %s, %s, %s,
+            %s, %s
         )
         RETURNING id
         """, (
@@ -1998,13 +2190,23 @@ def save_trade(trade_data):
             trade_data.get('market_temperature', 'N/A'),
             trade_data.get('build_date', BUILD_DATE),
             trade_data.get('version_id') if trade_data.get('version_id') is not None else 0,
-            json.dumps(trade_data.get('snapshot_data', {}))
+            json.dumps(trade_data.get('snapshot_data', {})),
+            json.dumps(trade_data.get('initial_snapshot', {})),
+            trade_data.get('holding_period_limit', HOLDING_PERIOD_LIMIT_SECONDS)
         ))
 
         trade_id = cur.fetchone()[0]
+
+        # Decision ID (v23.0.0): generated here because it needs the
+        # real, just-assigned trade id. Written once, in the same
+        # transaction as the INSERT above, before commit - so a trade
+        # is never visible without its decision_id already attached.
+        decision_id = f"DEC-{datetime.now().strftime('%Y%m%d')}-{trade_id:06d}"
+        cur.execute("UPDATE trades SET decision_id = %s WHERE id = %s", (decision_id, trade_id))
+
         conn.commit()
 
-        print(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id})")
+        print(f"💾 Trade saved: {trade_data['symbol']} (ID: {trade_id}, Decision: {decision_id})")
         return trade_id, False
 
     except Exception as e:
@@ -2039,7 +2241,7 @@ def get_open_trades():
 
         cur.execute("""
         SELECT id, symbol, side, entry, sl, tp1, tp2, tp3,
-               max_profit, max_drawdown
+               max_profit, max_drawdown, signal_time, holding_period_limit
         FROM trades
         WHERE status = 'OPEN'
         """)
@@ -2058,7 +2260,9 @@ def get_open_trades():
                 'tp2': row[6],
                 'tp3': row[7],
                 'max_profit': row[8] if row[8] is not None else 0.0,
-                'max_drawdown': row[9] if row[9] is not None else 0.0
+                'max_drawdown': row[9] if row[9] is not None else 0.0,
+                'signal_time': row[10],
+                'holding_period_limit': row[11] if row[11] is not None else HOLDING_PERIOD_LIMIT_SECONDS
             })
 
         print(f"📂 OPEN trades loaded: {len(trades)}")
@@ -2077,7 +2281,8 @@ def get_open_trades():
             conn.close()
 
 
-def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None):
+def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=None,
+                  time_to_target=None, validation_data=None):
     """Update trade data in PostgreSQL"""
     conn = None
     cur = None
@@ -2092,7 +2297,9 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             result = %s,
             max_profit = %s,
             max_drawdown = %s,
-            close_time = %s
+            close_time = %s,
+            time_to_target = %s,
+            validation_data = %s
         WHERE id = %s
         """, (
             status,
@@ -2100,6 +2307,8 @@ def update_trade(trade_id, status, result, max_profit, max_drawdown, close_time=
             max_profit,
             max_drawdown,
             close_time,
+            time_to_target,
+            json.dumps(validation_data) if validation_data is not None else None,
             trade_id
         ))
 
@@ -2247,14 +2456,35 @@ def update_open_trades():
                             new_status = "CLOSED"
                             result = "LOSS_SL"
 
+                    # Validation Engine (v23.0.0): TIMEOUT check - only
+                    # reached if no price-based condition (TP1/TP2/TP3/
+                    # SL) already triggered above. Precedence: price-
+                    # based conditions always take priority over a
+                    # time-based one, per the approved design.
+                    if not new_status and trade.get('signal_time'):
+                        holding_limit = trade.get('holding_period_limit') or HOLDING_PERIOD_LIMIT_SECONDS
+                        elapsed_seconds = (close_time - trade['signal_time']).total_seconds()
+                        if elapsed_seconds >= holding_limit:
+                            new_status = "CLOSED"
+                            result = "TIMEOUT"
+
                     if new_status:
+                        time_to_target = None
+                        validation_data = None
+                        if trade.get('signal_time'):
+                            time_to_target, validation_data = validation_compute_outcome(
+                                trade['signal_time'], close_time, result
+                            )
+
                         update_trade(
                             trade['id'],
                             new_status,
                             result,
                             round(trade['max_profit'], 2),
                             round(trade['max_drawdown'], 2),
-                            close_time
+                            close_time,
+                            time_to_target,
+                            validation_data
                         )
                         print(f"🔒 Trade {trade['id']} {trade['symbol']} closed: {result}")
                     else:
@@ -2291,15 +2521,19 @@ def update_open_trades():
 # 📊 PERFORMANCE ANALYTICS
 # ================================================
 
-def get_report_stats(version_id=None):
+def get_report_stats(version_id=None, new_generation_only=True):
     """
     Get AHAD AI performance statistics with enhanced fields.
 
-    version_id=None (default): aggregates across ALL trades, exactly as
-    before this change - fully backward compatible, zero behavior
-    change for the existing /report command.
-    version_id=<int>: scopes every statistic to trades created by that
-    specific version only (Version Analytics, v22.3.0 Task 4/6).
+    version_id=None (default) + new_generation_only=True (default):
+    scopes to trades created under NEW_GENERATION_START_VERSION or
+    later - the approved v23.0.0 clean-slate boundary. Pass
+    new_generation_only=False for an all-time view including archived
+    pre-v23.0.0 trades.
+    version_id=<int>: scopes every statistic to that specific version
+    only (Version Analytics) - takes priority over new_generation_only,
+    since an explicit single-version lookup is an intentional archive
+    query, not the default overview.
     """
     conn = None
     cur = None
@@ -2308,8 +2542,16 @@ def get_report_stats(version_id=None):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        main_filter = "WHERE version_id = %s" if version_id is not None else ""
-        main_params = (version_id,) if version_id is not None else ()
+        filters = []
+        main_params = []
+        if version_id is not None:
+            filters.append("version_id = %s")
+            main_params.append(version_id)
+        elif new_generation_only:
+            filters.append("version_id >= (SELECT id FROM versions WHERE version = %s)")
+            main_params.append(NEW_GENERATION_START_VERSION)
+        main_filter = ("WHERE " + " AND ".join(filters)) if filters else ""
+        main_params = tuple(main_params)
 
         cur.execute(f"""
         SELECT
@@ -2320,13 +2562,15 @@ def get_report_stats(version_id=None):
             COUNT(CASE WHEN result = 'WIN_TP2' THEN 1 END) AS tp2,
             COUNT(CASE WHEN result = 'WIN_TP3' THEN 1 END) AS tp3,
             COUNT(CASE WHEN result = 'LOSS_SL' THEN 1 END) AS sl,
+            COUNT(CASE WHEN result = 'TIMEOUT' THEN 1 END) AS timeouts,
             AVG(CASE WHEN status = 'CLOSED' THEN rr END) AS avg_rr,
             AVG(CASE WHEN status = 'CLOSED' THEN max_profit END) AS avg_max_profit,
             AVG(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS avg_max_drawdown,
             MAX(CASE WHEN status = 'CLOSED' THEN max_profit END) AS best_trade,
             MIN(CASE WHEN status = 'CLOSED' THEN max_drawdown END) AS worst_trade,
             AVG(CASE WHEN status = 'CLOSED' THEN brain_confidence END) AS avg_brain_confidence,
-            AVG(CASE WHEN status = 'CLOSED' THEN score END) AS avg_final_score
+            AVG(CASE WHEN status = 'CLOSED' THEN score END) AS avg_final_score,
+            AVG(time_to_target) AS avg_time_to_target
         FROM trades
         {main_filter}
         """, main_params)
@@ -2340,13 +2584,17 @@ def get_report_stats(version_id=None):
         tp2 = row[4] or 0
         tp3 = row[5] or 0
         sl = row[6] or 0
-        avg_rr = round(row[7] or 0, 2)
-        avg_max_profit = round(row[8] or 0, 2)
-        avg_max_drawdown = round(row[9] or 0, 2)
-        best_trade = round(row[10] or 0, 2)
-        worst_trade = round(row[11] or 0, 2)
-        avg_brain_confidence = round(row[12] or 0, 1)
-        avg_final_score = round(row[13] or 0, 1)
+        timeouts = row[7] or 0
+        avg_rr = round(row[8] or 0, 2)
+        avg_max_profit = round(row[9] or 0, 2)
+        avg_max_drawdown = round(row[10] or 0, 2)
+        best_trade = round(row[11] or 0, 2)
+        worst_trade = round(row[12] or 0, 2)
+        avg_brain_confidence = round(row[13] or 0, 1)
+        avg_final_score = round(row[14] or 0, 1)
+        avg_time_to_target_seconds = row[15]
+        avg_time_to_target_hours = round(avg_time_to_target_seconds / 3600, 2) if avg_time_to_target_seconds else None
+        timeout_rate = round((timeouts / closed) * 100, 2) if closed > 0 else 0
 
         wins = tp1 + tp2 + tp3
 
@@ -2355,8 +2603,16 @@ def get_report_stats(version_id=None):
         else:
             win_rate = 0
 
-        long_version_filter = "AND version_id = %s" if version_id is not None else ""
-        long_params = (version_id,) if version_id is not None else ()
+        long_filters = []
+        long_params = []
+        if version_id is not None:
+            long_filters.append("version_id = %s")
+            long_params.append(version_id)
+        elif new_generation_only:
+            long_filters.append("version_id >= (SELECT id FROM versions WHERE version = %s)")
+            long_params.append(NEW_GENERATION_START_VERSION)
+        long_version_filter = ("AND " + " AND ".join(long_filters)) if long_filters else ""
+        long_params = tuple(long_params)
 
         # LONG statistics
         cur.execute(f"""
@@ -2419,6 +2675,9 @@ def get_report_stats(version_id=None):
             "avg_max_drawdown": avg_max_drawdown,
             "avg_brain_confidence": avg_brain_confidence,
             "avg_final_score": avg_final_score,
+            "timeouts": timeouts,
+            "timeout_rate": timeout_rate,
+            "avg_time_to_target_hours": avg_time_to_target_hours,
             "best_trade": best_trade,
             "worst_trade": worst_trade,
             "long_total": long_total,
@@ -4587,6 +4846,50 @@ def analyze(symbol, sector, debug=None):
         else:
             snapshot_ema_alignment = "MIXED"
 
+        # Session bucket - derived from signal time, no new data source.
+        _hour = datetime.now().hour
+        if 0 <= _hour < 8:
+            snapshot_session = "ASIA"
+        elif 8 <= _hour < 16:
+            snapshot_session = "EUROPE"
+        else:
+            snapshot_session = "US"
+
+        initial_snapshot = {
+            "captured_at": datetime.now().isoformat(),
+            "symbol": symbol,
+            "side": direction_clean,
+            "ai_brain_score": brain['confidence'],
+            "ai_brain_long": brain['long_score'],
+            "ai_brain_short": brain['short_score'],
+            "confidence": confidence_level,
+            "smart_money_status": flow_rating,
+            "heat_score": heat_score,
+            "heat_tier": heat_tier,
+            "flow_score": flow_score,
+            "compression_status": vol['status'],
+            "market_regime": regime['regime'],
+            "session": snapshot_session,
+            "score": round(score),
+            "ranking_score": round(ranking_score, 2),
+            "quality_grade": quality_grade,
+            "risk_grade": risk_grade,
+            "rr": round(rr, 2),
+            # Reserved: Layer 1/2 concepts discussed but not yet built -
+            # honestly None rather than fabricated, populated later with
+            # zero schema change once those layers ship.
+            "market_context": None,
+            "trend_state": None,
+            "relative_strength": None,
+            # Decision ID versioning: AI Brain / Validation Engine /
+            # Rule Set are not independently versioned today (deferred
+            # deliberately) - all three currently point at the same
+            # running version_id, not three distinct values.
+            "ai_brain_version": _current_version_id,
+            "validation_engine_version": _current_version_id,
+            "rule_set_version": _current_version_id,
+        }
+
         snapshot_data = {
             "snapshot_created_at": datetime.now().isoformat(),
             "symbol": symbol,
@@ -4627,6 +4930,8 @@ def analyze(symbol, sector, debug=None):
             'build_date': BUILD_DATE,
             'version_id': _current_version_id,
             'snapshot_data': snapshot_data,
+            'initial_snapshot': initial_snapshot,
+            'holding_period_limit': HOLDING_PERIOD_LIMIT_SECONDS,
             'brain_confidence': brain['confidence'],
             'market_regime': regime['regime'],
             'compression_score': vol['score'],
@@ -5795,11 +6100,14 @@ def report_command(message):
 🥈 TP2 : {stats['tp2']}
 🥉 TP3 : {stats['tp3']}
 ❌ SL  : {stats['sl']}
+⏱ Timeout : {stats['timeouts']}
 
 🎯 Overall Win Rate : {stats['win_rate']}%
 📊 Avg RR           : {stats['avg_rr']}
 🧠 Avg Brain Score  : {stats['avg_brain_confidence']}
 ⭐ Avg Final Score  : {stats['avg_final_score']}
+⏱ Avg Time To Target : {stats['avg_time_to_target_hours'] if stats['avg_time_to_target_hours'] is not None else 'N/A'}h
+⏱ Timeout Rate      : {stats['timeout_rate']}%
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -5943,7 +6251,7 @@ def trade_command(message):
             compression_score, compression_status, momentum_weight,
             flow_score, volume_acceleration, flow_rating, risk_grade,
             decision_summary, ranking_score, quality_grade,
-            market_temperature
+            market_temperature, decision_id, time_to_target
         FROM trades
         WHERE id = %s
         """, (trade_id,))
@@ -5961,11 +6269,12 @@ def trade_command(message):
          compression_score, compression_status, momentum_weight,
          flow_score, volume_acceleration, flow_rating, risk_grade,
          decision_summary, ranking_score, quality_grade,
-         market_temperature) = row
+         market_temperature, decision_id, time_to_target) = row
 
         status_display = status if status else "UNKNOWN"
 
         msg = f"""📄 TRADE #{t_id}
+🆔 {decision_id if decision_id else 'N/A'}
 
 {symbol} | {side}
 Status: {status_display}
@@ -5992,9 +6301,15 @@ Status: {status_display}
 🕐 Signal Time : {signal_time}"""
 
         if status_display == "CLOSED":
+            time_to_target_display = "N/A"
+            if time_to_target is not None:
+                hours = round(time_to_target / 3600, 2)
+                time_to_target_display = f"{hours}h"
+
             msg += f"""
 
 ✅ Result : {result if result else 'N/A'}
+⏱ Time To Target : {time_to_target_display}
 📈 Max Profit : {max_profit if max_profit is not None else 'N/A'}
 📉 Max Drawdown : {max_drawdown if max_drawdown is not None else 'N/A'}
 🕐 Closed : {close_time if close_time else 'N/A'}"""

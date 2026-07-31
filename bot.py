@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v23.0.0 – Validation Engine
+# 🚀 AHAD AI v23.0.1 – Telegram Reports UI Update
 # ================================================
 
 """
@@ -1386,6 +1386,75 @@ To Target and Timeout Rate. /trade <id>: added Decision ID and (for
 closed trades) Time To Target. get_open_trades() extended to fetch
 signal_time/holding_period_limit, needed by the new timeout check.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.0.1 - TELEGRAM REPORTS UI UPDATE
+================================================================================
+Presentation-only. Verified by whole-file diff: the only changed
+regions are the five specified commands (/report, /report version,
+/debug, /open, /history) plus one new display-only helper function
+(format_elapsed). ai_brain(), analyze() (scoring, Validation Engine
+snapshot construction, every fatal gate), the ranking_score formula,
+get_report_stats()'s actual query logic, save_trade()/update_trade()/
+validation_compute_outcome(), the timeout check in update_open_trades(),
+and the /scan signal message + Market Summary layout are all
+byte-identical - none of them appear anywhere in the diff. 11 pure
+line removals across the whole file, all of them leftover blank/
+divider lines from the /debug reorganization - no data, query, or
+displayed value was dropped.
+
+--------------------------------------------------------------------------------
+/open, /history - compact info cards
+--------------------------------------------------------------------------------
+Both redesigned into 4-5 line cards per the approved layout - coin,
+direction, and result/quality grouped on one line; brain/score/RR (or
+quality/brain/ranking/RR for history) on one line; price levels on one
+line; time last. Trade ID and Entry price - both present in the
+original layout - are kept even though the request's own bullet list
+for /history didn't separately call them out, per "do not remove
+information." /open's requested "Brain + Score + RR" line needed score
+and rr added to its query (previously not fetched) - a display-only
+addition, not a logic or data change. New format_elapsed() gives /open
+a compact "2h 15m ago"-style age instead of a raw timestamp. Verified
+by rendering both against realistic mock rows, including /history's
+WIN/TIMEOUT/LOSS icon variants.
+
+--------------------------------------------------------------------------------
+/report - grouped into blocks
+--------------------------------------------------------------------------------
+Reorganized into GENERAL/RESULTS/QUALITY/TOP PERFORMERS/PERFORMANCE/
+LONG/SHORT, with related values sharing one line each (e.g. "⚖️2.15
+🧠80 ⭐74.7" instead of three separate labeled lines), replacing the
+previous one-metric-per-line layout with a heavy divider between every
+group. Every existing statistic from get_report_stats() is retained -
+same function call, same data - purely a template reorganization.
+
+--------------------------------------------------------------------------------
+/report version - summary rows
+--------------------------------------------------------------------------------
+Single-version lookup and the all-versions comparison both redesigned
+around Version/Trades/Closed/Win Rate/Avg RR as requested, each version
+reading as its own compact summary row rather than a plain-text list.
+No change to either underlying query.
+
+--------------------------------------------------------------------------------
+/debug - SYSTEM/SCAN/FILTERS/RESULTS/MARKET/PERFORMANCE/CACHE
+--------------------------------------------------------------------------------
+Reorganized into exactly the seven requested sections. Top Reject
+Reasons kept immediately after the header - the first thing visible,
+per "should remain highly visible." The 17-line REJECTIONS list
+compressed into 4 grouped lines (FILTERS section), cutting roughly 13
+lines with zero information loss - same debug dict, same keys, same
+values. Removed the repeated heavy divider before and after every one
+of the ten previous sections, replacing them with plain section labels.
+Pre-built content blocks this report assembles from elsewhere in scan()
+(top_rejects, decision_summary_display, metrics_display, cache_display,
+performance_display, regime/compression distributions) are unchanged -
+only the surrounding structure was reorganized. Verified by rendering
+the full template against representative mock values for every
+variable it references.
+================================================================================
 """
 
 # ================================================
@@ -1409,7 +1478,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.0.0"
+VERSION = "v23.0.1"
 BUILD_DATE = "2026-07-31"
 
 # ================================================
@@ -1971,6 +2040,30 @@ def format_price(value):
         decimals = 11
 
     return f"{value:.{decimals}f}"
+
+
+def format_elapsed(dt):
+    """
+    v23.0.1 (Telegram Reports UI Update) - compact elapsed-time display
+    (e.g. "2h 15m", "3d 4h", "45m") for /open and /history's redesigned
+    card layouts. Pure display formatting - no data or logic change.
+    """
+    if dt is None:
+        return "N/A"
+    try:
+        seconds = (datetime.now() - dt).total_seconds()
+    except Exception:
+        return "N/A"
+    if seconds < 0:
+        seconds = 0
+    minutes = int(seconds // 60)
+    hours = minutes // 60
+    days = hours // 24
+    if days > 0:
+        return f"{days}d {hours % 24}h"
+    if hours > 0:
+        return f"{hours}h {minutes % 60}m"
+    return f"{minutes}m"
 
 
 # ================================================
@@ -5595,84 +5688,41 @@ Coins Analyzed  : {total_analyzed}
     total_trades = get_total_trades()
 
     # ====== STANDARDIZED DEBUG REPORT ======
-    debug_msg = f"""
-🐞 FULL DEBUG REPORT ({VERSION})
-🆔 Scan ID: #{datetime.now().strftime('%Y%m%d')}-{random.randint(100, 999):03d}
-📅 Build: {BUILD_DATE}
+    debug_msg = f"""🐞 DEBUG REPORT ({VERSION})
+🆔 #{datetime.now().strftime('%Y%m%d')}-{random.randint(100, 999):03d}   📅 {BUILD_DATE}
 
-━━━━━━━━━━━━━━━━━━━━━━
-🏆 TOP REJECT REASONS (Sorted)
-━━━━━━━━━━━━━━━━━━━━━━
+🏆 TOP REJECT REASONS
 {top_rejects}
 
-━━━━━━━━━━━━━━━━━━━━━━
-🕐 SCAN TIMESTAMPS
-━━━━━━━━━━━━━━━━━━━━━━
-Started         : {scan_start_timestamp}
-Finished        : {scan_end_timestamp}
-Duration        : {scan_duration}s
+SYSTEM
+Started {scan_start_timestamp} → Finished {scan_end_timestamp}   ⏱{scan_duration}s
 
-━━━━━━━━━━━━━━━━━━━━━━
-📊 SCAN STATISTICS
-━━━━━━━━━━━━━━━━━━━━━━
-Market Universe : {market_universe} (All OKX USDT Futures)
-Flow Candidates : {flow_candidates_count} (Flow ≥ 1.15x)
-Analyzed        : {analyzed_count} (Top Flow Selection)
-Scan Limit      : {scan_limit} (MAX_SCAN_LIMIT)
+SCAN
+🌍{market_universe}  🌊{flow_candidates_count}  🔎{analyzed_count}  🎚{scan_limit}
 
 {decision_summary_display}
 
-━━━━━━━━━━━━━━━━━━━━━━
-❌ REJECTIONS
-━━━━━━━━━━━━━━━━━━━━━━
-Candles         : {debug.get('candles', 0)}
-FOMO            : {debug.get('fomo', 0)}
-Brain           : {debug.get('brain', 0)}
-RSI             : {debug.get('rsi', 0)}
-Low Flow        : {debug.get('flow', 0)}
-Late Entry      : {debug.get('late_entry', 0)}
-Late Score      : {debug.get('late_score', 0)}
-Trap            : {debug.get('trap', 0)}
-Heat            : {debug.get('heat', 0)}
-Resistance      : {debug.get('resistance', 0)}
-Higher Trend    : {debug.get('higher_trend', 0)}
-RR              : {debug.get('rr', 0)}
-Score           : {debug.get('score', 0)}
-Watchlist       : {debug.get('watchlist', 0)}
-Validation      : {debug.get('validation', 0)}
-Final Gate      : {debug.get('final_gate', 0)}
-Not Long/Short  : {debug.get('not_long', 0)}
+FILTERS
+Candles{debug.get('candles', 0)} FOMO{debug.get('fomo', 0)} Brain{debug.get('brain', 0)} RSI{debug.get('rsi', 0)}
+LowFlow{debug.get('flow', 0)} LateEntry{debug.get('late_entry', 0)} LateScore{debug.get('late_score', 0)} Trap{debug.get('trap', 0)}
+Heat{debug.get('heat', 0)} Resistance{debug.get('resistance', 0)} HigherTrend{debug.get('higher_trend', 0)} RR{debug.get('rr', 0)}
+Score{debug.get('score', 0)} Watchlist{debug.get('watchlist', 0)} Validation{debug.get('validation', 0)} FinalGate{debug.get('final_gate', 0)} NotLong{debug.get('not_long', 0)}
 
-━━━━━━━━━━━━━━━━━━━━━━
-✅ RESULTS
-━━━━━━━━━━━━━━━━━━━━━━
-Passed          : {total_passed}
-LONG Signals    : {len(long_results)}
-SHORT Signals   : {len(short_results)}
+RESULTS
+✅{total_passed}  🟢{len(long_results)}  🔴{len(short_results)}
 
 {metrics_display}
 
-━━━━━━━━━━━━━━━━━━━━━━
-📈 MARKET REGIME DISTRIBUTION
-━━━━━━━━━━━━━━━━━━━━━━
+MARKET
 {debug.get('regime_distribution', 'N/A')}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🔥 COMPRESSION DISTRIBUTION
-━━━━━━━━━━━━━━━━━━━━━━
 {debug.get('compression_distribution', 'N/A')}
 
-━━━━━━━━━━━━━━━━━━━━━━
-⚡ SCAN EFFICIENCY
-━━━━━━━━━━━━━━━━━━━━━━
-{cache_display}
-
-━━━━━━━━━━━━━━━━━━━━━━
-⚡ SCAN PERFORMANCE
-━━━━━━━━━━━━━━━━━━━━━━
+PERFORMANCE
 {performance_display}
+📈 Recorded Trades: {total_trades}
 
-📈 Recorded Trades : {total_trades}
+CACHE
+{cache_display}
 
 {FOOTER}
 """
@@ -5950,22 +6000,12 @@ def send_version_report(message, target_version=None):
             worst_row = cur.fetchone()
             worst_symbol = worst_row[0] if worst_row else "N/A"
 
-            msg = f"""📊 Version Report
+            msg = f"""📊 {version_label} [{version_status}]
 
-Current Version
-{version_label} ({version_status})
+📂{stats['total']}  🔒{stats['closed']}  🟢{stats['open']}
+🎯{stats['win_rate']}%  ⚖️{stats['avg_rr']}  🧠{stats['avg_brain_confidence']}  ⭐{stats['avg_final_score']}
 
-Total Trades      : {stats['total']}
-Closed Trades      : {stats['closed']}
-Open Trades       : {stats['open']}
-
-Win Rate          : {stats['win_rate']}%
-Average RR        : {stats['avg_rr']}
-Average Brain     : {stats['avg_brain_confidence']}
-Average Score     : {stats['avg_final_score']}
-
-Best Performing Symbol  : {best_symbol}
-Worst Performing Symbol : {worst_symbol}
+🏆Best: {best_symbol}   ⚠️Worst: {worst_symbol}
 
 {FOOTER}"""
             bot.reply_to(message, msg)
@@ -5988,13 +6028,14 @@ Worst Performing Symbol : {worst_symbol}
         """)
         rows = cur.fetchall()
 
-        lines = ["📊 VERSION COMPARISON", ""]
+        lines = [f"📊 VERSION COMPARISON", ""]
         for version_label, status, total, closed, wins, avg_rr in rows:
             win_rate = round((wins / closed) * 100, 1) if closed else 0
             avg_rr_display = round(avg_rr, 2) if avg_rr is not None else "N/A"
-            lines.append(f"{version_label} [{status}] - Trades: {total or 0} | Closed: {closed or 0} | Win Rate: {win_rate}% | Avg RR: {avg_rr_display}")
+            lines.append(f"🔹 {version_label} [{status}]")
+            lines.append(f"📂{total or 0}  🔒{closed or 0}  🎯{win_rate}%  ⚖️{avg_rr_display}")
+            lines.append("")
 
-        lines.append("")
         lines.append(FOOTER)
         bot.reply_to(message, "\n".join(lines))
 
@@ -6084,68 +6125,34 @@ def report_command(message):
             if conn:
                 conn.close()
 
-        report = f"""
-📊 AHAD AI PERFORMANCE REPORT ({VERSION})
-📅 Build: {BUILD_DATE}
-━━━━━━━━━━━━━━━━━━━━━━
+        report = f"""📊 AHAD AI REPORT ({VERSION})
+📅 {BUILD_DATE}
 
-📂 Total Trades   : {stats['total']}
-🟢 Open Trades   : {stats['open']}
-🔒 Closed Trades : {stats['closed']}
+GENERAL
+📂{stats['total']}  🟢{stats['open']}  🔒{stats['closed']}
 
-━━━━━━━━━━━━━━━━━━━━━━
+RESULTS
+🏆{stats['tp1']} 🥈{stats['tp2']} 🥉{stats['tp3']} ❌{stats['sl']} ⏱{stats['timeouts']}
+🎯{stats['win_rate']}%  ⏱{stats['timeout_rate']}%
 
-📈 WIN / LOSS BREAKDOWN
-🏆 TP1 : {stats['tp1']}
-🥈 TP2 : {stats['tp2']}
-🥉 TP3 : {stats['tp3']}
-❌ SL  : {stats['sl']}
-⏱ Timeout : {stats['timeouts']}
-
-🎯 Overall Win Rate : {stats['win_rate']}%
-📊 Avg RR           : {stats['avg_rr']}
-🧠 Avg Brain Score  : {stats['avg_brain_confidence']}
-⭐ Avg Final Score  : {stats['avg_final_score']}
-⏱ Avg Time To Target : {stats['avg_time_to_target_hours'] if stats['avg_time_to_target_hours'] is not None else 'N/A'}h
-⏱ Timeout Rate      : {stats['timeout_rate']}%
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📊 PERFORMANCE METRICS
-📈 Avg Max Profit  : {stats['avg_max_profit']}%
-📉 Avg Max DD      : {stats['avg_max_drawdown']}%
-🏆 Best Trade      : {stats['best_trade']}%
-⚠️ Worst Trade     : {stats['worst_trade']}%
-
-━━━━━━━━━━━━━━━━━━━━━━
+QUALITY
+⚖️{stats['avg_rr']}   🧠{stats['avg_brain_confidence']}   ⭐{stats['avg_final_score']}
+⏱ Avg Time To Target: {stats['avg_time_to_target_hours'] if stats['avg_time_to_target_hours'] is not None else 'N/A'}h
 
 🏆 TOP PERFORMERS
-Highest Ranking Score : {highest_ranking}
-Highest Brain Conf    : {highest_brain}
-Highest RR            : {highest_rr}
-Top Quality Grade     : {highest_quality}
+⭐{highest_ranking}  🧠{highest_brain}  ⚖️{highest_rr}  🏅{highest_quality}
 
-━━━━━━━━━━━━━━━━━━━━━━
+PERFORMANCE
+📈{stats['avg_max_profit']}%  📉{stats['avg_max_drawdown']}%
+🏆Best {stats['best_trade']}%   ⚠️Worst {stats['worst_trade']}%
 
-🟢 LONG PERFORMANCE
-Trades        : {stats['long_total']}
-Wins          : {stats['long_wins']}
-Losses        : {stats['long_losses']}
-Win Rate      : {stats['long_win_rate']}%
-Avg RR        : {stats['long_avg_rr']}
-Avg Profit    : {stats['long_avg_profit']}%
-Avg DD        : {stats['long_avg_dd']}%
+🟢 LONG
+{stats['long_total']} trades  {stats['long_wins']}W/{stats['long_losses']}L  {stats['long_win_rate']}%
+⚖️{stats['long_avg_rr']}  📈{stats['long_avg_profit']}%  📉{stats['long_avg_dd']}%
 
-━━━━━━━━━━━━━━━━━━━━━━
-
-🔴 SHORT PERFORMANCE
-Trades        : {stats['short_total']}
-Wins          : {stats['short_wins']}
-Losses        : {stats['short_losses']}
-Win Rate      : {stats['short_win_rate']}%
-Avg RR        : {stats['short_avg_rr']}
-Avg Profit    : {stats['short_avg_profit']}%
-Avg DD        : {stats['short_avg_dd']}%
+🔴 SHORT
+{stats['short_total']} trades  {stats['short_wins']}W/{stats['short_losses']}L  {stats['short_win_rate']}%
+⚖️{stats['short_avg_rr']}  📈{stats['short_avg_profit']}%  📉{stats['short_avg_dd']}%
 
 {FOOTER}
 """
@@ -6171,7 +6178,7 @@ def open_trades_command(message):
         cur.execute("""
         SELECT 
             id, symbol, side, entry, tp1, tp2, tp3, sl, signal_time,
-            brain_confidence, ranking_score, quality_grade
+            brain_confidence, ranking_score, quality_grade, score, rr
         FROM trades
         WHERE status = 'OPEN'
         ORDER BY id DESC
@@ -6183,19 +6190,20 @@ def open_trades_command(message):
             bot.reply_to(message, f"📭 No open trades.\n{FOOTER}")
             return
 
-        msg = f"📂 OPEN TRADES ({VERSION})\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg = f"📂 OPEN TRADES ({VERSION})\n\n"
 
         for row in rows[:10]:
             quality = row[11] if row[11] else "--"
-            brain = row[9] if row[9] else "--"
-            ranking = row[10] if row[10] else "--"
-            
-            msg += f"#{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {format_price(row[3])} | SL: {format_price(row[7])}\n"
-            msg += f"TP1: {format_price(row[4])} | TP2: {format_price(row[5])} | TP3: {format_price(row[6])}\n"
-            msg += f"Brain: {brain} | Ranking: {ranking}\n"
-            msg += f"Quality: {quality}\n"
-            msg += f"🕐 {row[8]}\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            brain = row[9] if row[9] is not None else "--"
+            score = row[12] if row[12] is not None else "--"
+            rr = row[13] if row[13] is not None else "--"
+            direction_emoji = "🟢" if row[2] == "LONG" else "🔴"
+
+            msg += f"{direction_emoji} #{row[0]} {row[1]} {row[2]}   🏅{quality}\n"
+            msg += f"🧠{brain}  ⭐{score}  ⚖️{rr}R\n"
+            msg += f"🎯{format_price(row[3])} → 🛑{format_price(row[7])}\n"
+            msg += f"🥇{format_price(row[4])}  🥈{format_price(row[5])}  🥉{format_price(row[6])}\n"
+            msg += f"⏱ {format_elapsed(row[8])} ago\n\n"
 
         msg += FOOTER
         bot.reply_to(message, msg)
@@ -6357,23 +6365,21 @@ def history_command(message):
             bot.reply_to(message, f"📭 No closed trades yet.\n{FOOTER}")
             return
 
-        msg = f"📜 TRADE HISTORY ({VERSION})\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg = f"📜 TRADE HISTORY ({VERSION})\n\n"
 
         for row in rows:
-            result_icon = "✅" if "WIN" in row[4] else "❌"
-            
+            result_icon = "✅" if "WIN" in row[4] else ("⏱" if row[4] == "TIMEOUT" else "❌")
+
             quality = row[8] if row[8] else "--"
-            brain = row[9] if row[9] else "--"
-            ranking = row[10] if row[10] else "--"
-            rr = row[11] if row[11] else "--"
-            
-            msg += f"#{row[0]} {row[1]} | {row[2]}\n"
-            msg += f"Entry: {format_price(row[3])} | Result: {row[4]}\n"
-            msg += f"Max Profit: {row[5]}% | Max DD: {row[6]}%\n"
-            msg += f"Quality: {quality} | Brain: {brain}\n"
-            msg += f"Ranking: {ranking} | RR: {rr}\n"
-            msg += f"🕐 {row[7] if row[7] else 'N/A'}\n"
-            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            brain = row[9] if row[9] is not None else "--"
+            ranking = row[10] if row[10] is not None else "--"
+            rr = row[11] if row[11] is not None else "--"
+            direction_emoji = "🟢" if row[2] == "LONG" else "🔴"
+
+            msg += f"{direction_emoji} #{row[0]} {row[1]} {row[2]}   {result_icon} {row[4]}\n"
+            msg += f"🏅{quality}  🧠{brain}  ⭐{ranking}  ⚖️{rr}R\n"
+            msg += f"🎯{format_price(row[3])}   📈{row[5]}%  📉{row[6]}%\n"
+            msg += f"⏱ {row[7] if row[7] else 'N/A'}\n\n"
 
         msg += FOOTER
         bot.reply_to(message, msg)

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v23.0.1 – Telegram Reports UI Update
+# 🚀 AHAD AI v23.0.2 – Report UI & Analytics Update
 # ================================================
 
 """
@@ -1455,6 +1455,64 @@ only the surrounding structure was reorganized. Verified by rendering
 the full template against representative mock values for every
 variable it references.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.0.2 - REPORT UI & ANALYTICS UPDATE
+================================================================================
+Verified by whole-file diff: exactly ONE replace block in the entire
+file, confined to the comparison-view section of send_version_report().
+Everything else - /scan's signal message and Market Summary, /report,
+/history, /open, /debug, send_version_report()'s single-version lookup
+path, and every backend engine (Validation Engine, AI Brain, Ranking,
+Smart Money, Flow Engine, Trade Tracker, database, get_report_stats()'s
+actual calculations) - is byte-identical to v23.0.1. 0 pure deletions,
+0 pure additions outside that one block.
+
+--------------------------------------------------------------------------------
+/report version - scoreboard
+--------------------------------------------------------------------------------
+Redesigned per the approved format: a fixed-width table (Version/WR/
+RR/Closed) with positional medal emojis, followed by a "CURRENT BUILD"
+section showing the running version's own stats.
+
+Two implementation decisions made and flagged rather than assumed
+silently:
+1. Medals are applied to the EXISTING, unchanged chronological order
+   (ORDER BY v.id DESC, most recent first) - not a new performance-
+   ranking calculation. The requested example's WR/RR/Closed values
+   aren't internally consistent with any single sort key (highest WR
+   isn't ranked first, highest RR isn't either), so treating the
+   medals as "best performance first" would require inventing a new
+   composite ranking score - exactly the kind of new calculation this
+   version explicitly forbids ("No calculations may change"). If an
+   actual performance-ranked leaderboard is wanted, that's a
+   deliberate follow-up decision to make explicitly, not something to
+   infer from an illustrative example.
+2. The table is wrapped in a Markdown code block (parse_mode=
+   "Markdown") - the first use of Markdown parsing anywhere in this
+   project. Telegram's default proportional font cannot align plain
+   space-padded columns the way the requested example shows; a
+   monospace code block is the only reliable way to make a "scoreboard"
+   actually look like one on a phone screen. Scope is deliberately
+   minimal: only this one bot.reply_to() call passes parse_mode - no
+   other message in the file is affected, and the content inside the
+   block (version/status strings, numbers) contains no characters with
+   special meaning in Markdown, so the risk this introduces is small
+   and fully contained.
+
+"CURRENT BUILD" status ("Collecting Data..." vs "Data Available") uses
+a 30-closed-trade threshold, matching the previously-discussed
+production-data target - a presentation label, not a scoring or
+ranking calculation.
+
+One formatting bug caught and fixed before delivery: an initial version
+used round() then default string conversion for WR/RR, which silently
+drops trailing zeros (2.10 -> "2.1") and broke the table's visual
+alignment despite correct character padding. Fixed with explicit
+fixed-decimal format specs (:.1f / :.2f). Also verified a zero-closed-
+trades row (avg_rr=None) formats safely without a crash.
+================================================================================
 """
 
 # ================================================
@@ -1478,7 +1536,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.0.1"
+VERSION = "v23.0.2"
 BUILD_DATE = "2026-07-31"
 
 # ================================================
@@ -6028,16 +6086,71 @@ def send_version_report(message, target_version=None):
         """)
         rows = cur.fetchall()
 
-        lines = [f"📊 VERSION COMPARISON", ""]
-        for version_label, status, total, closed, wins, avg_rr in rows:
-            win_rate = round((wins / closed) * 100, 1) if closed else 0
-            avg_rr_display = round(avg_rr, 2) if avg_rr is not None else "N/A"
-            lines.append(f"🔹 {version_label} [{status}]")
-            lines.append(f"📂{total or 0}  🔒{closed or 0}  🎯{win_rate}%  ⚖️{avg_rr_display}")
-            lines.append("")
+        # Medals are purely positional decoration on the existing,
+        # unchanged chronological order (most recent version first) -
+        # not a new performance-ranking calculation. The requested
+        # example's WR/RR/Closed values aren't internally consistent
+        # with any single sort key (highest WR isn't ranked first,
+        # highest RR isn't either), so treating the medals as a "best
+        # performance" ranking would require inventing a new composite
+        # score - exactly the kind of new calculation this version
+        # explicitly forbids. If an actual performance-ranked
+        # leaderboard is wanted later, that's a deliberate follow-up
+        # decision, not an assumption to make here.
+        medals = ["🥇", "🥈", "🥉"]
 
-        lines.append(FOOTER)
-        bot.reply_to(message, "\n".join(lines))
+        table_lines = [f"{'Version':<12}{'WR':>7}{'RR':>8}{'Closed':>8}"]
+        for i, (version_label, status, total, closed, wins, avg_rr) in enumerate(rows):
+            win_rate = (wins / closed) * 100 if closed else 0.0
+            avg_rr_display = avg_rr if avg_rr is not None else 0.0
+            medal = medals[i] if i < 3 else f"{i + 1}\u20e3"
+            table_lines.append(
+                f"{medal} {version_label:<9}{win_rate:>5.1f}%{avg_rr_display:>7.2f}{(closed or 0):>8}"
+            )
+
+        table_block = "\n".join(table_lines)
+
+        # Current build's own stats, using the same get_report_stats()
+        # function already used everywhere else - no separate
+        # calculation path.
+        cur.execute("SELECT id FROM versions WHERE version = %s", (VERSION,))
+        current_row = cur.fetchone()
+        current_version_id = current_row[0] if current_row else None
+        current_stats = get_report_stats(version_id=current_version_id) if current_version_id is not None else None
+
+        if current_stats:
+            current_closed = current_stats['closed']
+            current_status = "⚠️ Collecting Data..." if current_closed < 30 else "✅ Data Available"
+            current_block = f"""🧪 CURRENT BUILD
+
+Version : {VERSION}
+
+📂 Trades : {current_stats['total']}
+🔒 Closed : {current_closed}
+🎯 Win Rate : {current_stats['win_rate']}%
+⚖️ Avg RR : {current_stats['avg_rr']}
+
+Status
+{current_status}"""
+        else:
+            current_block = f"""🧪 CURRENT BUILD
+
+Version : {VERSION}
+Status
+⚠️ Not yet registered"""
+
+        msg = f"""📊 VERSION SCOREBOARD
+
+```
+{table_block}
+```
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+{current_block}
+
+{FOOTER}"""
+        bot.reply_to(message, msg, parse_mode="Markdown")
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error building version report: {e}")

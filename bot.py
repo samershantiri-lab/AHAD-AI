@@ -1513,6 +1513,73 @@ alignment despite correct character padding. Fixed with explicit
 fixed-decimal format specs (:.1f / :.2f). Also verified a zero-closed-
 trades row (avg_rr=None) formats safely without a crash.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.0.2 - REVISION (EXACT-TEMPLATE REBUILD)
+================================================================================
+Version stays v23.0.2 - this is a revision of the same UI update, not a
+new release. Verified by whole-file diff: 2 pure removals (the two
+code-block markers taken out of /report version), 12 pure additions
+(two defensive scoping fallbacks, explained below), 22 replace blocks -
+all confined to format_elapsed() and the five specified commands.
+ai_brain(), analyze() in full, smart_money(), the ranking_score
+formula, validation_compute_outcome(), get_report_stats()'s actual
+calculations (re-verified with a correct function boundary after an
+initial mis-bounded check gave a false positive), update_open_trades()'s
+timeout logic, and /scan's signal message template are all confirmed
+byte-identical.
+
+This round reverses several of the previous round's choices, per
+explicit new instructions:
+- /report version: removed the Markdown code-block table entirely (no
+  tables/code blocks per this round's explicit rule) - back to plain
+  emoji-labeled lines, one version per line, exactly matching the new
+  example.
+- /report: reverted from compact one-line groupings back to one metric
+  per line, under the exact requested section titles.
+- /open, /history: reverted from compact cards back to one-field-per-
+  line cards, with relative time ("10m ago/2h ago/Yesterday/Nd ago" -
+  format_elapsed() rewritten to this exact new spec) instead of the
+  previous "2h 15m ago" compound format.
+- Confirmed by this round's own note ("sort previous versions exactly
+  as today") that keeping the scoreboard's existing chronological
+  order and treating medals as positional decoration - the interpretation
+  used last round - was correct.
+
+Two real bugs found and fixed this round:
+1. RR trailing-zero display bug, found in FOUR separate places
+   (/history, /open, /report's QUALITY/TOP PERFORMERS/LONG/SHORT
+   sections, /report version's single-lookup and CURRENT BUILD blocks) -
+   round(1.80, 2) silently becomes 1.8 on display. Fixed everywhere
+   with explicit :.2f formatting rather than fixing one instance and
+   missing the rest; highest_rr specifically needed a conditional check
+   since it can be the string "N/A" as well as a float.
+2. A real variable-scoping gap: avg_score/avg_rr/avg_momentum (METRICS)
+   and fastest/slowest/avg_time (PERFORMANCE) were only ever defined
+   inside their respective if-signals-exist / if-coin-times-exist
+   branches - safe under the OLD debug_msg (which only ever embedded
+   the pre-built metrics_display/performance_display STRINGS, never
+   touching these variables directly), but the new template references
+   them directly and would have raised NameError on any scan with zero
+   passing signals or zero timed coins. Added safe "N/A" fallbacks in
+   both else branches - this changes no computed value in the normal
+   case, it only prevents a crash in an edge case the previous design
+   never had to handle.
+
+/debug fully rebuilt to the exact seven-section template (SYSTEM/
+RESULTS/TOP REJECTIONS/METRICS/MARKET/PERFORMANCE/CACHE). Every value
+displayed was already being computed somewhere in scan() - Fastest/
+Slowest coin timing, Avg Flow/Avg Momentum, Acceptance Rate, and the
+already-medal-ranked Top Rejections list all existed before this
+change; nothing new was calculated. Three previously-shown fields
+(Scan Limit, SCAN_MODE decision summary, LONG/SHORT signal count
+breakdown) are not present in this round's exact, exhaustively-detailed
+template and were consequently dropped - flagged explicitly here rather
+than silently, since the given template is precise enough that this
+reads as a deliberate content decision rather than an omission to
+silently compensate for.
+================================================================================
 """
 
 # ================================================
@@ -2102,9 +2169,9 @@ def format_price(value):
 
 def format_elapsed(dt):
     """
-    v23.0.1 (Telegram Reports UI Update) - compact elapsed-time display
-    (e.g. "2h 15m", "3d 4h", "45m") for /open and /history's redesigned
-    card layouts. Pure display formatting - no data or logic change.
+    v23.0.2 (UI/UX Reports revision) - relative time display for
+    /history and /open, per the exact spec given: "10m ago / 2h ago /
+    Yesterday / etc." Pure display formatting - no data or logic change.
     """
     if dt is None:
         return "N/A"
@@ -2117,11 +2184,13 @@ def format_elapsed(dt):
     minutes = int(seconds // 60)
     hours = minutes // 60
     days = hours // 24
-    if days > 0:
-        return f"{days}d {hours % 24}h"
+    if days >= 2:
+        return f"{days}d ago"
+    if days == 1:
+        return "Yesterday"
     if hours > 0:
-        return f"{hours}h {minutes % 60}m"
-    return f"{minutes}m"
+        return f"{hours}h ago"
+    return f"{minutes}m ago"
 
 
 # ================================================
@@ -5471,6 +5540,9 @@ Avg RR          : {avg_rr}
 Avg Brain       : {avg_brain}
 """
     else:
+        avg_score = "N/A"
+        avg_rr = "N/A"
+        avg_momentum = "N/A"
         metrics_display = """
 📊 METRICS
 N/A — No signals passed the final filters.
@@ -5713,6 +5785,9 @@ N/A — No signals passed the final filters.
 🐢 Slowest Coin      : {slowest[0]} ({slowest[1]}ms)
 """
     else:
+        avg_time = "N/A"
+        fastest = ("N/A", "N/A")
+        slowest = ("N/A", "N/A")
         performance_display = "⏱ No performance data available."
 
     # ====== CACHE STATUS ======
@@ -5746,42 +5821,87 @@ Coins Analyzed  : {total_analyzed}
     total_trades = get_total_trades()
 
     # ====== STANDARDIZED DEBUG REPORT ======
-    debug_msg = f"""🐞 DEBUG REPORT ({VERSION})
-🆔 #{datetime.now().strftime('%Y%m%d')}-{random.randint(100, 999):03d}   📅 {BUILD_DATE}
+    debug_msg = f"""🐞 DEBUG REPORT
 
-🏆 TOP REJECT REASONS
+🆔 Scan : {datetime.now().strftime('%Y%m%d')}-{random.randint(100, 999):03d}
+
+📅 Build : {BUILD_DATE}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+⚙️ SYSTEM
+
+⏱ Duration : {scan_duration}s
+
+🌍 Universe   : {market_universe}
+
+🌊 Candidates : {flow_candidates_count}
+
+🔎 Analyzed   : {analyzed_count}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 RESULTS
+
+✅ Passed : {total_passed}
+
+❌ Rejected : {total_rejected}
+
+🎯 Acceptance : {acceptance_rate}%
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🚫 TOP REJECTIONS
+
 {top_rejects}
 
-SYSTEM
-Started {scan_start_timestamp} → Finished {scan_end_timestamp}   ⏱{scan_duration}s
+━━━━━━━━━━━━━━━━━━━━━━
 
-SCAN
-🌍{market_universe}  🌊{flow_candidates_count}  🔎{analyzed_count}  🎚{scan_limit}
+🧠 METRICS
 
-{decision_summary_display}
+⭐ Avg Score     : {avg_score}
 
-FILTERS
-Candles{debug.get('candles', 0)} FOMO{debug.get('fomo', 0)} Brain{debug.get('brain', 0)} RSI{debug.get('rsi', 0)}
-LowFlow{debug.get('flow', 0)} LateEntry{debug.get('late_entry', 0)} LateScore{debug.get('late_score', 0)} Trap{debug.get('trap', 0)}
-Heat{debug.get('heat', 0)} Resistance{debug.get('resistance', 0)} HigherTrend{debug.get('higher_trend', 0)} RR{debug.get('rr', 0)}
-Score{debug.get('score', 0)} Watchlist{debug.get('watchlist', 0)} Validation{debug.get('validation', 0)} FinalGate{debug.get('final_gate', 0)} NotLong{debug.get('not_long', 0)}
+🧠 Avg Brain     : {avg_brain}
 
-RESULTS
-✅{total_passed}  🟢{len(long_results)}  🔴{len(short_results)}
+🐋 Avg Flow      : {avg_flow}
 
-{metrics_display}
+⚡ Avg Momentum  : {avg_momentum}
 
-MARKET
+⚖️ Avg RR        : {avg_rr}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🌍 MARKET
+
 {debug.get('regime_distribution', 'N/A')}
+
 {debug.get('compression_distribution', 'N/A')}
 
-PERFORMANCE
-{performance_display}
-📈 Recorded Trades: {total_trades}
+━━━━━━━━━━━━━━━━━━━━━━
 
-CACHE
-{cache_display}
+⚡ PERFORMANCE
 
+🚀 Fastest : {fastest[0]} ({fastest[1]}ms)
+
+🐢 Slowest : {slowest[0]} ({slowest[1]}ms)
+
+⏱ Total Scan : {scan_duration}s
+
+📈 Recorded Trades : {total_trades}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+💾 CACHE
+
+API Calls : {api_calls}
+
+Hits      : {cache_hits}
+
+Saved     : {cache_saved_pct}%
+
+TTL       : {CACHE_TTL}s
+
+━━━━━━━━━━━━━━━━━━━━━━
 {FOOTER}
 """
     global _last_debug_data
@@ -6058,10 +6178,11 @@ def send_version_report(message, target_version=None):
             worst_row = cur.fetchone()
             worst_symbol = worst_row[0] if worst_row else "N/A"
 
+            avg_rr_display = f"{stats['avg_rr']:.2f}"
             msg = f"""📊 {version_label} [{version_status}]
 
 📂{stats['total']}  🔒{stats['closed']}  🟢{stats['open']}
-🎯{stats['win_rate']}%  ⚖️{stats['avg_rr']}  🧠{stats['avg_brain_confidence']}  ⭐{stats['avg_final_score']}
+🎯{stats['win_rate']}%  ⚖️{avg_rr_display}  🧠{stats['avg_brain_confidence']}  ⭐{stats['avg_final_score']}
 
 🏆Best: {best_symbol}   ⚠️Worst: {worst_symbol}
 
@@ -6099,16 +6220,16 @@ def send_version_report(message, target_version=None):
         # decision, not an assumption to make here.
         medals = ["🥇", "🥈", "🥉"]
 
-        table_lines = [f"{'Version':<12}{'WR':>7}{'RR':>8}{'Closed':>8}"]
+        table_lines = []
         for i, (version_label, status, total, closed, wins, avg_rr) in enumerate(rows):
             win_rate = (wins / closed) * 100 if closed else 0.0
             avg_rr_display = avg_rr if avg_rr is not None else 0.0
             medal = medals[i] if i < 3 else f"{i + 1}\u20e3"
             table_lines.append(
-                f"{medal} {version_label:<9}{win_rate:>5.1f}%{avg_rr_display:>7.2f}{(closed or 0):>8}"
+                f"{medal} {version_label}   🎯{win_rate:.1f}%   ⚖️{avg_rr_display:.2f}   🔒{closed or 0}"
             )
 
-        table_block = "\n".join(table_lines)
+        table_block = "\n\n".join(table_lines)
 
         # Current build's own stats, using the same get_report_stats()
         # function already used everywhere else - no separate
@@ -6128,29 +6249,30 @@ Version : {VERSION}
 📂 Trades : {current_stats['total']}
 🔒 Closed : {current_closed}
 🎯 Win Rate : {current_stats['win_rate']}%
-⚖️ Avg RR : {current_stats['avg_rr']}
+⚖️ Avg RR : {current_stats['avg_rr']:.2f}
 
 Status
+
 {current_status}"""
         else:
             current_block = f"""🧪 CURRENT BUILD
 
 Version : {VERSION}
 Status
+
 ⚠️ Not yet registered"""
 
         msg = f"""📊 VERSION SCOREBOARD
 
-```
 {table_block}
-```
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
 {current_block}
 
+━━━━━━━━━━━━━━━━━━━━━━
 {FOOTER}"""
-        bot.reply_to(message, msg, parse_mode="Markdown")
+        bot.reply_to(message, msg)
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error building version report: {e}")
@@ -6238,35 +6360,96 @@ def report_command(message):
             if conn:
                 conn.close()
 
-        report = f"""📊 AHAD AI REPORT ({VERSION})
-📅 {BUILD_DATE}
+        report = f"""📊 AHAD AI PERFORMANCE
 
-GENERAL
-📂{stats['total']}  🟢{stats['open']}  🔒{stats['closed']}
+📂 GENERAL
 
-RESULTS
-🏆{stats['tp1']} 🥈{stats['tp2']} 🥉{stats['tp3']} ❌{stats['sl']} ⏱{stats['timeouts']}
-🎯{stats['win_rate']}%  ⏱{stats['timeout_rate']}%
+Trades : {stats['total']}
+Open   : {stats['open']}
+Closed : {stats['closed']}
 
-QUALITY
-⚖️{stats['avg_rr']}   🧠{stats['avg_brain_confidence']}   ⭐{stats['avg_final_score']}
-⏱ Avg Time To Target: {stats['avg_time_to_target_hours'] if stats['avg_time_to_target_hours'] is not None else 'N/A'}h
+━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 RESULTS
+
+🏆 TP1 : {stats['tp1']}
+🥈 TP2 : {stats['tp2']}
+🥉 TP3 : {stats['tp3']}
+
+❌ SL : {stats['sl']}
+⏱ Timeout : {stats['timeouts']}
+
+🎯 Win Rate : {stats['win_rate']}%
+⏱ Timeout Rate : {stats['timeout_rate']}%
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 QUALITY
+
+⚖️ Avg RR      : {stats['avg_rr']:.2f}
+🧠 Avg Brain   : {stats['avg_brain_confidence']}
+⭐ Avg Score   : {stats['avg_final_score']}
+
+⏱ Avg Win Time : {stats['avg_time_to_target_hours'] if stats['avg_time_to_target_hours'] is not None else 'N/A'}h
+
+━━━━━━━━━━━━━━━━━━━━━━
 
 🏆 TOP PERFORMERS
-⭐{highest_ranking}  🧠{highest_brain}  ⚖️{highest_rr}  🏅{highest_quality}
 
-PERFORMANCE
-📈{stats['avg_max_profit']}%  📉{stats['avg_max_drawdown']}%
-🏆Best {stats['best_trade']}%   ⚠️Worst {stats['worst_trade']}%
+⭐ Highest Ranking : {highest_ranking}
+🧠 Highest Brain   : {highest_brain}
+⚖️ Highest RR      : {f"{highest_rr:.2f}" if isinstance(highest_rr, (int, float)) else highest_rr}
+🏅 Top Quality     : {highest_quality}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📈 PERFORMANCE
+
+🏆 Best Trade : {stats['best_trade']}%
+
+⚠️ Worst Trade : {stats['worst_trade']}%
+
+📈 Avg Profit : {stats['avg_max_profit']}%
+
+📉 Avg DD     : {stats['avg_max_drawdown']}%
+
+━━━━━━━━━━━━━━━━━━━━━━
 
 🟢 LONG
-{stats['long_total']} trades  {stats['long_wins']}W/{stats['long_losses']}L  {stats['long_win_rate']}%
-⚖️{stats['long_avg_rr']}  📈{stats['long_avg_profit']}%  📉{stats['long_avg_dd']}%
+
+Trades : {stats['long_total']}
+
+Wins   : {stats['long_wins']}
+
+Losses : {stats['long_losses']}
+
+🎯 WR : {stats['long_win_rate']}%
+
+⚖️ RR : {stats['long_avg_rr']:.2f}
+
+📈 Avg Profit : {stats['long_avg_profit']}%
+
+📉 Avg DD     : {stats['long_avg_dd']}%
+
+━━━━━━━━━━━━━━━━━━━━━━
 
 🔴 SHORT
-{stats['short_total']} trades  {stats['short_wins']}W/{stats['short_losses']}L  {stats['short_win_rate']}%
-⚖️{stats['short_avg_rr']}  📈{stats['short_avg_profit']}%  📉{stats['short_avg_dd']}%
 
+Trades : {stats['short_total']}
+
+Wins   : {stats['short_wins']}
+
+Losses : {stats['short_losses']}
+
+🎯 WR : {stats['short_win_rate']}%
+
+⚖️ RR : {stats['short_avg_rr']:.2f}
+
+📈 Avg Profit : {stats['short_avg_profit']}%
+
+📉 Avg DD     : {stats['short_avg_dd']}%
+
+━━━━━━━━━━━━━━━━━━━━━━
 {FOOTER}
 """
         bot.reply_to(message, report)
@@ -6303,20 +6486,27 @@ def open_trades_command(message):
             bot.reply_to(message, f"📭 No open trades.\n{FOOTER}")
             return
 
-        msg = f"📂 OPEN TRADES ({VERSION})\n\n"
+        msg = f"📂 OPEN TRADES\n\n"
 
         for row in rows[:10]:
             quality = row[11] if row[11] else "--"
             brain = row[9] if row[9] is not None else "--"
             score = row[12] if row[12] is not None else "--"
-            rr = row[13] if row[13] is not None else "--"
+            rr = f"{row[13]:.2f}" if row[13] is not None else "--"
             direction_emoji = "🟢" if row[2] == "LONG" else "🔴"
 
-            msg += f"{direction_emoji} #{row[0]} {row[1]} {row[2]}   🏅{quality}\n"
-            msg += f"🧠{brain}  ⭐{score}  ⚖️{rr}R\n"
-            msg += f"🎯{format_price(row[3])} → 🛑{format_price(row[7])}\n"
-            msg += f"🥇{format_price(row[4])}  🥈{format_price(row[5])}  🥉{format_price(row[6])}\n"
-            msg += f"⏱ {format_elapsed(row[8])} ago\n\n"
+            msg += f"{direction_emoji} #{row[0]} {row[1]}\n\n"
+            msg += f"🏅 {quality}\n\n"
+            msg += f"🧠 {brain}\n\n"
+            msg += f"⭐ {score}\n\n"
+            msg += f"⚖️ {rr}R\n\n"
+            msg += f"🎯 Entry : {format_price(row[3])}\n\n"
+            msg += f"🛑 SL    : {format_price(row[7])}\n\n"
+            msg += f"🥇 TP1 : {format_price(row[4])}\n\n"
+            msg += f"🥈 TP2 : {format_price(row[5])}\n\n"
+            msg += f"🥉 TP3 : {format_price(row[6])}\n\n"
+            msg += f"⏱ Open : {format_elapsed(row[8])}\n\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         msg += FOOTER
         bot.reply_to(message, msg)
@@ -6478,21 +6668,32 @@ def history_command(message):
             bot.reply_to(message, f"📭 No closed trades yet.\n{FOOTER}")
             return
 
-        msg = f"📜 TRADE HISTORY ({VERSION})\n\n"
+        msg = f"📜 TRADE HISTORY\n\n"
 
         for row in rows:
             result_icon = "✅" if "WIN" in row[4] else ("⏱" if row[4] == "TIMEOUT" else "❌")
+            result_display = row[4].replace("_", " ") if row[4] else "N/A"
 
             quality = row[8] if row[8] else "--"
             brain = row[9] if row[9] is not None else "--"
             ranking = row[10] if row[10] is not None else "--"
-            rr = row[11] if row[11] is not None else "--"
+            rr = f"{row[11]:.2f}" if row[11] is not None else "--"
             direction_emoji = "🟢" if row[2] == "LONG" else "🔴"
 
-            msg += f"{direction_emoji} #{row[0]} {row[1]} {row[2]}   {result_icon} {row[4]}\n"
-            msg += f"🏅{quality}  🧠{brain}  ⭐{ranking}  ⚖️{rr}R\n"
-            msg += f"🎯{format_price(row[3])}   📈{row[5]}%  📉{row[6]}%\n"
-            msg += f"⏱ {row[7] if row[7] else 'N/A'}\n\n"
+            max_profit_display = f"{row[5]:+.2f}%" if row[5] is not None else "N/A"
+            max_dd_display = f"{row[6]:+.2f}%" if row[6] is not None else "N/A"
+
+            msg += f"{direction_emoji} #{row[0]} {row[1]}\n\n"
+            msg += f"{result_icon} {result_display}\n\n"
+            msg += f"🏅 {quality}\n\n"
+            msg += f"🧠 {brain}\n\n"
+            msg += f"⭐ {ranking}\n\n"
+            msg += f"⚖️ {rr}R\n\n"
+            msg += f"🎯 Entry : {format_price(row[3])}\n\n"
+            msg += f"📈 Max Profit : {max_profit_display}\n\n"
+            msg += f"📉 Max DD     : {max_dd_display}\n\n"
+            msg += f"⏱ Closed : {format_elapsed(row[7])}\n\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         msg += FOOTER
         bot.reply_to(message, msg)

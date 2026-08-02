@@ -203,7 +203,11 @@ def collect_new_winners():
                     dna.get("volume_acceleration"), dna.get("volume_ratio"),
                     json.dumps(dna, default=str)
                 ))
-                new_count += 1
+                # ON CONFLICT DO NOTHING never raises on a duplicate -
+                # cur.rowcount is the only way to tell whether a row was
+                # actually inserted (1) or silently skipped (0).
+                if cur.rowcount == 1:
+                    new_count += 1
             except Exception as row_error:
                 print(f"⚠️ Winners Analyzer: failed to record trade {trade_id} - {row_error}")
                 conn.rollback()

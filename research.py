@@ -77,6 +77,7 @@ RESEARCH_MODULES = [
     {"name": "Losers Analyzer", "file": "losers_analyzer.py"},
     {"name": "Top Gainers Study", "file": "top_gainers_study.py"},
     {"name": "Top Losers Study", "file": "top_losers_study.py"},
+    {"name": "Compare Winners vs Losers", "file": "compare_winners_losers.py"},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for

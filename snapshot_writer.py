@@ -237,7 +237,16 @@ def save_snapshot(module_key, module_name, category, headline_stat,
             headline_stat, json.dumps(summary_data, default=str), json.dumps(internal_metadata, default=str),
             version_scope, detail_table, schema_version
         ))
+
+        # --- TEMPORARY VERIFICATION LOG (remove once confirmed) ---
+        rows_affected = cur.rowcount
         conn.commit()
+        print("✅ Snapshot saved:")
+        print(f"- module_key: {module_key}")
+        print(f"- status: SUCCESS")
+        print(f"- rows affected: {rows_affected}")
+        # --- END TEMPORARY VERIFICATION LOG ---
+
         return True
     except Exception as e:
         print(f"⚠️ Snapshot Writer: failed to save snapshot for {module_key} - {e}")

@@ -79,8 +79,15 @@ import sys
 import json
 import math
 import statistics
+import time
 import psycopg2
 from datetime import datetime
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "compare_winners_losers"
+MODULE_NAME = "Compare Winners vs Losers"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -545,12 +552,50 @@ def print_report(result):
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Compare Winners/Losers starting - {datetime.now().isoformat()}")
-    init_research_comparisons_table()
-    result = run_full_comparison()
-    save_comparison(result)
-    print_report(result)
-    print(f"🔬 Compare Winners/Losers finished - {datetime.now().isoformat()}")
+
+    try:
+        init_research_comparisons_table()
+        result = run_full_comparison()
+        save_comparison(result)
+        print_report(result)
+
+        top_metrics = result.get("top_metrics_worth_investigating", [])
+        if top_metrics:
+            top = top_metrics[0]
+            headline_stat = (f"Top metric: [{top['scope']}] {top['metric']} "
+                              f"(Priority Score {top['priority_score']})")
+        else:
+            headline_stat = "No metric cleared the minimum sample threshold this run"
+
+        summary_data = {
+            "winners_sample_size": result.get("winners_sample_size"),
+            "losers_sample_size": result.get("losers_sample_size"),
+            "top_metrics_worth_investigating": top_metrics[:3],
+        }
+
+        records_processed = (result.get("winners_sample_size") or 0) + (result.get("losers_sample_size") or 0)
+
+        save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_stat,
+            summary_data=summary_data,
+            version_scope=result.get("version_scope", "UNKNOWN"),
+            detail_table="research_comparisons",
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=records_processed,
+        )
+
+        print(f"🔬 Compare Winners/Losers finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Compare Winners/Losers: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

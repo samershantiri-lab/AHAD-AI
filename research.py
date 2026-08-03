@@ -188,6 +188,11 @@ def _save_research_run(started_at, results):
             round(total_duration, 2), json.dumps(run_details, default=str)
         ))
         conn.commit()
+
+        # --- TEMPORARY VERIFICATION LOG (remove once confirmed) ---
+        print("✅ Research run saved successfully.")
+        # --- END TEMPORARY VERIFICATION LOG ---
+
     except Exception as e:
         print(f"⚠️ research.py: failed to save research_runs entry - {e}")
     finally:

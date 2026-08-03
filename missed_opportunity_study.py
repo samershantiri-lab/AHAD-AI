@@ -88,8 +88,15 @@ never guessed at.
 import os
 import sys
 import json
+import time
 import psycopg2
 from datetime import datetime, timedelta
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "missed_opportunity_study"
+MODULE_NAME = "Missed Opportunity Study"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -456,10 +463,55 @@ def print_report(result):
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Missed Opportunity Study starting - {datetime.now().isoformat()}")
-    result = run_study()
-    print_report(result)
-    print(f"🔬 Missed Opportunity Study finished - {datetime.now().isoformat()}")
+
+    try:
+        result = run_study()
+        print_report(result)
+
+        if result is None:
+            # run_study() already signals total failure this way by
+            # design (e.g. an unreachable database) - treat it as a
+            # real failure for the snapshot, not a successful save
+            # with empty data.
+            update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+            print(f"⚠️ Missed Opportunity Study: no result produced - marking snapshot as FAILED")
+        else:
+            g, l = result["gainers"], result["losers"]
+            records_processed = g["total_checked"] + l["total_checked"]
+
+            summary_data = {
+                "lookback_hours": result["lookback_hours"],
+                "gainers_checked": g["total_checked"],
+                "gainers_matched": g["matched"],
+                "gainers_match_rate_pct": g["match_rate_pct"],
+                "losers_checked": l["total_checked"],
+                "losers_matched": l["matched"],
+                "losers_match_rate_pct": l["match_rate_pct"],
+            }
+
+            save_snapshot(
+                module_key=MODULE_KEY,
+                module_name=MODULE_NAME,
+                category=MODULE_CATEGORY,
+                headline_stat=f"Gainers: {g['matched']}/{g['total_checked']} matched a prior rejection "
+                              f"({g['match_rate_pct']}%)  |  Losers: {l['matched']}/{l['total_checked']} "
+                              f"({l['match_rate_pct']}%)",
+                summary_data=summary_data,
+                version_scope="ALL",
+                detail_table=None,
+                module_version=MODULE_VERSION,
+                execution_duration_seconds=round(time.time() - start_time, 2),
+                records_processed=records_processed,
+            )
+
+        print(f"🔬 Missed Opportunity Study finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Missed Opportunity Study: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

@@ -61,8 +61,15 @@ What this script does, each time it runs:
 import os
 import sys
 import json
+import time
 import psycopg2
 from datetime import datetime
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "losers_analyzer"
+MODULE_NAME = "Losers Analyzer"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -451,11 +458,46 @@ def print_report():
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Losers Analyzer starting - {datetime.now().isoformat()}")
-    init_research_losers_table()
-    collect_new_losers()
-    print_report()
-    print(f"🔬 Losers Analyzer finished - {datetime.now().isoformat()}")
+
+    try:
+        init_research_losers_table()
+        new_count = collect_new_losers()
+        print_report()
+
+        dist = loss_distribution()
+        overall = average_losers()
+
+        summary_data = {
+            "new_losers_this_run": new_count,
+            "total_losers": overall.get("total_losers"),
+            "avg_flow": overall.get("avg_flow"),
+            "avg_rsi": overall.get("avg_rsi"),
+            "avg_momentum_score": overall.get("avg_momentum_score"),
+            "by_quality_grade": dist.get("by_quality_grade"),
+        }
+
+        save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=f"{new_count} new loser(s) recorded this run "
+                           f"({overall.get('total_losers', 0)} total)",
+            summary_data=summary_data,
+            version_scope="ALL",
+            detail_table="research_losers",
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=new_count,
+        )
+
+        print(f"🔬 Losers Analyzer finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Losers Analyzer: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

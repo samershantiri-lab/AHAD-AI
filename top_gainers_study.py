@@ -73,6 +73,12 @@ import time
 import requests
 import psycopg2
 from datetime import datetime, date
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "top_gainers_study"
+MODULE_NAME = "Top Gainers Study"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -584,11 +590,45 @@ def print_report():
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Top Gainers Study starting - {datetime.now().isoformat()}")
-    init_research_top_gainers_table()
-    collect_top_gainers()
-    print_report()
-    print(f"🔬 Top Gainers Study finished - {datetime.now().isoformat()}")
+
+    try:
+        init_research_top_gainers_table()
+        new_count = collect_top_gainers()
+        print_report()
+
+        overall = overall_averages()
+
+        summary_data = {
+            "new_gainers_this_run": new_count,
+            "total_gainers_recorded": overall.get("total_gainers_recorded"),
+            "gainers_with_ahad_ai_trade": overall.get("gainers_with_ahad_ai_trade"),
+            "avg_change_pct": overall.get("avg_change_pct"),
+            "avg_flow": overall.get("avg_flow"),
+            "avg_rsi": overall.get("avg_rsi"),
+        }
+
+        save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=f"{new_count} gainer(s) recorded this run "
+                           f"({overall.get('total_gainers_recorded', 0)} total)",
+            summary_data=summary_data,
+            version_scope="ALL",
+            detail_table="research_top_gainers",
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=new_count,
+        )
+
+        print(f"🔬 Top Gainers Study finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Top Gainers Study: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

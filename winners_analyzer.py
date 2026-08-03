@@ -49,8 +49,15 @@ What this script does, each time it runs:
 import os
 import sys
 import json
+import time
 import psycopg2
+from snapshot_writer import save_snapshot, update_snapshot_status
 from datetime import datetime
+
+MODULE_KEY = "winners_analyzer"
+MODULE_NAME = "Winners Analyzer"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -408,11 +415,46 @@ def print_report():
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Winners Analyzer starting - {datetime.now().isoformat()}")
-    init_research_winners_table()
-    collect_new_winners()
-    print_report()
-    print(f"🔬 Winners Analyzer finished - {datetime.now().isoformat()}")
+
+    try:
+        init_research_winners_table()
+        new_count = collect_new_winners()
+        print_report()
+
+        dist = winning_distribution()
+        overall = average_winners()
+
+        summary_data = {
+            "new_winners_this_run": new_count,
+            "total_winners": overall.get("total_winners"),
+            "avg_flow": overall.get("avg_flow"),
+            "avg_rsi": overall.get("avg_rsi"),
+            "avg_momentum_score": overall.get("avg_momentum_score"),
+            "by_quality_grade": dist.get("by_quality_grade"),
+        }
+
+        save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=f"{new_count} new winner(s) recorded this run "
+                           f"({overall.get('total_winners', 0)} total)",
+            summary_data=summary_data,
+            version_scope="ALL",
+            detail_table="research_winners",
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=new_count,
+        )
+
+        print(f"🔬 Winners Analyzer finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Winners Analyzer: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

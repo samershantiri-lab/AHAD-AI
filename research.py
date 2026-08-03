@@ -62,7 +62,139 @@ import re
 import sys
 import subprocess
 import time
+import json
+import psycopg2
 from datetime import datetime
+
+
+# ================================================
+# 🔌 DATABASE CONNECTION (Phase 2 - research.py's first-ever DB connection)
+# ================================================
+# Added exclusively to persist research_runs and to cross-check module
+# snapshot freshness (see run_research_lab()). This does not add any
+# analytical logic to the controller - it still knows nothing about
+# what any module actually studies; it only records that a run
+# happened and whether each module's snapshot genuinely advanced.
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+
+def get_db_connection():
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL is not set in the environment - research.py "
+            "needs it to persist research_runs and verify snapshot freshness."
+        )
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=10,
+        sslmode="require"
+    )
+
+
+def init_research_runs_table():
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS research_runs (
+            id SERIAL PRIMARY KEY,
+            run_timestamp TIMESTAMP,
+            modules_total INTEGER,
+            modules_succeeded INTEGER,
+            modules_failed INTEGER,
+            modules_partial INTEGER,
+            total_duration_seconds REAL,
+            run_details JSONB
+        )
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ research.py: failed to initialize research_runs - {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _get_snapshot_last_success(module_key):
+    """
+    Read-only lookup against research_snapshots, used only to verify
+    that a module which exited 0 actually advanced its own snapshot.
+    Returns None if the module has no snapshot row yet, or on any
+    failure - callers treat that the same as "cannot confirm freshness"
+    rather than raising.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT last_success_at FROM research_snapshots WHERE module_key = %s", (module_key,))
+        row = cur.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"⚠️ research.py: failed to check snapshot freshness for {module_key} - {e}")
+        return None
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _save_research_run(started_at, results):
+    """
+    Writes exactly one row summarizing this controller execution -
+    modules_total/succeeded/failed/partial, total duration, and a JSONB
+    per-module breakdown. This is the ONLY write research.py performs;
+    it never writes to research_snapshots directly (that remains
+    exclusively Snapshot Writer's responsibility).
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        succeeded = sum(1 for r in results if r["success"] and not r.get("partial"))
+        partial = sum(1 for r in results if r.get("partial"))
+        failed = sum(1 for r in results if not r["success"])
+        total_duration = sum(r["duration_seconds"] for r in results if r["duration_seconds"] is not None)
+
+        run_details = [
+            {
+                "name": r["name"],
+                "success": r["success"],
+                "partial": r.get("partial", False),
+                "duration_seconds": r["duration_seconds"],
+                "records": r["records"],
+                "error": r["error"],
+            }
+            for r in results
+        ]
+
+        cur.execute("""
+            INSERT INTO research_runs (
+                run_timestamp, modules_total, modules_succeeded,
+                modules_failed, modules_partial, total_duration_seconds,
+                run_details
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            started_at, len(results), succeeded, failed, partial,
+            round(total_duration, 2), json.dumps(run_details, default=str)
+        ))
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ research.py: failed to save research_runs entry - {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # ================================================
@@ -73,12 +205,12 @@ from datetime import datetime
 # regardless of the working directory it's launched from).
 
 RESEARCH_MODULES = [
-    {"name": "Winners Analyzer", "file": "winners_analyzer.py"},
-    {"name": "Losers Analyzer", "file": "losers_analyzer.py"},
-    {"name": "Top Gainers Study", "file": "top_gainers_study.py"},
-    {"name": "Top Losers Study", "file": "top_losers_study.py"},
-    {"name": "Compare Winners vs Losers", "file": "compare_winners_losers.py"},
-    {"name": "Missed Opportunity Study", "file": "missed_opportunity_study.py"},
+    {"name": "Winners Analyzer", "file": "winners_analyzer.py", "module_key": "winners_analyzer"},
+    {"name": "Losers Analyzer", "file": "losers_analyzer.py", "module_key": "losers_analyzer"},
+    {"name": "Top Gainers Study", "file": "top_gainers_study.py", "module_key": "top_gainers_study"},
+    {"name": "Top Losers Study", "file": "top_losers_study.py", "module_key": "top_losers_study"},
+    {"name": "Compare Winners vs Losers", "file": "compare_winners_losers.py", "module_key": "compare_winners_losers"},
+    {"name": "Missed Opportunity Study", "file": "missed_opportunity_study.py", "module_key": "missed_opportunity_study"},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for
@@ -113,13 +245,16 @@ def run_module(module_info):
     """
     name = module_info["name"]
     filename = module_info["file"]
+    module_key = module_info.get("module_key")
     path = _module_path(filename)
 
     result = {
         "name": name,
         "file": filename,
+        "module_key": module_key,
         "exists": False,
         "success": False,
+        "partial": False,
         "duration_seconds": None,
         "records": None,
         "error": None,
@@ -131,6 +266,7 @@ def run_module(module_info):
 
     result["exists"] = True
     start = time.time()
+    started_at = datetime.now()
 
     try:
         proc = subprocess.run(
@@ -143,6 +279,13 @@ def run_module(module_info):
 
         if proc.returncode == 0:
             result["success"] = True
+
+            if module_key:
+                last_success = _get_snapshot_last_success(module_key)
+                if last_success is None or last_success < started_at:
+                    result["partial"] = True
+                    result["error"] = ("exited successfully, but its snapshot did not advance - "
+                                        "the analysis likely ran but the snapshot write may have failed")
         else:
             last_line = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "no error output"
             result["error"] = f"exited with code {proc.returncode} - {last_line}"
@@ -174,9 +317,18 @@ def _print_module_result(result):
         print(f"Reason   : {result['error']}")
         return
 
-    icon = "✅" if result["success"] else "❌"
+    if result.get("partial"):
+        icon = "⚠️"
+        status_label = "PARTIAL"
+    elif result["success"]:
+        icon = "✅"
+        status_label = "OK"
+    else:
+        icon = "❌"
+        status_label = "FAILED"
+
     print(f"\n{icon} {result['name']}")
-    print(f"Status   : {'OK' if result['success'] else 'FAILED'}")
+    print(f"Status   : {status_label}")
     duration_display = f"{result['duration_seconds']}s" if result["duration_seconds"] is not None else "N/A"
     print(f"Duration : {duration_display}")
     records_display = result["records"] if result["records"] is not None else "N/A"
@@ -186,8 +338,9 @@ def _print_module_result(result):
 
 
 def _print_summary(results, started_at):
-    succeeded = sum(1 for r in results if r["success"])
-    failed = len(results) - succeeded
+    partial = sum(1 for r in results if r.get("partial"))
+    succeeded = sum(1 for r in results if r["success"] and not r.get("partial"))
+    failed = sum(1 for r in results if not r["success"])
     missing = sum(1 for r in results if not r["exists"])
 
     print("\n" + "=" * 50)
@@ -196,6 +349,8 @@ def _print_summary(results, started_at):
     print(f"Modules   : {len(results)}")
     print(f"Succeeded : {succeeded}")
     print(f"Failed    : {failed}")
+    if partial:
+        print(f"Partial   : {partial}")
     if missing:
         print(f"Missing   : {missing}")
     total_duration = sum(r["duration_seconds"] for r in results if r["duration_seconds"] is not None)
@@ -217,9 +372,17 @@ def run_research_lab(modules=None):
     turn. Returns the list of result dicts, primarily so this can also
     be called programmatically (e.g. from a future scheduler) without
     needing to parse console output.
+
+    Phase 2: also persists one summary row to research_runs after the
+    console summary is printed, and cross-checks each successful
+    module's snapshot freshness (see run_module()) - a module can now
+    be marked "partial" if it exited 0 but its snapshot didn't actually
+    advance.
     """
     modules = modules if modules is not None else RESEARCH_MODULES
     started_at = datetime.now()
+
+    init_research_runs_table()
 
     print("=" * 50)
     print("AHAD AI RESEARCH LAB")
@@ -232,6 +395,7 @@ def run_research_lab(modules=None):
         results.append(result)
 
     _print_summary(results, started_at)
+    _save_research_run(started_at, results)
     return results
 
 

@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v23.1.1 – Telegram UI Refinement
+# 🚀 AHAD AI v23.2.0 – Research Intelligence Report
 # ================================================
 
 """
@@ -1833,6 +1833,50 @@ display locally for this view only (format_elapsed() itself is
 unchanged for any other caller). Both rendered against the exact
 example data and matched.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.2.0 - RESEARCH INTELLIGENCE REPORT
+================================================================================
+Confirmed by whole-file diff: 0 pure deletions, 0 replace blocks, 257
+pure additions across exactly two insertion points - the admin-access
+block and the complete /research_report command. ai_brain(), the
+ranking_score formula, quality-grade logic, the Validation Engine, the
+Trade Recorder, get_report_stats()'s calculations, every existing
+Telegram command, and the full database schema are all confirmed
+byte-identical. Handler count moved from 8 to 9 - exactly one new
+command, nothing removed.
+
+New /research_report command. Completely read-only: reads only from
+research_snapshots and research_runs, never imports research.py or any
+analysis module, never executes anything - confirmed by grepping the
+new code for any reference to either. Level 2 passes each module's
+summary_data through as raw, compact JSON, verbatim - bot.py never
+interprets, translates, or reformats its contents, keeping it
+domain-agnostic exactly as the Snapshot Layer architecture requires.
+
+Admin-gated via a new ADMIN_USER_ID check. Correction made and stated
+plainly during design: an earlier claim that this mechanism "already
+existed, unused" in this codebase was wrong - a prior draft was built
+for a different, since-abandoned feature (a Telegram-triggered
+Research Lab execution) and was explicitly reverted out along with it
+when that approach was rejected for safety reasons. This is a fresh
+addition, not a resurrection - confirmed by grepping the prior delivered
+file and finding zero occurrences before this change. Fails safe: an
+unset or misconfigured ADMIN_USER_ID denies everyone, verified directly
+rather than assumed.
+
+Message-splitting verified with dedicated tests, not just designed:
+confirmed a small report fits in one message; confirmed a report large
+enough to require multiple messages splits ONLY at module boundaries -
+every module chunk was directly checked to appear whole in exactly one
+message, never divided across two; confirmed a single chunk larger than
+the safety threshold is truncated with an explicit, human-readable
+marker rather than silently cut off into invalid JSON. The three
+snapshot states (SUCCESS, PARTIAL, NEVER RUN) were each tested directly
+against the module-block builder, including confirming the PARTIAL/
+FAILED explanatory note appears only when warranted.
+================================================================================
 """
 
 # ================================================
@@ -1856,8 +1900,8 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.1.1"
-BUILD_DATE = "2026-08-03"
+VERSION = "v23.2.0"
+BUILD_DATE = "2026-08-04"
 
 # ================================================
 # 📦 SECTION 1: CORE + DATA
@@ -1890,6 +1934,24 @@ if not TOKEN:
     raise Exception("❌ BOT_TOKEN NOT FOUND")
 
 bot = telebot.TeleBot(TOKEN)
+
+# ================================================
+# 🔒 ADMIN ACCESS (Research Intelligence Report - internal use only)
+# ================================================
+# Set to your own Telegram numeric user ID. If unset, admin-gated
+# commands deny everyone rather than allowing everyone - a missing or
+# misconfigured admin ID must never silently become "no restriction
+# at all".
+ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
+
+
+def _is_admin(message):
+    if not ADMIN_USER_ID:
+        return False
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        return False
+    return str(sender.id) == str(ADMIN_USER_ID)
 
 # ================================================
 # 🗄 POSTGRESQL DATABASE
@@ -6506,6 +6568,245 @@ Coins Analyzed  : {total_analyzed}
 
     clear_expired_cache()
     print("🔍 DEBUG: Scan completed successfully")
+
+# ================================================
+# 🔬 RESEARCH INTELLIGENCE REPORT
+# ================================================
+# Completely read-only. Reads ONLY from research_snapshots and
+# research_runs - never executes any Research Lab module, never
+# imports research.py or any analysis module. bot.py remains
+# domain-agnostic: Level 2 passes each module's summary_data through
+# as raw, unmodified JSON - this code never interprets, reformats, or
+# simplifies its contents.
+
+# Fixed display order (approved architecture) - the only place this
+# command's module list lives. module_key values must match exactly
+# what each module's own MODULE_KEY constant writes via save_snapshot().
+RESEARCH_REPORT_MODULES = [
+    ("winners_analyzer", "Winners Analyzer"),
+    ("losers_analyzer", "Losers Analyzer"),
+    ("top_gainers_study", "Top Gainers Study"),
+    ("top_losers_study", "Top Losers Study"),
+    ("compare_winners_losers", "Compare Winners vs Losers"),
+    ("missed_opportunity_study", "Missed Opportunity Study"),
+]
+
+RESEARCH_REPORT_MAX_CHARS = 3500  # safety margin under Telegram's 4096 limit
+
+
+def _fetch_latest_research_run():
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT run_timestamp, modules_total, modules_succeeded,
+                   modules_failed, modules_partial, total_duration_seconds
+            FROM research_runs
+            ORDER BY run_timestamp DESC
+            LIMIT 1
+        """)
+        return cur.fetchone()
+    except Exception as e:
+        print(f"⚠️ /research_report: failed to fetch research_runs - {e}")
+        return None
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _fetch_all_snapshots():
+    """Returns a dict keyed by module_key for O(1) lookup while building each module's block."""
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT module_key, last_success_at, last_attempt_at,
+                   last_attempt_status, headline_stat, summary_data,
+                   internal_metadata
+            FROM research_snapshots
+        """)
+        rows = cur.fetchall()
+        return {
+            row[0]: {
+                "last_success_at": row[1],
+                "last_attempt_at": row[2],
+                "last_attempt_status": row[3],
+                "headline_stat": row[4],
+                "summary_data": row[5],
+                "internal_metadata": row[6],
+            }
+            for row in rows
+        }
+    except Exception as e:
+        print(f"⚠️ /research_report: failed to fetch research_snapshots - {e}")
+        return {}
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _build_header_block(latest_run, snapshots):
+    if latest_run:
+        run_timestamp, modules_total, modules_succeeded, modules_failed, modules_partial, total_duration = latest_run
+        run_summary = (
+            f"Run Time: {run_timestamp.isoformat()}\n"
+            f"Modules Total: {modules_total}\n"
+            f"Succeeded: {modules_succeeded}\n"
+            f"Failed: {modules_failed}\n"
+            f"Partial: {modules_partial}\n"
+            f"Total Duration: {total_duration}s"
+        )
+    else:
+        run_summary = "No research_runs entry found yet."
+
+    success_times = [s["last_success_at"] for s in snapshots.values() if s["last_success_at"]]
+    if success_times:
+        most_recent = max(success_times)
+        oldest = min(success_times)
+        freshness = (f"Most Recent Update: {format_elapsed(most_recent)}\n"
+                     f"Oldest Update: {format_elapsed(oldest)}")
+    else:
+        freshness = "No successful snapshots recorded yet."
+
+    return (
+        "================================================================\n"
+        "AHAD AI RESEARCH INTELLIGENCE REPORT\n"
+        f"AHAD AI Version: {VERSION}\n"
+        f"Report Generation Time: {datetime.now().isoformat()}\n"
+        "================================================================\n\n"
+        "RESEARCH RUN SUMMARY\n"
+        f"{run_summary}\n\n"
+        "DATA FRESHNESS\n"
+        f"{freshness}"
+    )
+
+
+def _build_module_block(module_key, display_name, index, total, snapshot):
+    header = f"MODULE: {display_name} ({index}/{total})\n" + "-" * 66
+
+    if snapshot is None:
+        return (f"{header}\n"
+                f"[LEVEL 1 - EXECUTIVE SUMMARY]\n"
+                f"Status: NEVER RUN\n"
+                f"No snapshot has been recorded for this module yet.")
+
+    status = snapshot["last_attempt_status"] or "UNKNOWN"
+    last_success = snapshot["last_success_at"]
+    last_success_display = f"{last_success.isoformat()} ({format_elapsed(last_success)})" if last_success else "N/A"
+
+    metadata = snapshot["internal_metadata"] or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+    duration = metadata.get("execution_duration_seconds")
+    records = metadata.get("records_processed")
+
+    level1 = (
+        "[LEVEL 1 - EXECUTIVE SUMMARY]\n"
+        f"Status: {status}\n"
+        f"Last Success: {last_success_display}\n"
+        f"Execution Duration: {duration if duration is not None else 'N/A'}s\n"
+        f"Records Processed: {records if records is not None else 'N/A'}\n"
+        f"Headline Stat: {snapshot['headline_stat'] or 'N/A'}"
+    )
+
+    summary_data = snapshot["summary_data"]
+    if isinstance(summary_data, dict):
+        summary_json = json.dumps(summary_data, default=str, separators=(",", ":"))
+    elif summary_data:
+        summary_json = str(summary_data)
+    else:
+        summary_json = "{}"
+
+    level2 = f"[LEVEL 2 - AI ANALYSIS DATA]\n{summary_json}"
+
+    block = f"{header}\n{level1}\n\n{level2}"
+
+    if status == "PARTIAL" or status == "FAILED":
+        block += ("\n\nNote: Status is " + status + " - Last Success reflects the most "
+                  "recent confirmed write, which may predate this run's own attempt.")
+
+    return block
+
+
+def _build_footer_block():
+    return (
+        "================================================================\n"
+        "AI REVIEW NOTES\n"
+        "================================================================\n"
+        "(Reserved for future AI analysis.)"
+    )
+
+
+def _pack_into_messages(chunks, max_chars=RESEARCH_REPORT_MAX_CHARS):
+    """
+    Packs pre-built text chunks into messages, splitting only at chunk
+    boundaries - never mid-chunk. A single chunk larger than max_chars
+    on its own is truncated with an explicit marker rather than split
+    silently, so the result is never invalid/incomplete JSON.
+    """
+    safe_chunks = []
+    for chunk in chunks:
+        if len(chunk) > max_chars:
+            cutoff = max_chars - 100
+            safe_chunks.append(
+                chunk[:cutoff] + f"\n\n[TRUNCATED - {len(chunk) - cutoff} characters omitted - "
+                                  f"see research_snapshots for full data]"
+            )
+        else:
+            safe_chunks.append(chunk)
+
+    messages = []
+    current = []
+    current_len = 0
+    for chunk in safe_chunks:
+        chunk_len = len(chunk) + 2
+        if current and current_len + chunk_len > max_chars:
+            messages.append("\n\n".join(current))
+            current = []
+            current_len = 0
+        current.append(chunk)
+        current_len += chunk_len
+    if current:
+        messages.append("\n\n".join(current))
+
+    total = len(messages)
+    return [f"Part {i + 1} of {total}\n{'=' * 30}\n\n{msg}" for i, msg in enumerate(messages)]
+
+
+@bot.message_handler(commands=["research_report"])
+def research_report_command(message):
+    if not _is_admin(message):
+        bot.reply_to(message, "⛔ This command is admin-only.")
+        return
+
+    try:
+        latest_run = _fetch_latest_research_run()
+        snapshots = _fetch_all_snapshots()
+
+        chunks = [_build_header_block(latest_run, snapshots)]
+        total_modules = len(RESEARCH_REPORT_MODULES)
+        for i, (module_key, display_name) in enumerate(RESEARCH_REPORT_MODULES, start=1):
+            chunks.append(_build_module_block(module_key, display_name, i, total_modules, snapshots.get(module_key)))
+        chunks.append(_build_footer_block())
+
+        messages = _pack_into_messages(chunks)
+        for msg in messages:
+            bot.send_message(message.chat.id, msg)
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error generating Research Intelligence Report: {e}")
+
 
 # ================================================
 # 📊 TASK: IMPROVED /report

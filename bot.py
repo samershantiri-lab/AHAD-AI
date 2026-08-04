@@ -1946,12 +1946,59 @@ ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
 
 
 def _is_admin(message):
+    # --- TEMPORARY DIAGNOSTIC LOGGING (remove once diagnosed) ---
+    print("=" * 50)
+    print("[ADMIN DEBUG]")
+    print("=" * 50)
+
+    command_text = getattr(message, "text", "N/A")
+    sender = getattr(message, "from_user", None)
+    debug_user_id = getattr(sender, "id", None) if sender is not None else None
+    debug_username = getattr(sender, "username", None) if sender is not None else None
+    debug_chat = getattr(message, "chat", None)
+    debug_chat_id = getattr(debug_chat, "id", "N/A") if debug_chat is not None else "N/A"
+
+    print(f"Command: {command_text}")
+    print(f"User ID: {debug_user_id}")
+    print(f"Chat ID: {debug_chat_id}")
+    print(f"Username: {debug_username}")
+    print(f"ADMIN_USER_ID: {ADMIN_USER_ID}")
+    print(f"User ID Type: {type(debug_user_id)}")
+    print(f"ADMIN Type: {type(ADMIN_USER_ID)}")
+    # --- END TEMPORARY DIAGNOSTIC LOGGING (setup) ---
+
     if not ADMIN_USER_ID:
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("Comparison Result: N/A - ADMIN_USER_ID is not set")
+        print("_is_admin(): False")
+        print("Rejected at: 'if not ADMIN_USER_ID' - ADMIN_USER_ID is missing or empty")
+        print("=" * 50)
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         return False
+
     sender = getattr(message, "from_user", None)
     if sender is None:
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("Comparison Result: N/A - message.from_user is None")
+        print("_is_admin(): False")
+        print("Rejected at: 'if sender is None' - this message has no from_user")
+        print("=" * 50)
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         return False
-    return str(sender.id) == str(ADMIN_USER_ID)
+
+    result = str(sender.id) == str(ADMIN_USER_ID)
+
+    # --- TEMPORARY DIAGNOSTIC LOGGING ---
+    print(f"Comparison Result: {result}")
+    print(f"_is_admin(): {result}")
+    if not result:
+        print("Rejected at: final return - str(sender.id) != str(ADMIN_USER_ID)")
+    else:
+        print("Accepted: str(sender.id) == str(ADMIN_USER_ID)")
+    print("=" * 50)
+    # --- END TEMPORARY DIAGNOSTIC LOGGING ---
+
+    return result
 
 # ================================================
 # 🗄 POSTGRESQL DATABASE
@@ -6786,7 +6833,14 @@ def _pack_into_messages(chunks, max_chars=RESEARCH_REPORT_MAX_CHARS):
 
 @bot.message_handler(commands=["research_report"])
 def research_report_command(message):
+    # --- TEMPORARY DIAGNOSTIC LOGGING (remove once diagnosed) ---
+    print("[ADMIN DEBUG] /research_report command received")
+    # --- END TEMPORARY DIAGNOSTIC LOGGING ---
+
     if not _is_admin(message):
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("[ADMIN DEBUG] Sending rejection message: 'This command is admin-only.'")
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         bot.reply_to(message, "⛔ This command is admin-only.")
         return
 

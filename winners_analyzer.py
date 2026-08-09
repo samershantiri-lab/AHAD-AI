@@ -132,7 +132,9 @@ def init_research_winners_table():
             volume_acceleration REAL,
             volume_ratio REAL,
             trade_dna JSONB,
-            recorded_at TIMESTAMP DEFAULT NOW()
+            recorded_at TIMESTAMP DEFAULT NOW(),
+            market_health_score REAL,
+            market_snapshot_json JSONB
         )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_winners_trade_id ON research_winners(trade_id)")
@@ -169,7 +171,8 @@ def collect_new_winners():
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT t.id, t.version, t.version_id, t.symbol, t.side, t.result, t.initial_snapshot
+        SELECT t.id, t.version, t.version_id, t.symbol, t.side, t.result, t.initial_snapshot,
+               t.market_health_score, t.market_snapshot
         FROM trades t
         WHERE t.status = 'CLOSED'
           AND t.result IN ('WIN_TP1', 'WIN_TP2', 'WIN_TP3')
@@ -179,7 +182,7 @@ def collect_new_winners():
         """)
         rows = cur.fetchall()
 
-        for trade_id, version, version_id, symbol, side, result, dna in rows:
+        for trade_id, version, version_id, symbol, side, result, dna, market_health_score, market_snapshot in rows:
             dna = dna or {}
             try:
                 cur.execute("""
@@ -189,14 +192,16 @@ def collect_new_winners():
                     risk_grade, flow, flow_grade, momentum_score,
                     compression_status, market_regime, sector, market_health,
                     session, ema20, ema50, ema200, rsi_15m, atr, macd,
-                    volume_acceleration, volume_ratio, trade_dna
+                    volume_acceleration, volume_ratio, trade_dna,
+                    market_health_score, market_snapshot_json
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s,
+                    %s, %s
                 )
                 ON CONFLICT (trade_id) DO NOTHING
                 """, (
@@ -208,7 +213,8 @@ def collect_new_winners():
                     dna.get("session"), dna.get("ema20"), dna.get("ema50"), dna.get("ema200"),
                     dna.get("rsi_15m"), dna.get("atr"), dna.get("macd"),
                     dna.get("volume_acceleration"), dna.get("volume_ratio"),
-                    json.dumps(dna, default=str)
+                    json.dumps(dna, default=str),
+                    market_health_score, json.dumps(market_snapshot, default=str) if market_snapshot else None
                 ))
                 # ON CONFLICT DO NOTHING never raises on a duplicate -
                 # cur.rowcount is the only way to tell whether a row was

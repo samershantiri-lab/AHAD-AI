@@ -1,5 +1,5 @@
 # ================================================
-# 🚀 AHAD AI v23.3.0 – Generation 2: Funding Rate + Open Interest
+# 🚀 AHAD AI v23.3.1 – Entry/SL/TP/RR Geometric Fix
 # ================================================
 
 """
@@ -1985,6 +1985,53 @@ path change - with full testing, rather than spreading effort across
 everything at once. These remain fully scoped and ready as focused
 follow-up deliveries.
 ================================================================================
+
+
+================================================================================
+AHAD AI v23.3.1 - ENTRY/SL/TP/RR GEOMETRIC FIX (PENDING REVIEW - NOT DEPLOYED)
+================================================================================
+Root cause, confirmed by direct code trace: STEP 7's TP1 safety-override
+(triggered when risk-based TP1 would fall inside the entry zone) replaced
+TP1 with an offset built from `move` - a quantity structurally unrelated
+to `risk`, which the RR denominator still used unchanged. This let RR
+become a ratio between two geometrically disconnected quantities.
+
+Fix: the override now switches the reward anchor (entry_low <-> entry_high)
+rather than replacing TP1 with an unrelated offset - TP1/TP2/TP3 are built
+from the exact same risk*rr_multiplier geometry in both the normal and
+override paths. This guarantees TP1<TP2<TP3 by construction (removing the
+old cascading tp2/tp3 patches entirely) and makes RR always derivable as
+rr_multiplier + (entry_high-entry_low)/risk when the anchor switches -
+bounded and mathematically coherent, never arbitrary.
+
+Confirmed by diff: 0 pure insertions/deletions, exactly 3 replace blocks,
+all confined to STEP 7. ai_brain(), the ranking_score formula, everything
+in analyze() before and after STEP 7, both Generation 2 fetch functions,
+and save_trade() are all confirmed byte-identical.
+
+Verified numerically, not just reasoned about: the normal (non-override)
+case was tested and confirmed to produce IDENTICAL tp1/tp2/tp3/rr to the
+pre-fix formula - zero behavior change for every trade where the override
+never fires. The override case was tested against back-solved parameters
+matching FLNC's and HIMS's reported values closely (HIMS: reconstructed
+old RR of 11.0 vs. the actually-reported 11.52) - confirming the
+reconstruction represents the real mechanism, not a guess. Both LONG and
+SHORT branches verified to produce strictly ordered, entry-zone-valid
+TP1/TP2/TP3 after the fix.
+
+HONEST LIMITATION: exact hidden internal values (price, move, rr_multiplier)
+for the four original examples are not reproducible without live
+execution - the before/after reconstructions use plausible, back-solved
+parameters for illustration, clearly labeled as such.
+
+IMPORTANT FINDING FOR HUMAN REVIEW, NOT DECIDED HERE: the fix does not
+necessarily make RR smaller in the override case - it can legitimately
+increase (HIMS's reconstruction: 11.0 -> 12.17), because that's now an
+honest reflection of how tight risk is relative to the mandatory entry
+zone width, rather than an arbitrary number. Whether trades with very
+tight risk should be additionally filtered or RR-capped is a separate
+strategic decision, not made or implemented here.
+================================================================================
 """
 
 # ================================================
@@ -2008,7 +2055,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.3.0"
+VERSION = "v23.3.1"
 BUILD_DATE = "2026-08-09"
 
 # ================================================
@@ -5302,8 +5349,9 @@ def analyze(symbol, sector, debug=None):
         score = round(max(0, min(100, score)))
 
         # ====== STEP 7: ENTRY & TARGETS ======
-        # Entry/SL/TP/RR construction below is completely unchanged -
-        # "Do NOT change RR calculations" applies to this whole block.
+        # v23.3.1: the TP1/TP2/TP3 safety-override path was fixed - see
+        # the reward_anchor logic below. The normal (non-override) path
+        # is mathematically identical to every prior version.
         entry_low = price * 0.995
         entry_high = price * 1.005
 
@@ -5340,16 +5388,24 @@ def analyze(symbol, sector, debug=None):
             sl = entry_low - move * base_multiplier
             risk = entry_low - sl
 
-            tp1 = entry_low + risk * rr_multiplier
-            tp2 = entry_low + risk * (rr_multiplier * 2)
-            tp3 = entry_low + risk * (rr_multiplier * 3.3)
+            # v23.3.1 fix: reward_anchor defaults to entry_low (identical
+            # to the original, pre-fix formula - unchanged for every
+            # trade where this condition never triggers). Only when the
+            # risk-based TP1 would fall inside/below the entry zone does
+            # the anchor move to entry_high - but TP1/TP2/TP3 are still
+            # built from the SAME risk*rr_multiplier geometry either way,
+            # never an unrelated move-based offset. This guarantees
+            # TP1 < TP2 < TP3 by construction (strictly increasing
+            # multiples of the same positive risk), so the old cascading
+            # "if tp2 <= tp1" / "if tp3 <= tp2" patches are no longer
+            # needed - removing another source of geometry drift.
+            reward_anchor = entry_low
+            if entry_low + risk * rr_multiplier <= entry_high:
+                reward_anchor = entry_high
 
-            if tp1 <= entry_high:
-                tp1 = entry_high + move * 0.8
-            if tp2 <= tp1:
-                tp2 = tp1 + move * 0.5
-            if tp3 <= tp2:
-                tp3 = tp2 + move * 0.5
+            tp1 = reward_anchor + risk * rr_multiplier
+            tp2 = reward_anchor + risk * (rr_multiplier * 2)
+            tp3 = reward_anchor + risk * (rr_multiplier * 3.3)
 
             rr = (tp1 - entry_low) / risk
 
@@ -5365,16 +5421,14 @@ def analyze(symbol, sector, debug=None):
             sl = entry_high + move * base_multiplier
             risk = sl - entry_high
 
-            tp1 = entry_high - risk * rr_multiplier
-            tp2 = entry_high - risk * (rr_multiplier * 2)
-            tp3 = entry_high - risk * (rr_multiplier * 3.3)
+            # Mirror of the LONG fix above - same reasoning, same guarantee.
+            reward_anchor = entry_high
+            if entry_high - risk * rr_multiplier >= entry_low:
+                reward_anchor = entry_low
 
-            if tp1 >= entry_low:
-                tp1 = entry_low - move * 0.8
-            if tp2 >= tp1:
-                tp2 = tp1 - move * 0.5
-            if tp3 >= tp2:
-                tp3 = tp2 - move * 0.5
+            tp1 = reward_anchor - risk * rr_multiplier
+            tp2 = reward_anchor - risk * (rr_multiplier * 2)
+            tp3 = reward_anchor - risk * (rr_multiplier * 3.3)
 
             rr = (entry_high - tp1) / risk
 

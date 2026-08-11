@@ -145,9 +145,11 @@ def fetch_usdt_swap_symbols():
 def fetch_daily_change(symbol):
     """
     Percent change over the most recent ~24h, using 24 hourly candles.
-    Returns {"change_pct": float, "price": float} or None on any
-    failure - a single symbol's fetch failing never stops the rest of
-    the study.
+    Returns {"change_pct": float, "price": float, "candles": [...]} or
+    None on any failure - a single symbol's fetch failing never stops
+    the rest of the study. `candles` (raw OKX response, most-recent-
+    first) is now included so compute_move_start_proxy() can use the
+    exact same fetch - no second API call needed.
     """
     try:
         url = "https://www.okx.com/api/v5/market/candles"
@@ -169,10 +171,55 @@ def fetch_daily_change(symbol):
             return None
 
         change_pct = ((latest_close - oldest_close) / oldest_close) * 100
-        return {"change_pct": change_pct, "price": latest_close}
+        return {"change_pct": change_pct, "price": latest_close, "candles": candles}
     except Exception as e:
         print(f"⚠️ Top Losers Study: failed to fetch candles for {symbol} - {e}")
         return None
+
+
+# ================================================
+# 🎯 RESEARCH MOVE START PROXY (Research Layer v1)
+# ================================================
+# NOT the actual move start - identical mechanism to Top Gainers
+# Study's own (see that file's docstring for the full derivation and
+# the worked example that verified it before either copy was written).
+# The algorithm itself is sign-aware and works correctly for the
+# negative total_change_pct values this module deals with.
+MOVE_START_PRIMARY_THRESHOLD = 0.75
+MOVE_START_SENSITIVITY_THRESHOLDS = [0.60, 0.75, 0.90]
+EARLY_BUFFER_HOURS = 2
+EARLY_BUFFER_SENSITIVITY_HOURS = [1, 2, 3]
+LATE_THRESHOLD = 0.80
+
+
+def compute_move_start_proxy(candles, total_change_pct):
+    """Identical to Top Gainers Study's own - see that file for the full derivation."""
+    if not candles or len(candles) < 2 or total_change_pct == 0:
+        return None
+
+    final_close = float(candles[0][4])
+    ordered = list(reversed(candles))
+
+    results = {}
+    for threshold in MOVE_START_SENSITIVITY_THRESHOLDS:
+        last_match = None
+        target = threshold * total_change_pct
+        for candle in ordered[:-1]:
+            try:
+                candle_close = float(candle[4])
+            except (ValueError, TypeError):
+                continue
+            if candle_close == 0:
+                continue
+            remaining_pct = ((final_close - candle_close) / candle_close) * 100
+            satisfies = remaining_pct >= target if total_change_pct > 0 else remaining_pct <= target
+            if satisfies:
+                last_match = candle
+        results[threshold] = (
+            {"timestamp_ms": int(last_match[0]), "close": float(last_match[4])}
+            if last_match else None
+        )
+    return results
 
 
 def find_top_losers(limit=TOP_N_LOSERS):
@@ -190,7 +237,8 @@ def find_top_losers(limit=TOP_N_LOSERS):
     for symbol in symbols:
         change = fetch_daily_change(symbol)
         if change is not None:
-            candidates.append({"symbol": symbol, **change})
+            proxy = compute_move_start_proxy(change["candles"], change["change_pct"])
+            candidates.append({"symbol": symbol, **change, "move_start_proxy": proxy})
         time.sleep(REQUEST_DELAY_SECONDS)
 
     candidates.sort(key=lambda c: c["change_pct"])  # ascending - most negative first
@@ -249,6 +297,9 @@ def init_research_top_losers_table():
             volume_ratio REAL,
             trade_dna JSONB,
             recorded_at TIMESTAMP DEFAULT NOW(),
+            research_move_start_proxy_60 TIMESTAMP,
+            research_move_start_proxy_75 TIMESTAMP,
+            research_move_start_proxy_90 TIMESTAMP,
             UNIQUE(symbol, observed_date)
         )
         """)
@@ -314,6 +365,15 @@ def collect_top_losers():
             trade_info = _lookup_trade_dna(cur, symbol)
             dna = trade_info["dna"] if trade_info else {}
 
+            proxy = l.get("move_start_proxy") or {}
+            proxy_datetimes = {}
+            for threshold in (0.60, 0.75, 0.90):
+                entry = proxy.get(threshold)
+                proxy_datetimes[threshold] = (
+                    datetime.fromtimestamp(entry["timestamp_ms"] / 1000)
+                    if entry else None
+                )
+
             try:
                 cur.execute("""
                 INSERT INTO research_top_losers (
@@ -323,7 +383,9 @@ def collect_top_losers():
                     risk_grade, flow, flow_grade, momentum_score,
                     compression_status, market_regime, sector, market_health,
                     session, ema20, ema50, ema200, rsi_15m, atr, macd,
-                    volume_acceleration, volume_ratio, trade_dna
+                    volume_acceleration, volume_ratio, trade_dna,
+                    research_move_start_proxy_60, research_move_start_proxy_75,
+                    research_move_start_proxy_90
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
@@ -331,6 +393,7 @@ def collect_top_losers():
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
                     %s, %s, %s
                 )
                 ON CONFLICT (symbol, observed_date) DO NOTHING
@@ -348,7 +411,8 @@ def collect_top_losers():
                     dna.get("session"), dna.get("ema20"), dna.get("ema50"), dna.get("ema200"),
                     dna.get("rsi_15m"), dna.get("atr"), dna.get("macd"),
                     dna.get("volume_acceleration"), dna.get("volume_ratio"),
-                    json.dumps(dna, default=str)
+                    json.dumps(dna, default=str),
+                    proxy_datetimes[0.60], proxy_datetimes[0.75], proxy_datetimes[0.90]
                 ))
                 # ON CONFLICT DO NOTHING never raises on a duplicate -
                 # cur.rowcount is the only way to tell whether a row was

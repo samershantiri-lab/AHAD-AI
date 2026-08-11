@@ -145,9 +145,11 @@ def fetch_usdt_swap_symbols():
 def fetch_daily_change(symbol):
     """
     Percent change over the most recent ~24h, using 24 hourly candles.
-    Returns {"change_pct": float, "price": float} or None on any
-    failure - a single symbol's fetch failing never stops the rest of
-    the study.
+    Returns {"change_pct": float, "price": float, "candles": [...]} or
+    None on any failure - a single symbol's fetch failing never stops
+    the rest of the study. `candles` (raw OKX response, most-recent-
+    first) is now included so compute_move_start_proxy() can use the
+    exact same fetch - no second API call needed.
     """
     try:
         url = "https://www.okx.com/api/v5/market/candles"
@@ -169,10 +171,71 @@ def fetch_daily_change(symbol):
             return None
 
         change_pct = ((latest_close - oldest_close) / oldest_close) * 100
-        return {"change_pct": change_pct, "price": latest_close}
+        return {"change_pct": change_pct, "price": latest_close, "candles": candles}
     except Exception as e:
         print(f"⚠️ Top Gainers Study: failed to fetch candles for {symbol} - {e}")
         return None
+
+
+# ================================================
+# 🎯 RESEARCH MOVE START PROXY (Research Layer v1)
+# ================================================
+# NOT the actual move start - an estimate based on a cumulative-return
+# threshold over the same 24 hourly candles already fetched above.
+# Named "proxy" everywhere deliberately, per the approved specification,
+# so this is never mistaken for a ground-truth timestamp the historical
+# data cannot actually provide.
+#
+# Approved parameters:
+MOVE_START_PRIMARY_THRESHOLD = 0.75
+MOVE_START_SENSITIVITY_THRESHOLDS = [0.60, 0.75, 0.90]
+EARLY_BUFFER_HOURS = 2
+EARLY_BUFFER_SENSITIVITY_HOURS = [1, 2, 3]
+LATE_THRESHOLD = 0.80  # independent of the MOVE_START thresholds above
+
+
+def compute_move_start_proxy(candles, total_change_pct):
+    """
+    For each sensitivity threshold, finds the LATEST (most recent)
+    candle in the window at which the remaining return from that
+    candle's close to the final close is still >= threshold * total_
+    change_pct (matching sign). This is deliberately NOT "the first
+    candle scanning oldest-to-newest that satisfies the condition" -
+    every candle during a quiet pre-move period trivially satisfies
+    "100% of the move is still ahead", so taking the first match would
+    always return the oldest candle in the window, never the actual
+    transition point. Verified against a hand-derived worked example
+    (flat-then-jump price path) before this was written.
+
+    Returns {threshold: {"timestamp_ms": int, "close": float} or None, ...}
+    or None entirely if the input doesn't support the calculation.
+    """
+    if not candles or len(candles) < 2 or total_change_pct == 0:
+        return None
+
+    final_close = float(candles[0][4])
+    ordered = list(reversed(candles))  # oldest-first
+
+    results = {}
+    for threshold in MOVE_START_SENSITIVITY_THRESHOLDS:
+        last_match = None
+        target = threshold * total_change_pct
+        for candle in ordered[:-1]:  # exclude the final candle (remaining=0 trivially)
+            try:
+                candle_close = float(candle[4])
+            except (ValueError, TypeError):
+                continue
+            if candle_close == 0:
+                continue
+            remaining_pct = ((final_close - candle_close) / candle_close) * 100
+            satisfies = remaining_pct >= target if total_change_pct > 0 else remaining_pct <= target
+            if satisfies:
+                last_match = candle
+        results[threshold] = (
+            {"timestamp_ms": int(last_match[0]), "close": float(last_match[4])}
+            if last_match else None
+        )
+    return results
 
 
 def find_top_gainers(limit=TOP_N_GAINERS):
@@ -185,7 +248,8 @@ def find_top_gainers(limit=TOP_N_GAINERS):
     for symbol in symbols:
         change = fetch_daily_change(symbol)
         if change is not None:
-            candidates.append({"symbol": symbol, **change})
+            proxy = compute_move_start_proxy(change["candles"], change["change_pct"])
+            candidates.append({"symbol": symbol, **change, "move_start_proxy": proxy})
         time.sleep(REQUEST_DELAY_SECONDS)
 
     candidates.sort(key=lambda c: c["change_pct"], reverse=True)
@@ -243,6 +307,9 @@ def init_research_top_gainers_table():
             volume_ratio REAL,
             trade_dna JSONB,
             recorded_at TIMESTAMP DEFAULT NOW(),
+            research_move_start_proxy_60 TIMESTAMP,
+            research_move_start_proxy_75 TIMESTAMP,
+            research_move_start_proxy_90 TIMESTAMP,
             UNIQUE(symbol, observed_date)
         )
         """)
@@ -308,6 +375,15 @@ def collect_top_gainers():
             trade_info = _lookup_trade_dna(cur, symbol)
             dna = trade_info["dna"] if trade_info else {}
 
+            proxy = g.get("move_start_proxy") or {}
+            proxy_datetimes = {}
+            for threshold in (0.60, 0.75, 0.90):
+                entry = proxy.get(threshold)
+                proxy_datetimes[threshold] = (
+                    datetime.fromtimestamp(entry["timestamp_ms"] / 1000)
+                    if entry else None
+                )
+
             try:
                 cur.execute("""
                 INSERT INTO research_top_gainers (
@@ -317,7 +393,9 @@ def collect_top_gainers():
                     risk_grade, flow, flow_grade, momentum_score,
                     compression_status, market_regime, sector, market_health,
                     session, ema20, ema50, ema200, rsi_15m, atr, macd,
-                    volume_acceleration, volume_ratio, trade_dna
+                    volume_acceleration, volume_ratio, trade_dna,
+                    research_move_start_proxy_60, research_move_start_proxy_75,
+                    research_move_start_proxy_90
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
@@ -325,6 +403,7 @@ def collect_top_gainers():
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
                     %s, %s, %s
                 )
                 ON CONFLICT (symbol, observed_date) DO NOTHING
@@ -342,7 +421,8 @@ def collect_top_gainers():
                     dna.get("session"), dna.get("ema20"), dna.get("ema50"), dna.get("ema200"),
                     dna.get("rsi_15m"), dna.get("atr"), dna.get("macd"),
                     dna.get("volume_acceleration"), dna.get("volume_ratio"),
-                    json.dumps(dna, default=str)
+                    json.dumps(dna, default=str),
+                    proxy_datetimes[0.60], proxy_datetimes[0.75], proxy_datetimes[0.90]
                 ))
                 # ON CONFLICT DO NOTHING never raises on a duplicate -
                 # cur.rowcount is the only way to tell whether a row was

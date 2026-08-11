@@ -2066,6 +2066,8 @@ import os
 import time
 import re
 import json
+import csv
+import io
 import threading
 import traceback
 import requests
@@ -7238,6 +7240,74 @@ def _pack_into_messages(chunks, max_chars=RESEARCH_REPORT_MAX_CHARS):
 # what it returns. Deliberately NOT admin-gated: gating a command
 # whose purpose is to diagnose why admin access is failing would make
 # it useless in exactly the scenario it exists for.
+
+# ================================================
+# 📤 DATA EXPORT (/export) - AHAD AI v23.3.1, Data Export label only
+# ================================================
+# Read-only, admin-gated, no relation to AI Brain/Ranking/Scanner/
+# Research Lab. SELECT * with column names taken from cur.description
+# at runtime - never an assumed/hardcoded column list, so this stays
+# correct automatically as columns are added in the future.
+
+@bot.message_handler(commands=["export"])
+def export_command(message):
+    if not _is_admin(message):
+        bot.reply_to(message, "⛔ This command is admin-only.")
+        return
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM trades")
+        rows = cur.fetchall()
+        column_names = [desc[0] for desc in cur.description]
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(column_names)
+
+        for row in rows:
+            csv_row = []
+            for value in row:
+                if value is None:
+                    csv_row.append("")
+                elif isinstance(value, (dict, list)):
+                    # JSONB fields (initial_snapshot, snapshot_data,
+                    # market_snapshot, validation_data, etc.) - kept
+                    # whole, never flattened or dropped.
+                    csv_row.append(json.dumps(value, default=str))
+                elif isinstance(value, datetime):
+                    csv_row.append(value.isoformat())
+                else:
+                    # Covers Decimal, int, float, str, bool, and any
+                    # other type transparently via str() - never
+                    # raises on an unexpected type.
+                    csv_row.append(str(value))
+            writer.writerow(csv_row)
+
+        csv_bytes = io.BytesIO(buffer.getvalue().encode("utf-8"))
+        filename = f"ahad_ai_trades_{datetime.now().strftime('%Y-%m-%d')}.csv"
+        csv_bytes.name = filename
+
+        bot.send_document(message.chat.id, csv_bytes, visible_file_name=filename,
+                           caption=f"📤 AHAD AI Data Export\n{len(rows)} trades, "
+                                   f"{len(column_names)} columns\n{VERSION}")
+        print(f"📤 /export: sent {len(rows)} rows, {len(column_names)} columns to chat {message.chat.id}")
+
+    except Exception as e:
+        # Never surface the raw exception - it can contain a
+        # connection string or other internal detail. Logged
+        # server-side only.
+        print(f"⚠️ /export failed: {e}")
+        bot.reply_to(message, "❌ Export failed. Please try again.")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 
 @bot.message_handler(commands=["whoami"])
 def whoami_command(message):

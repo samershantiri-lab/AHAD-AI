@@ -172,31 +172,51 @@ def direction_x_global_condition(trades):
 # ================================================
 
 def _quartile_boundaries(values):
-    """Returns the 3 cut points splitting `values` into 4 quartiles, from the ACTUAL data - never assumed fixed ranges."""
+    """UNCHANGED from before this fix - returns the 3 raw cut points from the actual data, never assumed fixed ranges."""
     if len(values) < 4:
         return None
     sorted_vals = sorted(values)
     return statistics.quantiles(sorted_vals, n=4)
 
 
-def _assign_quartile(value, boundaries):
-    if value is None or boundaries is None:
+def _effective_groups(boundaries):
+    """
+    Determines the actual number of distinguishable value-based groups
+    from the 3 raw boundaries - fewer than 4 when adjacent boundaries
+    collide exactly (heavy value clustering). Exact equality is the
+    detection criterion (not an arbitrary "closeness" threshold) - it's
+    the precise, deterministic condition under which the old chained
+    <= comparison logic produced a structurally empty bucket, and it
+    requires no new undocumented parameter to justify.
+    """
+    return sorted(set(boundaries))
+
+
+def _assign_bucket(value, distinct_boundaries):
+    """
+    Assigns using ONLY the distinct boundary set - a pure value-based
+    partition. Never rank-based, so identical values always land in
+    the same bucket together, and no row is ever moved between buckets
+    to force equal group sizes (per the explicit requirement).
+    """
+    if value is None or not distinct_boundaries:
         return None
-    q1, q2, q3 = boundaries
-    if value <= q1:
-        return "Q1"
-    elif value <= q2:
-        return "Q2"
-    elif value <= q3:
-        return "Q3"
-    return "Q4"
+    for i, b in enumerate(distinct_boundaries):
+        if value <= b:
+            return f"Group {i + 1}"
+    return f"Group {len(distinct_boundaries) + 1}"
 
 
 def quartile_x_direction(trades, field_name):
     """
     Generic quartile analysis for a numeric field (market_health_score
     or acceptance_rate). Boundaries computed from the trades that
-    actually have this field populated - not assumed.
+    actually have this field populated - not assumed. Reports the
+    REAL number of distinguishable groups - determined by which
+    buckets actually contain at least one value, not by boundary
+    arithmetic alone (a fully-degenerate case where every value is
+    identical would otherwise still imply a trailing empty group,
+    caught during testing before this was delivered).
     """
     values = [t[field_name] for t in trades if t.get(field_name) is not None]
     boundaries = _quartile_boundaries(values)
@@ -204,16 +224,44 @@ def quartile_x_direction(trades, field_name):
         return {"available": False, "reason": f"Fewer than 4 non-null values for {field_name} - "
                                                  f"cannot compute quartiles (n={len(values)})."}
 
+    distinct_boundaries = _effective_groups(boundaries)
+
+    # Determine which groups actually contain at least one value -
+    # not just how many the boundary arithmetic nominally allows.
+    assigned_labels = set()
+    for v in values:
+        label = _assign_bucket(v, distinct_boundaries)
+        if label:
+            assigned_labels.add(label)
+    ordered_labels = sorted(assigned_labels, key=lambda l: int(l.split()[1]))
+    effective_group_count = len(ordered_labels)
+
+    low_resolution_warning = None
+    if effective_group_count < 4:
+        collided = 4 - effective_group_count
+        low_resolution_warning = (
+            f"LOW DISTRIBUTION RESOLUTION — {field_name} too clustered for reliable quartile analysis "
+            f"(only {effective_group_count} distinguishable group(s) instead of 4; "
+            f"{collided} quartile boundary/boundaries collided exactly or produced no members)."
+        )
+
     table = {}
-    for q in ["Q1", "Q2", "Q3", "Q4"]:
-        long_rows = [t for t in trades if t["side"] == "LONG" and _assign_quartile(t.get(field_name), boundaries) == q]
-        short_rows = [t for t in trades if t["side"] == "SHORT" and _assign_quartile(t.get(field_name), boundaries) == q]
-        table[q] = {
+    for label in ordered_labels:
+        long_rows = [t for t in trades if t["side"] == "LONG" and _assign_bucket(t.get(field_name), distinct_boundaries) == label]
+        short_rows = [t for t in trades if t["side"] == "SHORT" and _assign_bucket(t.get(field_name), distinct_boundaries) == label]
+        table[label] = {
             "LONG": _cell_stats(long_rows),
             "SHORT": _cell_stats(short_rows),
             "evidence_level": _cell_evidence(long_rows, short_rows),
         }
-    return {"available": True, "boundaries": [round(b, 2) for b in boundaries], "table": table}
+
+    return {
+        "available": True,
+        "boundaries": [round(b, 2) for b in boundaries],
+        "effective_group_count": effective_group_count,
+        "low_resolution_warning": low_resolution_warning,
+        "table": table,
+    }
 
 
 # ================================================
@@ -387,6 +435,9 @@ def print_report(trades):
     print("\n[3) Market Health Quartiles]")
     if health_result["available"]:
         print(f"  Boundaries (actual data): {health_result['boundaries']}")
+        print(f"  Effective distinguishable groups: {health_result['effective_group_count']} of 4")
+        if health_result["low_resolution_warning"]:
+            print(f"  ⚠️ {health_result['low_resolution_warning']}")
         _print_direction_table(health_result["table"], "Market Health x Direction")
     else:
         print(f"  {health_result['reason']}")
@@ -394,6 +445,9 @@ def print_report(trades):
     print("\n[4) Acceptance Rate Quartiles]")
     if acceptance_result["available"]:
         print(f"  Boundaries (actual data): {acceptance_result['boundaries']}")
+        print(f"  Effective distinguishable groups: {acceptance_result['effective_group_count']} of 4")
+        if acceptance_result["low_resolution_warning"]:
+            print(f"  ⚠️ {acceptance_result['low_resolution_warning']}")
         _print_direction_table(acceptance_result["table"], "Acceptance Rate x Direction")
     else:
         print(f"  {acceptance_result['reason']}")

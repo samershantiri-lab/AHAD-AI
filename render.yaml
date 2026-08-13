@@ -1,0 +1,60 @@
+# ==============================================================================
+# AHAD AI - Render Cron Jobs (Reports Layer v1)
+# ==============================================================================
+# OPTIONAL Infrastructure-as-Code file. Render's own documentation
+# recommends this over manual dashboard configuration ("defining it as
+# code is the more durable approach"), but the exact same three
+# schedules can be entered manually in the Render dashboard instead -
+# this file changes nothing about how daily_report.py/weekly_report.py/
+# research_runner.py themselves behave.
+#
+# ALL SCHEDULES BELOW ARE UTC - confirmed directly from Render's own
+# documentation and official skill repository: "Render Cron is UTC",
+# "UTC everywhere: cron expressions... mean UTC". Asia/Amman is UTC+3
+# with no DST (unchanged since Oct 2022), so the UTC times below are a
+# fixed, permanent conversion - never needs seasonal adjustment.
+#
+# 03:00 Asia/Amman = 00:00 UTC
+# ==============================================================================
+
+services:
+  - type: cron
+    name: ahad-ai-daily-report
+    schedule: "0 0 * * *"  # 00:00 UTC daily = 03:00 Asia/Amman
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python daily_report.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_USER_ID
+        sync: false
+
+  - type: cron
+    name: ahad-ai-research-runner
+    schedule: "0 0 * * 0"  # 00:00 UTC every Sunday = 03:00 Asia/Amman
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python research_runner.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+
+  - type: cron
+    name: ahad-ai-weekly-report
+    schedule: "20 0 * * 0"  # 00:20 UTC every Sunday = 03:20 Asia/Amman
+    # 20-minute margin after Research Runner's ~5-minute (299s) typical
+    # duration - see the safety-margin analysis in the delivery report
+    # for this task. Not changed unilaterally from the approved value.
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python weekly_report.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_USER_ID
+        sync: false

@@ -7029,13 +7029,194 @@ Coins Analyzed  : {total_analyzed}
 # Fixed display order (approved architecture) - the only place this
 # command's module list lives. module_key values must match exactly
 # what each module's own MODULE_KEY constant writes via save_snapshot().
+# Fixed display order (approved architecture) - the only place this
+# command's module list lives. module_key values must match exactly
+# what each module's own MODULE_KEY constant writes via save_snapshot().
+# Reorganized into three sections per the approved report layout.
+# Each entry's third element is the Level 2 formatter for that
+# specific module's summary_data shape - verified directly against
+# each module's own save_snapshot() call before being written here,
+# never guessed.
+
+def _na_or_value(value, label=""):
+    """N/A for a genuinely missing/None value - never silently 0."""
+    return "N/A" if value is None else f"{value}{label}"
+
+
+def _format_core_winners_losers(summary_data, kind):
+    prefix = "winners" if kind == "winners" else "losers"
+    return (
+        f"New this run: {_na_or_value(summary_data.get(f'new_{prefix}_this_run'))}\n"
+        f"Total recorded: {_na_or_value(summary_data.get(f'total_{prefix}'))}\n"
+        f"Avg Flow: {_na_or_value(summary_data.get('avg_flow'))}\n"
+        f"Avg RSI: {_na_or_value(summary_data.get('avg_rsi'))}\n"
+        f"Avg Momentum: {_na_or_value(summary_data.get('avg_momentum_score'))}\n"
+        f"By Quality Grade: {summary_data.get('by_quality_grade') or 'N/A'}"
+    )
+
+
+def _format_core_winners(summary_data):
+    return _format_core_winners_losers(summary_data, "winners")
+
+
+def _format_core_losers(summary_data):
+    return _format_core_winners_losers(summary_data, "losers")
+
+
+def _format_core_gainers_losers_study(summary_data, kind):
+    prefix = "gainers" if kind == "gainers" else "losers"
+    return (
+        f"New this run: {_na_or_value(summary_data.get(f'new_{prefix}_this_run'))}\n"
+        f"Total recorded: {_na_or_value(summary_data.get(f'total_{prefix}_recorded'))}\n"
+        f"With AHAD AI trade: {_na_or_value(summary_data.get(f'{prefix}_with_ahad_ai_trade'))}\n"
+        f"Avg Change: {_na_or_value(summary_data.get('avg_change_pct'), '%')}\n"
+        f"Avg Flow: {_na_or_value(summary_data.get('avg_flow'))}\n"
+        f"Avg RSI: {_na_or_value(summary_data.get('avg_rsi'))}"
+    )
+
+
+def _format_core_top_gainers(summary_data):
+    return _format_core_gainers_losers_study(summary_data, "gainers")
+
+
+def _format_core_top_losers(summary_data):
+    return _format_core_gainers_losers_study(summary_data, "losers")
+
+
+def _format_core_compare(summary_data):
+    top_metrics = summary_data.get("top_metrics_worth_investigating") or []
+    lines = [
+        f"Winners sample: {_na_or_value(summary_data.get('winners_sample_size'))}",
+        f"Losers sample: {_na_or_value(summary_data.get('losers_sample_size'))}",
+        "Top metrics worth investigating:",
+    ]
+    if top_metrics:
+        for m in top_metrics[:3]:
+            lines.append(f"  - [{m.get('scope', '?')}] {m.get('metric', '?')} "
+                          f"(Priority Score {m.get('priority_score', '?')})")
+    else:
+        lines.append("  None cleared the minimum sample threshold this run")
+    return "\n".join(lines)
+
+
+def _format_core_missed_opportunity(summary_data):
+    return (
+        f"Lookback window: {_na_or_value(summary_data.get('lookback_hours'), 'h')}\n"
+        f"Gainers checked: {_na_or_value(summary_data.get('gainers_checked'))} | "
+        f"matched: {_na_or_value(summary_data.get('gainers_matched'))} "
+        f"({_na_or_value(summary_data.get('gainers_match_rate_pct'), '%')})\n"
+        f"Losers checked: {_na_or_value(summary_data.get('losers_checked'))} | "
+        f"matched: {_na_or_value(summary_data.get('losers_matched'))} "
+        f"({_na_or_value(summary_data.get('losers_match_rate_pct'), '%')})"
+    )
+
+
+def _format_winner_loser_dna(summary_data):
+    def _fmt_finding(f):
+        if not f:
+            return "NO RELIABLE DIFFERENTIATOR — INSUFFICIENT DATA"
+        return f"{f['metric']} ({f['evidence_level']}, N={f['n_winners']}+{f['n_losers']})"
+
+    low_var = summary_data.get("low_variance_metrics") or []
+    return (
+        f"Sample: {_na_or_value(summary_data.get('winners_sample_size'))} winners, "
+        f"{_na_or_value(summary_data.get('losers_sample_size'))} losers\n\n"
+        f"Strongest Overall: {_fmt_finding(summary_data.get('strongest_overall'))}\n"
+        f"Strongest LONG: {_fmt_finding(summary_data.get('strongest_long'))}\n"
+        f"Strongest SHORT: {_fmt_finding(summary_data.get('strongest_short'))}\n\n"
+        f"Low Variance metrics (gradient unreliable): "
+        f"{', '.join(low_var) if low_var else 'none'}"
+    )
+
+
+def _format_market_conditioned(summary_data):
+    def _fmt_axis_table(table):
+        """Direction x Regime/Condition table -> readable per-bucket lines."""
+        if not table:
+            return "  N/A — DATA NOT AVAILABLE"
+        lines = []
+        for bucket, data in table.items():
+            l, s = data["LONG"], data["SHORT"]
+            lines.append(f"  {bucket}: LONG WR={_na_or_value(l['win_rate'], '%')} (n={l['n']}) | "
+                          f"SHORT WR={_na_or_value(s['win_rate'], '%')} (n={s['n']}) | {data['evidence_level']}")
+        return "\n".join(lines)
+
+    def _fmt_quartile_result(result):
+        if not result.get("available"):
+            return f"  N/A — DATA NOT AVAILABLE ({result.get('reason', 'insufficient data')})"
+        lines = []
+        if result.get("low_resolution_warning"):
+            lines.append(f"  ⚠️ {result['low_resolution_warning']}")
+        for bucket, data in result["table"].items():
+            l, s = data["LONG"], data["SHORT"]
+            ev = data["evidence_level"]
+            ev_display = "⚠️ INSUFFICIENT DATA" if ev == "INSUFFICIENT DATA" else ev
+            lines.append(f"  {bucket}: LONG WR={_na_or_value(l['win_rate'], '%')} | "
+                          f"SHORT WR={_na_or_value(s['win_rate'], '%')} | {ev_display}")
+        return "\n".join(lines)
+
+    findings = summary_data.get("effect_findings") or []
+    findings_text = "\n".join(f"  [{f['axis']}] {f['conclusion']}" for f in findings) or "  N/A — DATA NOT AVAILABLE"
+
+    return (
+        f"Total sample: {_na_or_value(summary_data.get('total_sample'))}\n\n"
+        f"Direction Effect vs Market Effect:\n{findings_text}\n\n"
+        f"Direction x Asset Market Regime:\n{_fmt_axis_table(summary_data.get('regime_table'))}\n\n"
+        f"Direction x Global Market Condition:\n{_fmt_axis_table(summary_data.get('condition_table'))}\n\n"
+        f"Market Health x Direction:\n{_fmt_quartile_result(summary_data.get('market_health') or {})}\n\n"
+        f"Acceptance x Direction:\n{_fmt_quartile_result(summary_data.get('acceptance') or {})}"
+    )
+
+
+def _format_loss_clusters(summary_data):
+    cs = summary_data.get("cluster_summary") or {}
+    if not cs.get("available"):
+        return f"N/A — DATA NOT AVAILABLE ({cs.get('reason', 'no clusters found')})"
+
+    regime_dist = cs.get("regime_distribution") or {}
+    condition_dist = cs.get("condition_distribution") or {}
+    evidence_note = cs.get("evidence_note", "N/A")
+
+    # Correlation-only phrasing, calibrated to the evidence note already
+    # computed by the module itself - never a causal claim.
+    if "INSUFFICIENT" in evidence_note:
+        context_label = "Potential common context (sample too small to describe reliably)"
+    else:
+        context_label = "Observed concentration (descriptive/correlational only, not a cause)"
+
+    return (
+        f"Number of clusters: {_na_or_value(summary_data.get('cluster_count'))}\n"
+        f"Trades inside clusters: {_na_or_value(cs.get('total_trades_in_clusters'))}\n"
+        f"Longest cluster: {_na_or_value(summary_data.get('longest_cluster'))}\n\n"
+        f"{context_label}:\n"
+        f"  Regime distribution: {regime_dist if regime_dist else 'N/A — DATA NOT AVAILABLE'}\n"
+        f"  Condition distribution: {condition_dist if condition_dist else 'N/A — DATA NOT AVAILABLE'}\n"
+        f"  Avg Market Health: {_na_or_value(cs.get('avg_health_in_clusters'))}\n"
+        f"  Avg Acceptance: {_na_or_value(cs.get('avg_acceptance_in_clusters'), '%')}\n\n"
+        f"Evidence: {evidence_note}"
+    )
+
+
+RESEARCH_REPORT_SECTIONS = [
+    ("📊 CORE RESEARCH", [
+        ("winners_analyzer", "Winners Analyzer", _format_core_winners),
+        ("losers_analyzer", "Losers Analyzer", _format_core_losers),
+        ("top_gainers_study", "Top Gainers Study", _format_core_top_gainers),
+        ("top_losers_study", "Top Losers Study", _format_core_top_losers),
+        ("compare_winners_losers", "Winners vs Losers", _format_core_compare),
+        ("missed_opportunity_study", "Missed Opportunity Study", _format_core_missed_opportunity),
+    ]),
+    ("🧠 ADVANCED RESEARCH", [
+        ("winner_loser_dna", "🧬 Winner / Loser DNA", _format_winner_loser_dna),
+        ("market_conditioned", "🌡 Market Conditioned", _format_market_conditioned),
+        ("loss_clusters", "🔴 Loss Clusters", _format_loss_clusters),
+    ]),
+]
+
+# Flat view, preserved for anything that still needs the plain list
+# (kept for backward compatibility with any external reference).
 RESEARCH_REPORT_MODULES = [
-    ("winners_analyzer", "Winners Analyzer"),
-    ("losers_analyzer", "Losers Analyzer"),
-    ("top_gainers_study", "Top Gainers Study"),
-    ("top_losers_study", "Top Losers Study"),
-    ("compare_winners_losers", "Compare Winners vs Losers"),
-    ("missed_opportunity_study", "Missed Opportunity Study"),
+    (key, name) for _, modules in RESEARCH_REPORT_SECTIONS for key, name, _ in modules
 ]
 
 RESEARCH_REPORT_MAX_CHARS = 3500  # safety margin under Telegram's 4096 limit
@@ -7136,18 +7317,17 @@ def _build_header_block(latest_run, snapshots):
     )
 
 
-def _build_module_block(module_key, display_name, index, total, snapshot):
-    header = f"MODULE: {display_name} ({index}/{total})\n" + "-" * 66
+def _build_module_block(module_key, display_name, index, total, snapshot, formatter):
+    header = f"{display_name} ({index}/{total})\n" + "-" * 40
 
     if snapshot is None:
         return (f"{header}\n"
-                f"[LEVEL 1 - EXECUTIVE SUMMARY]\n"
                 f"Status: NEVER RUN\n"
                 f"No snapshot has been recorded for this module yet.")
 
     status = snapshot["last_attempt_status"] or "UNKNOWN"
     last_success = snapshot["last_success_at"]
-    last_success_display = f"{last_success.isoformat()} ({format_elapsed(last_success)})" if last_success else "N/A"
+    last_success_display = f"{format_elapsed(last_success)}" if last_success else "N/A"
 
     metadata = snapshot["internal_metadata"] or {}
     if isinstance(metadata, str):
@@ -7159,31 +7339,51 @@ def _build_module_block(module_key, display_name, index, total, snapshot):
     records = metadata.get("records_processed")
 
     level1 = (
-        "[LEVEL 1 - EXECUTIVE SUMMARY]\n"
         f"Status: {status}\n"
         f"Last Success: {last_success_display}\n"
-        f"Execution Duration: {duration if duration is not None else 'N/A'}s\n"
-        f"Records Processed: {records if records is not None else 'N/A'}\n"
-        f"Headline Stat: {snapshot['headline_stat'] or 'N/A'}"
+        f"Duration: {duration if duration is not None else 'N/A'}s | "
+        f"Records: {records if records is not None else 'N/A'}"
     )
 
     summary_data = snapshot["summary_data"]
-    if isinstance(summary_data, dict):
-        summary_json = json.dumps(summary_data, default=str, separators=(",", ":"))
-    elif summary_data:
-        summary_json = str(summary_data)
-    else:
-        summary_json = "{}"
+    if isinstance(summary_data, str):
+        try:
+            summary_data = json.loads(summary_data)
+        except Exception:
+            summary_data = {}
+    summary_data = summary_data or {}
 
-    level2 = f"[LEVEL 2 - AI ANALYSIS DATA]\n{summary_json}"
+    try:
+        level2 = formatter(summary_data)
+    except Exception as e:
+        # A formatter mismatch (e.g. a module's summary_data shape
+        # changed) must never break the whole report - degrade to the
+        # headline stat only, never a raw dump or a Python traceback.
+        level2 = f"(Unable to format details - {snapshot.get('headline_stat', 'N/A')})"
 
     block = f"{header}\n{level1}\n\n{level2}"
 
-    if status == "PARTIAL" or status == "FAILED":
-        block += ("\n\nNote: Status is " + status + " - Last Success reflects the most "
-                  "recent confirmed write, which may predate this run's own attempt.")
+    if status in ("PARTIAL", "FAILED"):
+        block += f"\n\n⚠️ Status is {status} - Last Success may predate this run's own attempt."
 
     return block
+
+
+def _build_data_quality_block(snapshots):
+    """Sample sizes and freshness across every module, in one compact block - no raw internals."""
+    success_times = [s["last_success_at"] for s in snapshots.values() if s["last_success_at"]]
+    never_run = sum(1 for s in snapshots.values() if s["last_success_at"] is None)
+
+    lines = ["📋 DATA QUALITY", "-" * 40]
+    if success_times:
+        lines.append(f"Most Recent Update: {format_elapsed(max(success_times))}")
+        lines.append(f"Oldest Update: {format_elapsed(min(success_times))}")
+    else:
+        lines.append("No successful snapshots recorded yet.")
+    if never_run:
+        lines.append(f"Modules never run: {never_run}")
+
+    return "\n".join(lines)
 
 
 def _build_footer_block():
@@ -7353,9 +7553,23 @@ def research_report_command(message):
         snapshots = _fetch_all_snapshots()
 
         chunks = [_build_header_block(latest_run, snapshots)]
-        total_modules = len(RESEARCH_REPORT_MODULES)
-        for i, (module_key, display_name) in enumerate(RESEARCH_REPORT_MODULES, start=1):
-            chunks.append(_build_module_block(module_key, display_name, i, total_modules, snapshots.get(module_key)))
+
+        number_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+        flat_modules = [(key, name, fmt) for _, mods in RESEARCH_REPORT_SECTIONS for key, name, fmt in mods]
+        total_modules = len(flat_modules)
+
+        idx = 0
+        for section_title, modules in RESEARCH_REPORT_SECTIONS:
+            chunks.append(section_title)
+            for module_key, display_name, formatter in modules:
+                emoji = number_emoji[idx] if idx < len(number_emoji) else str(idx + 1)
+                chunks.append(_build_module_block(
+                    module_key, f"{emoji} {display_name}", idx + 1, total_modules,
+                    snapshots.get(module_key), formatter
+                ))
+                idx += 1
+
+        chunks.append(_build_data_quality_block(snapshots))
         chunks.append(_build_footer_block())
 
         messages = _pack_into_messages(chunks)

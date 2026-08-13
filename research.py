@@ -216,6 +216,18 @@ RESEARCH_MODULES = [
     {"name": "Top Losers Study", "file": "top_losers_study.py", "module_key": "top_losers_study"},
     {"name": "Compare Winners vs Losers", "file": "compare_winners_losers.py", "module_key": "compare_winners_losers"},
     {"name": "Missed Opportunity Study", "file": "missed_opportunity_study.py", "module_key": "missed_opportunity_study"},
+    # Advanced Research - now fully integrated with the Snapshot Writer
+    # (see winner_loser_dna_analysis.py's own MODULE_KEY constant), so
+    # this gets the same freshness/PARTIAL detection as every other
+    # module below, not the module_key=None fallback path.
+    {"name": "Winner/Loser DNA Analysis", "file": "winner_loser_dna_analysis.py", "module_key": "winner_loser_dna"},
+    # Writes TWO snapshot keys (market_conditioned, loss_clusters) from
+    # one execution - see the file's own main() and the architectural
+    # note delivered alongside this change. This entry's module_key is
+    # the PRIMARY freshness signal the Runner checks; the module's own
+    # internal fail-fast logic (raises if EITHER snapshot write fails)
+    # is what makes a loss_clusters-only failure surface here too.
+    {"name": "Market-Conditioned Analysis", "file": "market_conditioned_analysis.py", "module_key": "market_conditioned"},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for

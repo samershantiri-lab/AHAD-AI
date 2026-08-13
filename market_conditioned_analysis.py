@@ -37,7 +37,17 @@ import sys
 import json
 import statistics
 from collections import defaultdict
+import time
 from datetime import datetime
+
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MARKET_CONDITIONED_KEY = "market_conditioned"
+MARKET_CONDITIONED_NAME = "Market-Conditioned Analysis"
+LOSS_CLUSTERS_KEY = "loss_clusters"
+LOSS_CLUSTERS_NAME = "Loss Clusters"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 import psycopg2
 
@@ -473,15 +483,112 @@ def print_report(trades):
     print("anything, these findings mean for a future, separately reviewed change.")
     print("=" * 70 + "\n")
 
+    # Returned for main() to build both snapshots from - every value
+    # here was already computed above for the console report itself.
+    longest_cluster = max((c["length"] for c in clusters), default=0)
+    return {
+        "total_sample": len(trades),
+        "effect_findings": effect_findings,
+        "regime_table": regime_table,
+        "condition_table": condition_table,
+        "market_health": health_result,
+        "acceptance": acceptance_result,
+        "cluster_summary": cluster_summary,
+        "cluster_count": len(clusters),
+        "longest_cluster": longest_cluster,
+    }
+
 
 def main():
+    update_snapshot_status(MARKET_CONDITIONED_KEY, MARKET_CONDITIONED_NAME, MODULE_CATEGORY, "RUNNING")
+    update_snapshot_status(LOSS_CLUSTERS_KEY, LOSS_CLUSTERS_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Market-Conditioned Analysis starting - {datetime.now().isoformat()}")
-    trades = _fetch_trades()
-    if not trades:
-        print("⚠️ No trades retrieved - nothing to analyze.")
-        return
-    print_report(trades)
-    print(f"🔬 Market-Conditioned Analysis finished - {datetime.now().isoformat()}")
+
+    try:
+        trades = _fetch_trades()
+        if not trades:
+            print("⚠️ No trades retrieved - nothing to analyze.")
+            # Deliberately not a failure - see winner_loser_dna_analysis.py's
+            # main() for the identical reasoning: no save_snapshot() call
+            # here means last_success_at correctly does not advance, so
+            # the Runner accurately reports PARTIAL rather than a false
+            # SUCCESS with no real content.
+            return
+
+        results = print_report(trades)
+        duration = round(time.time() - start_time, 2)
+
+        # --- Snapshot 1: Market-Conditioned ---
+        strong_findings = [f for f in results["effect_findings"] if "Direction Effect" in f["conclusion"]
+                            and f["conclusion"].startswith("SHORT outperforms")]
+        if strong_findings:
+            headline_1 = f"Direction Effect confirmed on: {', '.join(f['axis'] for f in strong_findings)}"
+        else:
+            headline_1 = "No axis shows a uniform Direction Effect yet - see per-bucket findings"
+
+        summary_1 = {
+            "total_sample": results["total_sample"],
+            "effect_findings": results["effect_findings"],
+            "regime_table": results["regime_table"],
+            "condition_table": results["condition_table"],
+            "market_health": results["market_health"],
+            "acceptance": results["acceptance"],
+        }
+
+        ok_1 = save_snapshot(
+            module_key=MARKET_CONDITIONED_KEY,
+            module_name=MARKET_CONDITIONED_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_1,
+            summary_data=summary_1,
+            version_scope="ALL_VERSIONS",
+            detail_table=None,
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=duration,
+            records_processed=results["total_sample"],
+        )
+
+        # --- Snapshot 2: Loss Clusters ---
+        cs = results["cluster_summary"]
+        if cs["available"]:
+            headline_2 = f"{results['cluster_count']} cluster(s), longest={results['longest_cluster']}"
+        else:
+            headline_2 = "No loss clusters found in this sample"
+
+        summary_2 = {
+            "cluster_count": results["cluster_count"],
+            "longest_cluster": results["longest_cluster"],
+            "cluster_summary": cs,
+        }
+
+        ok_2 = save_snapshot(
+            module_key=LOSS_CLUSTERS_KEY,
+            module_name=LOSS_CLUSTERS_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_2,
+            summary_data=summary_2,
+            version_scope="ALL_VERSIONS",
+            detail_table=None,
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=duration,
+            records_processed=results["cluster_count"],
+        )
+
+        # Either snapshot failing to write must surface as a real
+        # failure - the Runner's own freshness check only inspects
+        # MARKET_CONDITIONED_KEY, so this explicit check is what makes
+        # a loss_clusters-only write failure visible too, per the
+        # architectural note delivered alongside this change.
+        if not ok_1 or not ok_2:
+            raise RuntimeError(f"snapshot write failed (market_conditioned={ok_1}, loss_clusters={ok_2})")
+
+        print(f"🔬 Market-Conditioned Analysis finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MARKET_CONDITIONED_KEY, MARKET_CONDITIONED_NAME, MODULE_CATEGORY, "FAILED")
+        update_snapshot_status(LOSS_CLUSTERS_KEY, LOSS_CLUSTERS_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Market-Conditioned Analysis: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ AHAD AI - Research Lab
 Winner/Loser DNA + Direction Analysis + Distribution/IQR (Research Layer v1, Part 4)
 ================================================================================
 
-Not a registered Research Lab module - standalone, read-only. Reuses,
+Not a registered Research Lab module - standalone. Reuses,
 rather than duplicates:
   - CONTINUOUS_METRICS / CATEGORICAL_METRICS from compare_winners_losers.py
     (imported directly, not copied - verified against this exact repo's
@@ -25,8 +25,13 @@ rules out duplicate rows the same way - also structural, not a filter
 added here.
 
 No AI Brain, Ranking, Scanner, bot.py, or research.py code is read,
-imported, or referenced anywhere in this file. Read-only - no writes,
-no schema changes, no new tables, no modification to any existing file.
+imported, or referenced anywhere in this file. The analysis itself is
+read-only with respect to research_winners/research_losers - no
+production trade data is ever modified. It does write its own result
+to research_snapshots, exclusively through snapshot_writer.py's
+existing save_snapshot()/update_snapshot_status() contract - no new
+schema, no new tables, no other table touched, and no effect on AI
+Brain, Ranking, Scanner, or the live trading path.
 ================================================================================
 """
 
@@ -35,7 +40,15 @@ import sys
 import json
 import statistics
 from collections import Counter, defaultdict
+import time
 from datetime import datetime
+
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "winner_loser_dna"
+MODULE_NAME = "Winner/Loser DNA Analysis"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 import psycopg2
 
@@ -423,16 +436,74 @@ def print_report(winners, losers):
     print("drawing conclusions - this report does not repeat that analysis.")
     print("=" * 70 + "\n")
 
+    # Returned for main() to build the Snapshot Writer summary from -
+    # every value here is one already computed above for the console
+    # report itself, not a new or duplicated calculation.
+    def _label_evidence(found):
+        if not found:
+            return None
+        label, d = found
+        return {"metric": label, "evidence_level": d["evidence_level"],
+                 "n_winners": d["winner_stats"]["n"], "n_losers": d["loser_stats"]["n"]}
+
+    return {
+        "winners_sample_size": len(winners),
+        "losers_sample_size": len(losers),
+        "strongest_overall": _label_evidence(strongest_overall),
+        "strongest_long": _label_evidence(strongest_long),
+        "strongest_short": _label_evidence(strongest_short),
+        "low_variance_metrics": low_var_metrics,
+    }
+
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Winner/Loser DNA Analysis starting - {datetime.now().isoformat()}")
-    winners = _fetch_group("research_winners")
-    losers = _fetch_group("research_losers")
-    if not winners and not losers:
-        print("⚠️ No data retrieved - nothing to analyze.")
-        return
-    print_report(winners, losers)
-    print(f"🔬 Winner/Loser DNA Analysis finished - {datetime.now().isoformat()}")
+
+    try:
+        winners = _fetch_group("research_winners")
+        losers = _fetch_group("research_losers")
+        if not winners and not losers:
+            print("⚠️ No data retrieved - nothing to analyze.")
+            # Deliberately not a failure: the module ran correctly, it
+            # simply found nothing to report. Matches update_snapshot_
+            # status(..., "RUNNING") already recorded above - no save_
+            # snapshot() call here means last_success_at will correctly
+            # NOT advance, so the Runner will accurately report this as
+            # PARTIAL rather than a false SUCCESS with no real content.
+            return
+
+        summary = print_report(winners, losers)
+
+        if summary["strongest_overall"]:
+            m = summary["strongest_overall"]
+            headline_stat = f"Strongest differentiator: {m['metric']} ({m['evidence_level']})"
+        else:
+            headline_stat = "NO RELIABLE DIFFERENTIATOR — INSUFFICIENT DATA"
+
+        records_processed = summary["winners_sample_size"] + summary["losers_sample_size"]
+
+        ok = save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_stat,
+            summary_data=summary,
+            version_scope="ALL_VERSIONS",
+            detail_table=None,
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=records_processed,
+        )
+        if not ok:
+            raise RuntimeError("snapshot write failed")
+
+        print(f"🔬 Winner/Loser DNA Analysis finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Winner/Loser DNA Analysis: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

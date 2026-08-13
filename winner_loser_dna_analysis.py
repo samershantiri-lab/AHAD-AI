@@ -66,7 +66,7 @@ def _fetch_group(table):
     """
     Reads every row from research_winners or research_losers, with
     all 17 canonical variables (imported, not copied) plus version/
-    quality_grade/market_regime/market_health_score for the cross-
+    quality_grade/market_regime/market_health for the cross-
     analyses below. TIMEOUT and OPEN trades cannot appear here by
     construction (see module docstring) - no runtime filter needed.
     """
@@ -76,7 +76,7 @@ def _fetch_group(table):
         conn = get_db_connection()
         cur = conn.cursor()
         extra_cols = ["trade_id", "version", "direction", "quality_grade",
-                      "market_regime", "market_health_score"]
+                      "market_regime", "market_health"]
         metric_cols = [c for c, _ in CONTINUOUS_METRICS] + \
                       [c for c, _ in CATEGORICAL_METRICS if c not in ("direction", "market_regime", "quality_grade")]
         all_cols = extra_cols + metric_cols

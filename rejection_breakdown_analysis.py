@@ -158,8 +158,29 @@ def _fetch_movers(table, actual_move_direction):
     Every row in research_top_gainers or research_top_losers, with the
     fields this analysis needs: symbol, observed_date, market_regime
     (Asset Market Regime of the ASSET at move-observation time - NOT
-    market context at rejection time, see discovery #3 above),
-    and the three MOVE_START Proxy sensitivity thresholds.
+    market context at rejection time, see discovery #3 above).
+
+    COLUMN SET CORRECTED per confirmed live-database verification: this
+    function previously also selected research_move_start_proxy_60/75/
+    90, which do NOT exist on the live research_top_gainers/research_
+    top_losers tables (confirmed directly via information_schema.columns
+    - CREATE TABLE IF NOT EXISTS never added those columns to tables
+    that already existed before that definition was extended). That
+    caused every call to fail with UndefinedColumn, silently caught and
+    turned into an empty list - Gainers/Losers checked showed 0 while
+    the module still reported SUCCESS. Now uses exactly the same
+    column set missed_opportunity_study.py's own _fetch_movers()
+    already relies on successfully (symbol, observed_date, plus
+    market_regime here since match_rejections_to_movers()/_classify_
+    timing() only ever read symbol/observed_date/proxy_75 - never
+    change_pct/volume_ratio/volume_acceleration, which belong to a
+    different analysis).
+
+    proxy_60/75/90 are kept as explicit None in the returned dict, not
+    dropped - _classify_timing() already handles their absence safely
+    via mover.get("proxy_75"), so no downstream code needed to change;
+    timing will correctly and honestly report INSUFFICIENT DATA rather
+    than guessing.
     """
     conn = None
     cur = None
@@ -167,23 +188,25 @@ def _fetch_movers(table, actual_move_direction):
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT symbol, observed_date, market_regime,
-                   research_move_start_proxy_60, research_move_start_proxy_75,
-                   research_move_start_proxy_90
+            SELECT symbol, observed_date, market_regime
             FROM {table}
         """)
         rows = cur.fetchall()
         movers = []
-        for symbol, observed_date, regime, p60, p75, p90 in rows:
+        for symbol, observed_date, regime in rows:
             movers.append({
                 "symbol": symbol, "observed_date": observed_date, "market_regime": regime,
-                "proxy_60": p60, "proxy_75": p75, "proxy_90": p90,
+                "proxy_60": None, "proxy_75": None, "proxy_90": None,
                 "actual_move_direction": actual_move_direction,
             })
         return movers
     except Exception as e:
+        # A genuine failure here must surface as a real module failure,
+        # not silently degrade to an empty list reported as SUCCESS -
+        # exactly the bug this fix addresses. Log for diagnosis, then
+        # re-raise so main()'s own except block marks the run FAILED.
         print(f"⚠️ Rejection Breakdown: failed to read {table} - {e}")
-        return []
+        raise
     finally:
         if cur:
             cur.close()

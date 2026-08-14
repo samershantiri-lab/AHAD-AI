@@ -227,6 +227,155 @@ def _format_loss_clusters(summary_data):
 
 
 
+def _format_rejection_breakdown(summary_data):
+    top_missed = summary_data.get("top_reason_by_missed")
+    top_rate = summary_data.get("top_reason_by_miss_rate")
+    reason_table = summary_data.get("reason_table") or {}
+
+    lines = [
+        f"Total rejections analyzed: {_na_or_value(summary_data.get('total_rejections'))}\n"
+        f"Gainers checked: {_na_or_value(summary_data.get('gainers_checked'))} | "
+        f"Losers checked: {_na_or_value(summary_data.get('losers_checked'))}\n"
+    ]
+    if top_missed:
+        lines.append(f"Top reason by Missed Opportunities: {top_missed['reason']} "
+                      f"({top_missed['missed']} missed, n={top_missed['n']})")
+    else:
+        lines.append("Top reason by Missed Opportunities: N/A — DATA NOT AVAILABLE")
+    if top_rate:
+        lines.append(f"Top reason by Miss Rate: {top_rate['reason']} - {top_rate['miss_rate_pct']}% (n={top_rate['n']})")
+    else:
+        lines.append("Top reason by Miss Rate: ⚠️ INSUFFICIENT DATA")
+
+    if reason_table:
+        lines.append("\nBy reason:")
+        for reason, r in reason_table.items():
+            lines.append(f"  {reason}: n={r['total_rejections']}, matched={r['matched']}, missed={r['missed']}")
+
+    return "\n".join(lines)
+
+
+def _format_funding_oi_research(summary_data):
+    def _fmt_dna(dna, label):
+        w, l = dna["winners"], dna["losers"]
+        ev = dna["evidence_level"]
+        ev_display = "⚠️ INSUFFICIENT DATA" if ev == "INSUFFICIENT DATA" else ev
+        return (f"{label}: Winners mean={_na_or_value(w['mean'])} (n={w['n']}) | "
+                f"Losers mean={_na_or_value(l['mean'])} (n={l['n']}) | {ev_display}")
+
+    coverage = summary_data.get("coverage") or {}
+    outcomes = summary_data.get("outcomes") or {}
+    change = summary_data.get("change_analysis") or {}
+    carry = summary_data.get("funding_carry_direction") or {}
+
+    lines = [
+        f"Coverage: {_na_or_value(coverage.get('distinct_trades_covered'))} trades linked | "
+        f"{_na_or_value(coverage.get('trades_with_signal'))} with SIGNAL | "
+        f"{_na_or_value(coverage.get('trades_with_open_update'))} with OPEN_UPDATE | "
+        f"{_na_or_value(coverage.get('trades_with_duplicate_signal'))} with duplicate SIGNAL (earliest used)",
+        f"Outcome breakdown (literal): {outcomes if outcomes else 'N/A'}",
+        "",
+        "A) " + _fmt_dna(summary_data.get("funding_at_signal", {}), "Funding Rate @ SIGNAL") if summary_data.get("funding_at_signal") else "A) Funding Rate @ SIGNAL: N/A — DATA NOT AVAILABLE",
+        "B) " + _fmt_dna(summary_data.get("oi_at_signal", {}), "Open Interest @ SIGNAL") if summary_data.get("oi_at_signal") else "B) Open Interest @ SIGNAL: N/A — DATA NOT AVAILABLE",
+        "",
+        f"C) Funding/OI Change (SIGNAL→latest OPEN_UPDATE, {change.get('trades_with_open_update', 0)} trades):",
+    ]
+
+    funding_change = change.get("funding_change")
+    if funding_change:
+        lines.append("   " + _fmt_dna(funding_change, "Funding Change"))
+    else:
+        lines.append("   Funding Change: N/A — DATA NOT AVAILABLE")
+
+    oi_change = change.get("oi_pct_change")
+    if oi_change:
+        lines.append("   " + _fmt_dna(oi_change, "OI % Change"))
+    else:
+        lines.append("   OI % Change: N/A — DATA NOT AVAILABLE")
+
+    lines.append(f"   Median time between measurements: "
+                 f"{_na_or_value(change.get('median_time_between_measurements_seconds'), 's')} "
+                 f"(collected_at-based, not signal_timestamp)")
+
+    lines.append("")
+    lines.append(
+        f"D) Funding Carry Direction (who pays whom - NOT a directional signal):\n"
+        f"   Receives funding: n={carry.get('receives_funding', {}).get('n', 'N/A')} "
+        f"WR={_na_or_value(carry.get('receives_funding', {}).get('win_rate'), '%')}\n"
+        f"   Pays funding: n={carry.get('pays_funding', {}).get('n', 'N/A')} "
+        f"WR={_na_or_value(carry.get('pays_funding', {}).get('win_rate'), '%')}\n"
+        f"   Neutral funding (rate=0): n={carry.get('neutral_funding', {}).get('n', 'N/A')} "
+        f"(excluded from Evidence comparison)\n"
+        f"   Evidence (Receives vs Pays only): {carry.get('evidence_level', 'N/A')}\n"
+        f"   (Funding reflects the perp-vs-spot premium, not the long/short ratio - "
+        f"this describes carry cost/benefit only, not market sentiment.)"
+    )
+    return "\n".join(lines)
+
+
+def _format_deep_research_export(summary_data):
+    lines = [
+        f"Winners: {_na_or_value(summary_data.get('winners_count'))} | "
+        f"Losers: {_na_or_value(summary_data.get('losers_count'))}",
+        f"Overall Avg RR: {_na_or_value(summary_data.get('overall_avg_rr'))}",
+        f"Overall Avg Score: {_na_or_value(summary_data.get('overall_avg_score'))}",
+        "",
+        f"Quality Grade - Winners: {summary_data.get('winners_quality_grade_distribution') or 'N/A'}",
+        f"Quality Grade - Losers: {summary_data.get('losers_quality_grade_distribution') or 'N/A'}",
+        f"Market Regime - Winners: {summary_data.get('winners_market_regime_distribution') or 'N/A'}",
+        f"Market Regime - Losers: {summary_data.get('losers_market_regime_distribution') or 'N/A'}",
+        f"Compression - Winners: {summary_data.get('winners_compression_status_distribution') or 'N/A'}",
+        f"Compression - Losers: {summary_data.get('losers_compression_status_distribution') or 'N/A'}",
+        "",
+        "D) Top Differentiators (strongest Winner/Loser separation, all 17 vars):",
+    ]
+    top_diff = summary_data.get("top_differentiators") or []
+    if top_diff:
+        for i, (name, strength, kind) in enumerate(top_diff, 1):
+            lines.append(f"  {i}. {name} ({kind}) - strength: {strength}")
+    else:
+        lines.append("  N/A — DATA NOT AVAILABLE")
+
+    lines.append("")
+    lines.append("K) Brain Confidence Distribution (bins with data only):")
+    bc_dist = summary_data.get("brain_confidence_distribution") or []
+    shown_bins = [b for b in bc_dist if b["n"] > 0]
+    if shown_bins:
+        for b in shown_bins:
+            lines.append(f"  [{b['range']}): WR={_na_or_value(b['win_rate'], '%')} (n={b['n']})")
+    else:
+        lines.append("  N/A — DATA NOT AVAILABLE")
+
+    lines.append("")
+    lines.append("L) Score/Ranking Score by Quartile vs Win Rate:")
+    score_q = summary_data.get("score_quartiles") or {}
+    for metric, quartiles in score_q.items():
+        if quartiles == "INSUFFICIENT DATA":
+            lines.append(f"  {metric}: ⚠️ INSUFFICIENT DATA")
+        else:
+            q_str = ", ".join(f"{q['quartile']}={_na_or_value(q['win_rate'], '%')}" for q in quartiles)
+            lines.append(f"  {metric}: {q_str}")
+
+    lines.append("")
+    mc = summary_data.get("market_context_availability") or {}
+    lines.append(f"M) Market Context Availability: market_health "
+                 f"{mc.get('market_health_present', 'N/A')}/{mc.get('total_rows', 'N/A')} | "
+                 f"market_regime {mc.get('market_regime_present', 'N/A')}/{mc.get('total_rows', 'N/A')}")
+    if mc.get("market_health_finding"):
+        lines.append(f"  FINDING: {mc['market_health_finding']}")
+
+    incomplete = summary_data.get("incomplete_fields") or {}
+    if incomplete:
+        lines.append("")
+        lines.append("N) Incomplete Fields (< 100% coverage):")
+        for name, c in incomplete.items():
+            lines.append(f"  {name}: {c['completeness_pct']}% complete ({c['missing']} missing)")
+
+    lines.append("")
+    lines.append(summary_data.get("note", ""))
+    return "\n".join(lines)
+
+
 def _fetch_all_snapshots():
     """Returns a dict keyed by module_key for O(1) lookup while building each module's block."""
     conn = None

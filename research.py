@@ -228,6 +228,17 @@ RESEARCH_MODULES = [
     # internal fail-fast logic (raises if EITHER snapshot write fails)
     # is what makes a loss_clusters-only failure surface here too.
     {"name": "Market-Conditioned Analysis", "file": "market_conditioned_analysis.py", "module_key": "market_conditioned"},
+    # Reads research_market_data + trades directly (JOIN on trade_id) -
+    # independent of the still-open Schema Drift hypothesis affecting
+    # research_winners/research_losers (see prior investigation).
+    {"name": "Funding Rate + Open Interest Research", "file": "funding_oi_research.py", "module_key": "funding_oi_research"},
+    # Was previously unregistered and had no Snapshot Writer integration
+    # - both added in this change, analysis logic itself untouched.
+    {"name": "Rejection Breakdown + Missed Opportunity", "file": "rejection_breakdown_analysis.py", "module_key": "rejection_breakdown"},
+    # Same as above. Reads research_winners/research_losers - IS
+    # potentially affected by the open Schema Drift question, unlike
+    # funding_oi_research above.
+    {"name": "Deep Historical Research Export", "file": "deep_research_export.py", "module_key": "deep_research_export"},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for

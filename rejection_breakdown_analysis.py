@@ -57,9 +57,17 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import time
+
 import psycopg2
 
 from research_statistics import evidence_level, priority_score, MIN_SAMPLE_SIZE
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "rejection_breakdown"
+MODULE_NAME = "Rejection Breakdown + Missed Opportunity"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 from missed_opportunity_study import (
     _is_directional_reason,
     _extract_evaluated_side,
@@ -421,19 +429,76 @@ def print_report(rejections, gainers, losers):
     print("anything, these findings mean for a future, separately reviewed change.")
     print("=" * 70 + "\n")
 
+    # Returned for main() to build the snapshot from - every value here
+    # was already computed above for the console report itself.
+    top_reason_by_missed = None
+    top_reason_by_miss_rate = None
+    if groups:
+        by_missed = sorted(groups.items(), key=lambda kv: kv[1]["missed"], reverse=True)
+        top_reason_by_missed = {"reason": by_missed[0][0], "missed": by_missed[0][1]["missed"],
+                                  "n": by_missed[0][1]["total_rejections"]}
+        eligible = [(r, round((g["missed"] / g["total_rejections"]) * 100, 2), g["total_rejections"])
+                    for r, g in groups.items() if g["total_rejections"] >= MIN_SAMPLE_SIZE]
+        if eligible:
+            eligible.sort(key=lambda x: x[1], reverse=True)
+            top_reason_by_miss_rate = {"reason": eligible[0][0], "miss_rate_pct": eligible[0][1], "n": eligible[0][2]}
+
+    return {
+        "total_rejections": total_rejections_all,
+        "gainers_checked": len(gainers), "losers_checked": len(losers),
+        "top_reason_by_missed": top_reason_by_missed,
+        "top_reason_by_miss_rate": top_reason_by_miss_rate,
+        "reason_table": {reason: {"total_rejections": g["total_rejections"], "matched": g["matched"],
+                                    "missed": g["missed"]} for reason, g in groups.items()},
+    }
+
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Rejection Breakdown + Missed Opportunity Analysis starting - {datetime.now().isoformat()}")
-    rejections = _fetch_all_rejections()
-    gainers = _fetch_movers("research_top_gainers", "UP")
-    losers = _fetch_movers("research_top_losers", "DOWN")
 
-    if not rejections:
-        print("⚠️ No rejections retrieved - nothing to analyze.")
-        return
+    try:
+        rejections = _fetch_all_rejections()
+        gainers = _fetch_movers("research_top_gainers", "UP")
+        losers = _fetch_movers("research_top_losers", "DOWN")
 
-    print_report(rejections, gainers, losers)
-    print(f"🔬 Rejection Breakdown + Missed Opportunity Analysis finished - {datetime.now().isoformat()}")
+        if not rejections:
+            print("⚠️ No rejections retrieved - nothing to analyze.")
+            # No save_snapshot() call here - the Runner correctly
+            # reports PARTIAL (last_success_at does not advance)
+            # rather than a false SUCCESS with no real content.
+            return
+
+        summary = print_report(rejections, gainers, losers)
+
+        if summary["top_reason_by_missed"]:
+            headline_stat = (f"Top reason by Missed Opportunities: {summary['top_reason_by_missed']['reason']} "
+                              f"({summary['top_reason_by_missed']['missed']} missed, n={summary['top_reason_by_missed']['n']})")
+        else:
+            headline_stat = "No rejections matched to a later Top Gainer/Loser move"
+
+        ok = save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_stat,
+            summary_data=summary,
+            version_scope="ALL_VERSIONS",
+            detail_table=None,
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=summary["total_rejections"],
+        )
+        if not ok:
+            raise RuntimeError("snapshot write failed")
+
+        print(f"🔬 Rejection Breakdown + Missed Opportunity Analysis: recorded {summary['total_rejections']} analyzed rejection(s)")
+        print(f"🔬 Rejection Breakdown + Missed Opportunity Analysis finished - {datetime.now().isoformat()}")
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Rejection Breakdown + Missed Opportunity Analysis: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

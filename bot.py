@@ -2321,6 +2321,23 @@ def init_database():
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_health_score REAL")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_snapshot JSONB")
 
+        # ================================================
+        # 🔄 DATABASE MIGRATION (Research Data Completeness) - the 6
+        # fields analyze() already computes and uses in the scoring
+        # decision, but which previously never survived past save_
+        # trade() returning. Write-once at SIGNAL, per the same
+        # convention as market_health_score/market_snapshot above -
+        # save_trade()'s UPDATE path (existing OPEN trade refresh)
+        # does not reference any of these six, which is what keeps
+        # them write-once.
+        # ================================================
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS fomo_status TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS total_penalty REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS alpha_score INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS heat_score INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS heat_tier TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS scan_mode TEXT")
+
         # Generation 2 (Funding Rate + Open Interest) - independent research
         # table, deliberately with NO strict FOREIGN KEY on trade_id (per
         # explicit requirement) - the logical link via trade_id remains
@@ -3017,7 +3034,13 @@ def save_trade(trade_data):
             initial_snapshot,
             holding_period_limit,
             market_health_score,
-            market_snapshot
+            market_snapshot,
+            fomo_status,
+            total_penalty,
+            alpha_score,
+            heat_score,
+            heat_tier,
+            scan_mode
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -3034,7 +3057,8 @@ def save_trade(trade_data):
             %s, %s, %s,
             %s, %s, %s,
             %s, %s,
-            %s, %s
+            %s, %s,
+            %s, %s, %s, %s, %s, %s
         )
         RETURNING id
         """, (
@@ -3080,7 +3104,13 @@ def save_trade(trade_data):
             json.dumps(trade_data.get('initial_snapshot', {})),
             trade_data.get('holding_period_limit', HOLDING_PERIOD_LIMIT_SECONDS),
             trade_data.get('market_health_score'),
-            json.dumps(trade_data.get('market_snapshot', {}))
+            json.dumps(trade_data.get('market_snapshot', {})),
+            trade_data.get('fomo_status'),
+            trade_data.get('total_penalty'),
+            trade_data.get('alpha_score'),
+            trade_data.get('heat_score'),
+            trade_data.get('heat_tier'),
+            trade_data.get('scan_mode')
         ))
 
         trade_id = cur.fetchone()[0]
@@ -7056,6 +7086,7 @@ from report_formatters import (
     _format_core_top_gainers, _format_core_top_losers,
     _format_core_compare, _format_core_missed_opportunity,
     _format_winner_loser_dna, _format_market_conditioned, _format_loss_clusters,
+    _format_rejection_breakdown, _format_funding_oi_research, _format_deep_research_export,
     _fetch_all_snapshots,
 )
 
@@ -7072,6 +7103,11 @@ RESEARCH_REPORT_SECTIONS = [
         ("winner_loser_dna", "🧬 Winner / Loser DNA", _format_winner_loser_dna),
         ("market_conditioned", "🌡 Market Conditioned", _format_market_conditioned),
         ("loss_clusters", "🔴 Loss Clusters", _format_loss_clusters),
+    ]),
+    ("🔬 EXTENDED RESEARCH", [
+        ("rejection_breakdown", "🚫 Rejection Breakdown", _format_rejection_breakdown),
+        ("funding_oi_research", "💰 Funding + Open Interest", _format_funding_oi_research),
+        ("deep_research_export", "📊 Deep Research Export", _format_deep_research_export),
     ]),
 ]
 
@@ -7210,6 +7246,114 @@ def _build_data_quality_block(snapshots):
     if never_run:
         lines.append(f"Modules never run: {never_run}")
 
+    return "\n".join(lines)
+
+
+def _build_trade_features_block():
+    """
+    Reads directly from trades (not a Snapshot) - Sample Size overall,
+    plus coverage AND a basic research summary (mean/median for
+    numeric fields, top distribution for categorical) of the 6 fields
+    persisted in this same change (fomo_status/total_penalty/
+    alpha_score/heat_score/heat_tier/scan_mode). Coverage naturally
+    starts low right after this change ships, since these columns are
+    write-once at SIGNAL for NEW trades only - that is expected, not
+    an error. Read-only - raw values in the database are untouched,
+    no effect on trading logic.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM trades")
+        total_trades = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED'")
+        total_closed = cur.fetchone()[0]
+
+        coverage = {}
+        for field in ["fomo_status", "total_penalty", "alpha_score", "heat_score", "heat_tier", "scan_mode"]:
+            cur.execute(f"SELECT COUNT(*) FROM trades WHERE {field} IS NOT NULL")
+            coverage[field] = cur.fetchone()[0]
+
+        numeric_summary = {}
+        for field in ["total_penalty", "alpha_score", "heat_score"]:
+            if coverage[field] > 0:
+                cur.execute(f"SELECT AVG({field}), MIN({field}), MAX({field}) FROM trades WHERE {field} IS NOT NULL")
+                avg_v, min_v, max_v = cur.fetchone()
+                numeric_summary[field] = {"avg": round(avg_v, 2) if avg_v is not None else None, "min": min_v, "max": max_v}
+
+        categorical_summary = {}
+        for field in ["fomo_status", "heat_tier", "scan_mode"]:
+            if coverage[field] > 0:
+                cur.execute(f"""
+                    SELECT {field}, COUNT(*) FROM trades
+                    WHERE {field} IS NOT NULL GROUP BY {field} ORDER BY COUNT(*) DESC LIMIT 5
+                """)
+                categorical_summary[field] = dict(cur.fetchall())
+
+        lines = [
+            "🔧 TRADE FEATURES SNAPSHOT", "-" * 40,
+            f"Total trades: {total_trades}  |  Closed: {total_closed}",
+            "",
+            "Coverage of newly-persisted fields (write-once at SIGNAL, new trades only):",
+        ]
+        for field, count in coverage.items():
+            lines.append(f"  {field}: {count} trade(s)")
+
+        if numeric_summary:
+            lines.append("")
+            lines.append("Numeric field summary:")
+            for field, s in numeric_summary.items():
+                lines.append(f"  {field}: avg={s['avg']}, min={s['min']}, max={s['max']}")
+
+        if categorical_summary:
+            lines.append("")
+            lines.append("Categorical field distribution (top 5):")
+            for field, dist in categorical_summary.items():
+                lines.append(f"  {field}: {dist}")
+
+        lines.append("")
+        lines.append("Other Research-relevant columns available on `trades`: market_regime, "
+                      "market_health_score, market_snapshot, compression_score/status, flow_score, "
+                      "volume_acceleration, ranking_score, quality_grade, risk_grade.")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"🔧 TRADE FEATURES SNAPSHOT\n{'-'*40}\n(Unable to read trades - {e})"
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _build_intelligence_summary_block(snapshots):
+    """
+    Aggregated across every already-fetched snapshot - headline_stat
+    and evidence, where present, plus known, previously-documented
+    gaps. No new analysis - only selecting/re-presenting what each
+    module's own snapshot already states.
+    """
+    lines = ["🧭 RESEARCH INTELLIGENCE SUMMARY", "-" * 40, "Findings by module:"]
+    any_findings = False
+    for key, snap in snapshots.items():
+        if snap and snap.get("headline_stat"):
+            lines.append(f"  [{key}] {snap['headline_stat']}")
+            any_findings = True
+    if not any_findings:
+        lines.append("  N/A — DATA NOT AVAILABLE")
+
+    lines.append("")
+    lines.append("Known Research Gaps (documented, not re-derived here):")
+    lines.append("  - research_winners/research_losers: a Schema Drift hypothesis "
+                  "(market_health_score column) remains open pending live DB verification.")
+    lines.append("  - Funding/OI: no historical backfill; coverage begins only from "
+                  "the trade this collection first went live on.")
+    lines.append("  - CLOSE measurement_point for Funding/OI remains deliberately deferred.")
+    lines.append("")
+    lines.append("Any finding above with STRONG or MODERATE evidence is a candidate for a "
+                  "separately-reviewed hypothesis - none of it changes AI Brain/Ranking "
+                  "automatically.")
     return "\n".join(lines)
 
 
@@ -7379,7 +7523,7 @@ def research_report_command(message):
         latest_run = _fetch_latest_research_run()
         snapshots = _fetch_all_snapshots()
 
-        chunks = [_build_header_block(latest_run, snapshots)]
+        chunks = [_build_header_block(latest_run, snapshots), _build_trade_features_block()]
 
         number_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
         flat_modules = [(key, name, fmt) for _, mods in RESEARCH_REPORT_SECTIONS for key, name, fmt in mods]
@@ -7397,6 +7541,7 @@ def research_report_command(message):
                 idx += 1
 
         chunks.append(_build_data_quality_block(snapshots))
+        chunks.append(_build_intelligence_summary_block(snapshots))
         chunks.append(_build_footer_block())
 
         messages = _pack_into_messages(chunks)
@@ -7807,7 +7952,8 @@ def trade_command(message):
             compression_score, compression_status, momentum_weight,
             flow_score, volume_acceleration, flow_rating, risk_grade,
             decision_summary, ranking_score, quality_grade,
-            market_temperature, decision_id, time_to_target
+            market_temperature, decision_id, time_to_target,
+            fomo_status, total_penalty, alpha_score, heat_score, heat_tier, scan_mode
         FROM trades
         WHERE id = %s
         """, (trade_id,))
@@ -7825,7 +7971,8 @@ def trade_command(message):
          compression_score, compression_status, momentum_weight,
          flow_score, volume_acceleration, flow_rating, risk_grade,
          decision_summary, ranking_score, quality_grade,
-         market_temperature, decision_id, time_to_target) = row
+         market_temperature, decision_id, time_to_target,
+         fomo_status, total_penalty, alpha_score, heat_score, heat_tier, scan_mode) = row
 
         status_display = status if status else "UNKNOWN"
         direction_emoji = "🟢" if "LONG" in side else "🔴"
@@ -7856,6 +8003,11 @@ def trade_command(message):
 🎯 Rank {ranking_score if ranking_score is not None else 'N/A'}
 🛡 {risk_grade if risk_grade else 'N/A'}
 🏦 {sector if sector else 'UNKNOWN'}
+
+────────────────────
+
+🔥 {fomo_status if fomo_status else 'N/A'}  ⚡{alpha_score if alpha_score is not None else 'N/A'}  🌡{heat_score if heat_score is not None else 'N/A'}/{heat_tier if heat_tier else 'N/A'}
+➖ Penalty: {total_penalty if total_penalty is not None else 'N/A'}  🔬 {scan_mode if scan_mode else 'N/A'}
 
 ────────────────────
 

@@ -36,8 +36,17 @@ import sys
 import csv
 import json
 import statistics
+import time
+
 import psycopg2
 from datetime import datetime
+
+from snapshot_writer import save_snapshot, update_snapshot_status
+
+MODULE_KEY = "deep_research_export"
+MODULE_NAME = "Deep Historical Research Export"
+MODULE_CATEGORY = "research_lab"
+MODULE_VERSION = "1.0"
 
 
 # ================================================
@@ -240,6 +249,8 @@ def section_c_and_d(winners, losers):
     for i, (name, strength, kind) in enumerate(ranking, 1):
         print(f"  {i}. {name} ({kind}) - strength score: {strength}")
 
+    return ranking  # additive only - the printed Section D above is unchanged
+
 
 # ================================================
 # SECTION E - Direction split, with explicit sample-size honesty
@@ -294,6 +305,7 @@ def section_categorical_deep_dive(winners, losers, column, title, note=None):
 def section_k(winners, losers):
     print(f"\n{'=' * 70}\nSECTION K - BRAIN CONFIDENCE DISTRIBUTION (not just mean)\n{'=' * 70}")
     bins = [(0, 50), (50, 60), (60, 70), (70, 80), (80, 90), (90, 101)]
+    bin_results = []
     for lo, hi in bins:
         w_in_bin = [r for r in winners if r.get("brain_confidence") is not None and lo <= r["brain_confidence"] < hi]
         l_in_bin = [r for r in losers if r.get("brain_confidence") is not None and lo <= r["brain_confidence"] < hi]
@@ -302,6 +314,9 @@ def section_k(winners, losers):
         flag = "" if total >= 30 else "  [small sample]"
         print(f"  [{lo}-{hi}): winners={len(w_in_bin)} losers={len(l_in_bin)} "
               f"win_rate={win_rate}%{flag}")
+        bin_results.append({"range": f"{lo}-{hi}", "winners": len(w_in_bin), "losers": len(l_in_bin),
+                             "win_rate": win_rate, "n": total})
+    return bin_results  # additive only - the printed distribution above is unchanged
 
 
 # ================================================
@@ -310,16 +325,19 @@ def section_k(winners, losers):
 
 def section_l(winners, losers):
     print(f"\n{'=' * 70}\nSECTION L - SCORE / RANKING SCORE vs WIN RATE\n{'=' * 70}")
+    all_results = {}
     for col, name in [("score", "Score"), ("ranking_score", "Ranking Score")]:
         print(f"\n{name} (quartile bins across the combined pool):")
         combined = [(r[col], "WIN") for r in winners if r.get(col) is not None] + \
                    [(r[col], "LOSS") for r in losers if r.get(col) is not None]
         if len(combined) < 40:
             print("  INSUFFICIENT DATA for quartile binning")
+            all_results[name] = "INSUFFICIENT DATA"
             continue
         combined.sort(key=lambda x: x[0])
         n = len(combined)
         quartile_size = n // 4
+        quartiles = []
         for q in range(4):
             start = q * quartile_size
             end = (q + 1) * quartile_size if q < 3 else n
@@ -328,6 +346,9 @@ def section_l(winners, losers):
             win_rate = round((wins / len(chunk)) * 100, 2) if chunk else None
             val_range = f"{round(chunk[0][0], 2)} - {round(chunk[-1][0], 2)}" if chunk else "N/A"
             print(f"  Q{q+1} (range {val_range}, n={len(chunk)}): win rate = {win_rate}%")
+            quartiles.append({"quartile": f"Q{q+1}", "range": val_range, "n": len(chunk), "win_rate": win_rate})
+        all_results[name] = quartiles
+    return all_results  # additive only - the printed quartile breakdown above is unchanged
 
 
 # ================================================
@@ -345,7 +366,13 @@ def section_m(winners, losers):
     print(f"\nmarket_health (from research_winners/losers' own column):")
     print(f"  Present: {market_health_present}/{total} "
           f"({round((market_health_present/total)*100, 1) if total else 0}%)")
+    market_health_finding = None
     if market_health_present == 0:
+        market_health_finding = ("market_health is NOT populated for any trade in this sample - "
+                                  "sourced from initial_snapshot's own key, reserved None at write "
+                                  "time (structural circular dependency, predates v23.2.1). No "
+                                  "Winners vs Losers breakdown by Market Health is possible from "
+                                  "research_winners/research_losers as they stand today.")
         print("  FINDING: market_health is NOT populated for any trade in this sample.")
         print("  This column is sourced from initial_snapshot's own 'market_health' key,")
         print("  which was reserved as None at write time due to a structural circular")
@@ -369,6 +396,13 @@ def section_m(winners, losers):
     else:
         print("  FINDING: market_regime is not populated for this sample either.")
 
+    return {
+        "total_rows": total,
+        "market_health_present": market_health_present,
+        "market_regime_present": market_regime_present,
+        "market_health_finding": market_health_finding,
+    }  # additive only - every print statement above is unchanged
+
 
 # ================================================
 # SECTION N - Missing Data Audit, all 17 variables
@@ -380,12 +414,15 @@ def section_n(winners, losers):
     total = len(all_rows)
     print(f"Total records audited: {total} ({len(winners)} winners + {len(losers)} losers)\n")
 
+    coverage = {}
     for col, name in CONTINUOUS_VARS + CATEGORICAL_VARS:
         present = sum(1 for r in all_rows if r.get(col) is not None)
         missing = total - present
         pct = round((present / total) * 100, 2) if total else 0.0
         flag = "" if pct == 100.0 else "  ⚠️"
         print(f"  {name}: present={present} missing={missing} completeness={pct}%{flag}")
+        coverage[name] = {"present": present, "missing": missing, "completeness_pct": pct}
+    return coverage  # additive only - every print statement above is unchanged
 
 
 # ================================================
@@ -418,36 +455,125 @@ def section_o(winners, losers, output_path="deep_research_export.csv"):
 # ================================================
 
 def main():
+    update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "RUNNING")
+    start_time = time.time()
     print(f"🔬 Deep Historical Research Export starting - {datetime.now().isoformat()}")
 
-    winners = _fetch_all("research_winners")
-    losers = _fetch_all("research_losers")
+    try:
+        winners = _fetch_all("research_winners")
+        losers = _fetch_all("research_losers")
 
-    if not winners and not losers:
-        print("⚠️ No data retrieved from research_winners/research_losers - nothing to analyze.")
-        return
+        if not winners and not losers:
+            print("⚠️ No data retrieved from research_winners/research_losers - nothing to analyze.")
+            # No save_snapshot() call - the Runner correctly reports
+            # PARTIAL (last_success_at does not advance) rather than a
+            # false SUCCESS with no real content.
+            return
 
-    section_a_b(winners, "A) WINNERS")
-    section_a_b(losers, "B) LOSERS")
-    section_c_and_d(winners, losers)
-    section_e(winners, losers)
-    section_categorical_deep_dive(winners, losers, "quality_grade", "F) QUALITY GRADE")
-    section_categorical_deep_dive(winners, losers, "market_regime", "G) MARKET REGIME")
-    section_categorical_deep_dive(winners, losers, "compression_status", "H) COMPRESSION",
-                                   note="Showing categories actually present in the data - not an assumed fixed list.")
-    section_categorical_deep_dive(winners, losers, "session", "I) SESSION")
-    section_categorical_deep_dive(winners, losers, "sector", "J) SECTOR")
-    section_k(winners, losers)
-    section_l(winners, losers)
-    section_m(winners, losers)
-    section_n(winners, losers)
-    section_o(winners, losers)
+        section_a_b(winners, "A) WINNERS")
+        section_a_b(losers, "B) LOSERS")
+        ranking = section_c_and_d(winners, losers)
+        section_e(winners, losers)
+        section_categorical_deep_dive(winners, losers, "quality_grade", "F) QUALITY GRADE")
+        section_categorical_deep_dive(winners, losers, "market_regime", "G) MARKET REGIME")
+        section_categorical_deep_dive(winners, losers, "compression_status", "H) COMPRESSION",
+                                       note="Showing categories actually present in the data - not an assumed fixed list.")
+        section_categorical_deep_dive(winners, losers, "session", "I) SESSION")
+        section_categorical_deep_dive(winners, losers, "sector", "J) SECTOR")
+        brain_confidence_distribution = section_k(winners, losers)
+        score_quartiles = section_l(winners, losers)
+        market_context = section_m(winners, losers)
+        missing_data_coverage = section_n(winners, losers)
+        section_o(winners, losers)
 
-    print(f"\n🔬 Deep Historical Research Export finished - {datetime.now().isoformat()}")
-    print("\nNote: descriptive statistics only. No AI Brain, decision logic, or")
-    print("weights were read or modified anywhere in this script. A human decides")
-    print("what, if anything, these findings mean for a future, separately")
-    print("reviewed change.")
+        total_records = len(winners) + len(losers)
+        print(f"\n🔬 Deep Historical Research Export finished - {datetime.now().isoformat()}")
+        print(f"🔬 Deep Historical Research Export: recorded {total_records} analyzed record(s)")
+        print("\nNote: descriptive statistics only. No AI Brain, decision logic, or")
+        print("weights were read or modified anywhere in this script. A human decides")
+        print("what, if anything, these findings mean for a future, separately")
+        print("reviewed change.")
+
+        # Executive summary for Telegram - basic numbers, simple
+        # categorical distributions, PLUS structured extracts from
+        # Sections D/K/L/M/N (the ranking, distribution, and coverage
+        # values those functions already computed and printed - see
+        # each section_* function above, where a single additive
+        # `return` was added at the very end, with zero change to any
+        # calculation or existing print statement).
+        #
+        # WHAT STAYED LOCAL, AND WHY: Section C (full per-variable
+        # detail for all 17 variables) is not duplicated here - it
+        # overlaps with winner_loser_dna_analysis.py's own full_dna()
+        # breakdown, already in /research_report. Sections E and F-J
+        # (per-category deep dives) are not duplicated either - the
+        # top-level categorical distributions already captured below
+        # cover the same ground without repeating five near-identical
+        # per-category tables. Section O (raw CSV, one row per trade)
+        # cannot safely become a structured Telegram summary at all -
+        # it IS the raw per-trade export; summarizing it further would
+        # just re-derive what sections A-N already provide. All of
+        # these remain fully available locally/stdout - nothing was
+        # deleted, only not duplicated into the Telegram-facing summary.
+        from collections import Counter
+        rr_values = [r.get("rr") for r in (winners + losers) if r.get("rr") is not None]
+        score_values = [r.get("score") for r in (winners + losers) if r.get("score") is not None]
+
+        def _distribution(rows, field):
+            counts = Counter(r.get(field) for r in rows if r.get(field) is not None)
+            return dict(counts.most_common(5))  # top 5 categories - keeps the Telegram message readable
+
+        summary = {
+            "winners_count": len(winners),
+            "losers_count": len(losers),
+            "overall_avg_rr": round(sum(rr_values) / len(rr_values), 3) if rr_values else None,
+            "overall_avg_score": round(sum(score_values) / len(score_values), 2) if score_values else None,
+            "winners_quality_grade_distribution": _distribution(winners, "quality_grade"),
+            "losers_quality_grade_distribution": _distribution(losers, "quality_grade"),
+            "winners_market_regime_distribution": _distribution(winners, "market_regime"),
+            "losers_market_regime_distribution": _distribution(losers, "market_regime"),
+            "winners_compression_status_distribution": _distribution(winners, "compression_status"),
+            "losers_compression_status_distribution": _distribution(losers, "compression_status"),
+            # Section D - top 5 strongest differentiators across all 17 variables
+            "top_differentiators": ranking[:5] if ranking else [],
+            # Section K - full Brain Confidence distribution (the field
+            # confirmed elsewhere to be Low Variance - shown here with
+            # real numbers, not just the qualitative warning)
+            "brain_confidence_distribution": brain_confidence_distribution,
+            # Section L - Score/Ranking Score by quartile vs win rate
+            "score_quartiles": score_quartiles,
+            # Section M - Market Context availability + the architectural finding
+            "market_context_availability": market_context,
+            # Section N - completeness of all 17 variables (condensed to incomplete-only, keeps the message shorter)
+            "incomplete_fields": {k: v for k, v in missing_data_coverage.items() if v["completeness_pct"] < 100.0},
+            "note": "Section C (full per-variable detail) overlaps with Winner/Loser DNA elsewhere in "
+                    "/research_report, not duplicated here. Sections E/F-J (per-category deep dives) are "
+                    "covered by the distributions above. Section O (raw CSV, one row per trade) stays "
+                    "local/stdout only - it cannot become a structured summary without just re-deriving "
+                    "what sections A-N already provide. Full detail: run deep_research_export.py directly.",
+        }
+        headline_stat = (f"{len(winners)} winners, {len(losers)} losers | "
+                          f"Top differentiator: {ranking[0][0] if ranking else 'N/A'}")
+
+        ok = save_snapshot(
+            module_key=MODULE_KEY,
+            module_name=MODULE_NAME,
+            category=MODULE_CATEGORY,
+            headline_stat=headline_stat,
+            summary_data=summary,
+            version_scope="ALL_VERSIONS",
+            detail_table=None,
+            module_version=MODULE_VERSION,
+            execution_duration_seconds=round(time.time() - start_time, 2),
+            records_processed=total_records,
+        )
+        if not ok:
+            raise RuntimeError("snapshot write failed")
+
+    except Exception as e:
+        update_snapshot_status(MODULE_KEY, MODULE_NAME, MODULE_CATEGORY, "FAILED")
+        print(f"⚠️ Deep Historical Research Export: unhandled error - {e}")
+        raise
 
 
 if __name__ == "__main__":

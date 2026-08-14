@@ -6964,6 +6964,21 @@ Coins Analyzed  : {total_analyzed}
                 # UPDATE path for an already-OPEN trade does not
                 # reference either key, which is what keeps this write-once.
                 s['trade_data']['market_health_score'] = market_health_score
+                # Completes initial_snapshot['market_health'] with the
+                # same value - initial_snapshot is still in-memory here
+                # (built inside analyze(), not yet written to the
+                # database), so this is finishing construction before
+                # the first INSERT, not a post-write edit. Fixes
+                # research_winners/research_losers's own "market_health"
+                # column (sourced from initial_snapshot via winners_
+                # analyzer.py's dna.get("market_health"), not from
+                # trades.market_health_score), previously always NULL.
+                # No effect on write-once semantics: save_trade()'s own
+                # UPDATE path for an already-OPEN trade never touches
+                # initial_snapshot at all, so a re-discovered OPEN trade
+                # keeps whatever was captured at its original INSERT.
+                if s['trade_data'].get('initial_snapshot') is not None:
+                    s['trade_data']['initial_snapshot']['market_health'] = market_health_score
                 s['trade_data']['market_snapshot'] = {
                     "condition": market_condition,
                     "strongest_sector": strongest_sector,

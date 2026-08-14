@@ -6168,7 +6168,7 @@ def _fetch_open_interest(symbol):
         return {"success": False, "reason": f"{type(e).__name__}: {e}"}
 
 
-def save_research_market_data(trade_id, symbol, signal_timestamp, funding_result, oi_result):
+def save_research_market_data(trade_id, symbol, signal_timestamp, funding_result, oi_result, measurement_point="SIGNAL"):
     """
     Writes exactly one row to research_market_data. Called ONLY after
     save_trade() has already returned - trade_id may still be None if
@@ -6176,6 +6176,12 @@ def save_research_market_data(trade_id, symbol, signal_timestamp, funding_result
     data in that case (symbol + signal_timestamp remain queryable even
     without a trade_id). Never raises - a failure here can never affect
     anything upstream, since it's the last step in the chain.
+
+    measurement_point: 'SIGNAL' for a newly-created trade (the default,
+    preserving prior behavior for any caller that doesn't pass it) or
+    'OPEN_UPDATE' when /scan re-discovers an already-OPEN trade. No
+    other value is currently produced anywhere in this file - CLOSE is
+    deliberately deferred pending a separate review of the close path.
     """
     conn = None
     cur = None
@@ -6216,7 +6222,7 @@ def save_research_market_data(trade_id, symbol, signal_timestamp, funding_result
                 raw_funding_response, raw_oi_response,
                 source_timestamp, collected_at
             ) VALUES (
-                %s, %s, 'SIGNAL', %s,
+                %s, %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
                 'OKX', %s, %s,
@@ -6224,7 +6230,7 @@ def save_research_market_data(trade_id, symbol, signal_timestamp, funding_result
                 %s, %s
             )
         """, (
-            trade_id, symbol, signal_timestamp,
+            trade_id, symbol, measurement_point, signal_timestamp,
             funding_result.get("funding_rate"), funding_time, funding_result.get("next_funding_time"),
             oi_result.get("oi_contracts"), oi_result.get("oi_ccy"), oi_result.get("unit_note"),
             status, failure_reason,
@@ -6970,7 +6976,10 @@ Coins Analyzed  : {total_analyzed}
             # Runs even if trade_id is None (save_trade failed) - the
             # Funding/OI data is still recorded, just without a link yet.
             try:
-                save_research_market_data(trade_id, s['coin'], signal_timestamp, funding_result, oi_result)
+                save_research_market_data(
+                    trade_id, s['coin'], signal_timestamp, funding_result, oi_result,
+                    measurement_point="OPEN_UPDATE" if was_update else "SIGNAL",
+                )
             except Exception as e:
                 print(f"⚠️ Research Market Data: failed to store for {s['coin']} - {e}")
 

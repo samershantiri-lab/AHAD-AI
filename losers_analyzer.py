@@ -150,6 +150,10 @@ def init_research_losers_table():
             market_snapshot_json JSONB
         )
         """)
+        # Idempotent migration - identical fix and reasoning as
+        # winners_analyzer.py's own init_research_winners_table().
+        cur.execute("ALTER TABLE research_losers ADD COLUMN IF NOT EXISTS market_health_score REAL")
+        cur.execute("ALTER TABLE research_losers ADD COLUMN IF NOT EXISTS market_snapshot_json JSONB")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_losers_trade_id ON research_losers(trade_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_losers_symbol ON research_losers(symbol)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_losers_sector ON research_losers(sector)")

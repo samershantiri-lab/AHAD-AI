@@ -137,6 +137,17 @@ def init_research_winners_table():
             market_snapshot_json JSONB
         )
         """)
+        # Idempotent migration - CREATE TABLE IF NOT EXISTS above never
+        # adds columns to a table that already existed before these two
+        # were added to its definition. Confirmed as the exact cause of
+        # the live "column market_health_score does not exist" error.
+        # Safe to run on every startup: ADD COLUMN IF NOT EXISTS is a
+        # no-op when the column is already present, whether the table
+        # was just created above or already existed with these columns
+        # missing, present, or (after this fix) already added by a
+        # prior run.
+        cur.execute("ALTER TABLE research_winners ADD COLUMN IF NOT EXISTS market_health_score REAL")
+        cur.execute("ALTER TABLE research_winners ADD COLUMN IF NOT EXISTS market_snapshot_json JSONB")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_winners_trade_id ON research_winners(trade_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_winners_symbol ON research_winners(symbol)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_winners_sector ON research_winners(sector)")

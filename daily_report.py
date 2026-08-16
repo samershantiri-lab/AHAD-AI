@@ -26,6 +26,22 @@ column type. If the live server's actual timezone differs, this is
 the single function to correct - nothing else in this file depends on
 that assumption being right.
 
+CONFIRMED BUG, FIXED HERE: the previous version of _cycle_boundaries_
+naive() computed cycle_start as "today at 03:00" whenever the current
+hour was >= 3 - which is always true when this script runs, since it
+is scheduled for exactly 03:00 Asia/Amman. This meant the query window
+was [today 03:00, tomorrow 03:00) - a window that had only just begun
+at the moment of the query, and could never contain any trade closed
+during the PREVIOUS, just-completed cycle (the one this report is
+actually meant to summarize). Confirmed against 4 consecutive days of
+real Daily Report output (Aug 13-16), all showing "Closed: 0" despite
+trades.status='CLOSED' genuinely increasing by 16 over that same
+span. The fix finds the most recent 03:00 boundary at or before "now"
+as the cycle's END, then subtracts exactly one day for the cycle's
+START - this always describes the cycle that just completed,
+regardless of the exact trigger time (verified against on-time,
+delayed, early, and manual-midday trigger scenarios).
+
 "Generated" = signal_time falls within the cycle. "Closed" = close_
 time falls within the cycle, status='CLOSED'. "Open" = ALL currently
 OPEN trades, regardless of when generated - never date-filtered.
@@ -73,24 +89,32 @@ except Exception as e:
 
 def _cycle_boundaries_naive():
     """
-    Returns (start_naive, end_naive) - the current daily cycle's
-    03:00->03:00 Asia/Amman boundaries, converted to naive datetimes
-    for comparison against trades.signal_time/close_time (TIMESTAMP,
-    no timezone). See the module docstring for the one assumption this
-    conversion relies on.
+    Returns (start_naive, end_naive, cycle_end_amman) - the boundaries
+    of the MOST RECENTLY COMPLETED daily cycle (03:00->03:00 Asia/
+    Amman), converted to naive datetimes for comparison against
+    trades.signal_time/close_time (TIMESTAMP, no timezone). See the
+    module docstring for the confirmed bug this replaces, and for the
+    one timezone assumption this conversion still relies on.
+
+    cycle_end_amman (not cycle_start) is returned for display purposes
+    - it matches the day the report is actually delivered/read, which
+    is the convention already established in every Daily Report sent
+    so far (title date = send date).
     """
     now_amman = datetime.now(timezone.utc).astimezone(AMMAN_TZ)
-    cycle_start_amman = now_amman.replace(hour=CYCLE_START_HOUR, minute=0, second=0, microsecond=0)
+    cycle_end_amman = now_amman.replace(hour=CYCLE_START_HOUR, minute=0, second=0, microsecond=0)
     if now_amman.hour < CYCLE_START_HOUR:
-        cycle_start_amman -= timedelta(days=1)
-    cycle_end_amman = cycle_start_amman + timedelta(days=1)
+        # Triggered before today's 03:00 boundary (e.g. an early manual
+        # run) - the most recently completed cycle ended YESTERDAY at 03:00.
+        cycle_end_amman -= timedelta(days=1)
+    cycle_start_amman = cycle_end_amman - timedelta(days=1)
 
     # Real, zoneinfo-computed UTC instants - then stripped to naive to
     # match the column type. This is the one point where the "naive
     # column = UTC" assumption is applied.
     start_naive = cycle_start_amman.astimezone(timezone.utc).replace(tzinfo=None)
     end_naive = cycle_end_amman.astimezone(timezone.utc).replace(tzinfo=None)
-    return start_naive, end_naive, cycle_start_amman
+    return start_naive, end_naive, cycle_end_amman
 
 
 def get_db_connection():
@@ -108,7 +132,7 @@ def _fetch_daily_data():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        start_utc, end_utc, cycle_start_amman = _cycle_boundaries_naive()
+        start_utc, end_utc, cycle_end_amman = _cycle_boundaries_naive()
 
         cur.execute("SELECT COUNT(*) FROM trades WHERE signal_time >= %s AND signal_time < %s",
                      (start_utc, end_utc))
@@ -133,7 +157,7 @@ def _fetch_daily_data():
             "open_count": open_count,
             "total_closed_alltime": total_closed_alltime,
             "start_utc": start_utc,
-            "cycle_start_amman": cycle_start_amman,
+            "cycle_end_amman": cycle_end_amman,
         }
     except Exception as e:
         print(f"⚠️ Daily Report: failed to fetch data - {e}")
@@ -177,7 +201,7 @@ def _direction_line(rows, side):
 
 
 def build_report_text(data):
-    today_str = data["cycle_start_amman"].strftime("%Y-%m-%d")
+    today_str = data["cycle_end_amman"].strftime("%Y-%m-%d")
     overall = _summarize(data["closed_today"])
     remaining = max(0, RESEARCH_TARGET_CLOSED_TRADES - data["total_closed_alltime"])
 

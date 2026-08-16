@@ -34,7 +34,7 @@ services:
 
   - type: cron
     name: ahad-ai-research-runner
-    schedule: "0 0 * * 0"  # 00:00 UTC every Sunday = 03:00 Asia/Amman
+    schedule: "0 0 * * *"  # 00:00 UTC daily = 03:00 Asia/Amman (synced 2026-08-16 to match the live Render Dashboard setting made 2026-08-15 - was previously weekly here, causing Configuration Drift)
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python research_runner.py

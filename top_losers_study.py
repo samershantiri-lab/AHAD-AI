@@ -306,6 +306,23 @@ def init_research_top_losers_table():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_top_losers_symbol ON research_top_losers(symbol)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_top_losers_date ON research_top_losers(observed_date)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_research_top_losers_sector ON research_top_losers(sector)")
+        # Idempotent migration - see top_gainers_study.py's identical
+        # fix for the full reasoning. Same confirmed root cause.
+        for col_name, col_type in [
+            ("trade_id", "INTEGER"), ("version", "TEXT"), ("version_id", "INTEGER"),
+            ("direction", "TEXT"), ("result", "TEXT"), ("brain_confidence", "REAL"),
+            ("score", "REAL"), ("ranking_score", "REAL"), ("quality_grade", "TEXT"),
+            ("rr", "REAL"), ("risk_grade", "TEXT"), ("flow", "REAL"), ("flow_grade", "TEXT"),
+            ("momentum_score", "REAL"), ("compression_status", "TEXT"), ("market_regime", "TEXT"),
+            ("sector", "TEXT"), ("market_health", "REAL"), ("session", "TEXT"),
+            ("ema20", "REAL"), ("ema50", "REAL"), ("ema200", "REAL"), ("rsi_15m", "REAL"),
+            ("atr", "REAL"), ("macd", "REAL"), ("volume_acceleration", "REAL"),
+            ("volume_ratio", "REAL"), ("trade_dna", "JSONB"), ("recorded_at", "TIMESTAMP DEFAULT NOW()"),
+            ("research_move_start_proxy_60", "TIMESTAMP"),
+            ("research_move_start_proxy_75", "TIMESTAMP"),
+            ("research_move_start_proxy_90", "TIMESTAMP"),
+        ]:
+            cur.execute(f"ALTER TABLE research_top_losers ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
         conn.commit()
         print("🔬 Top Losers Study: research_top_losers table ready")
     except Exception as e:
@@ -321,21 +338,25 @@ def init_research_top_losers_table():
 # 📥 COLLECTION - read-only against `trades`, write-only against `research_top_losers`
 # ================================================
 
-def _lookup_trade_dna(cur, symbol):
+def _lookup_trade_dna(cur, symbol, event_time):
     """
-    Read-only lookup of the most recent CLOSED trade for this symbol -
-    used only to enrich a top-loser record when AHAD AI happens to
-    have traded it before. Returns None (not an empty dict) when no
-    match exists, so the caller can tell "never traded" apart from
-    "traded, but with an empty snapshot".
+    Point-in-time lookup of the most recent CLOSED trade for this
+    symbol AT OR BEFORE event_time - used only to enrich a top-loser
+    record when AHAD AI happens to have traded it before the move
+    being studied. Returns None (not an empty dict) when no match
+    exists, so the caller can tell "never traded before this event"
+    apart from "traded, but with an empty snapshot".
+
+    FIXED (previously a confirmed Future Leakage bug) - identical fix
+    and reasoning to top_gainers_study.py's own _lookup_trade_dna().
     """
     cur.execute("""
         SELECT id, version, version_id, side, result, initial_snapshot
         FROM trades
-        WHERE symbol = %s AND status = 'CLOSED'
+        WHERE symbol = %s AND status = 'CLOSED' AND signal_time <= %s
         ORDER BY signal_time DESC
         LIMIT 1
-    """, (symbol,))
+    """, (symbol, event_time))
     row = cur.fetchone()
     if not row:
         return None
@@ -360,10 +381,14 @@ def collect_top_losers():
         cur = conn.cursor()
         today = date.today()
 
+        duplicate_count = 0
+        failed_count = 0
+        trade_dna_matched = 0
+        trade_dna_missing = 0
+        event_source_counts = {"T75": 0, "T60": 0, "T90": 0, "NO_PROXY": 0}
+
         for l in losers:
             symbol = l["symbol"]
-            trade_info = _lookup_trade_dna(cur, symbol)
-            dna = trade_info["dna"] if trade_info else {}
 
             proxy = l.get("move_start_proxy") or {}
             proxy_datetimes = {}
@@ -374,6 +399,29 @@ def collect_top_losers():
                     if entry else None
                 )
 
+            # event_time selection - identical rule and reasoning to
+            # top_gainers_study.py's own collect_top_gainers(),
+            # including the NO_PROXY fix (no synthetic timestamp).
+            if proxy_datetimes[0.75] is not None:
+                event_time, event_time_source = proxy_datetimes[0.75], "T75"
+            elif proxy_datetimes[0.60] is not None:
+                event_time, event_time_source = proxy_datetimes[0.60], "T60"
+            elif proxy_datetimes[0.90] is not None:
+                event_time, event_time_source = proxy_datetimes[0.90], "T90"
+            else:
+                event_time, event_time_source = None, "NO_PROXY"
+            event_source_counts[event_time_source] += 1
+
+            trade_info = _lookup_trade_dna(cur, symbol, event_time) if event_time is not None else None
+            dna = trade_info["dna"] if trade_info else {}
+            if trade_info:
+                trade_dna_matched += 1
+            else:
+                trade_dna_missing += 1
+
+            # SAVEPOINT per symbol - identical fix to top_gainers_
+            # study.py's own collect_top_gainers().
+            cur.execute("SAVEPOINT research_symbol")
             try:
                 cur.execute("""
                 INSERT INTO research_top_losers (
@@ -414,21 +462,31 @@ def collect_top_losers():
                     json.dumps(dna, default=str),
                     proxy_datetimes[0.60], proxy_datetimes[0.75], proxy_datetimes[0.90]
                 ))
-                # ON CONFLICT DO NOTHING never raises on a duplicate -
-                # cur.rowcount is the only way to tell whether a row was
-                # actually inserted (1) or silently skipped (0).
                 if cur.rowcount == 1:
                     new_count += 1
+                else:
+                    duplicate_count += 1
+                cur.execute("RELEASE SAVEPOINT research_symbol")
             except Exception as row_error:
                 print(f"⚠️ Top Losers Study: failed to record {symbol} - {row_error}")
-                conn.rollback()
+                cur.execute("ROLLBACK TO SAVEPOINT research_symbol")
+                cur.execute("RELEASE SAVEPOINT research_symbol")
+                failed_count += 1
                 continue
 
         conn.commit()
         print(f"🔬 Top Losers Study: recorded {new_count} loser(s) for {today}")
+        print(
+            f"🔬 Top Losers Study Summary — symbols_scanned={len(losers)}, "
+            f"new={new_count}, duplicates={duplicate_count}, failed={failed_count}, "
+            f"trade_dna_matched={trade_dna_matched}, trade_dna_missing={trade_dna_missing}, "
+            f"event_time_source={event_source_counts}"
+        )
 
     except Exception as e:
         print(f"⚠️ Top Losers Study: failed to collect losers - {e}")
+        if conn:
+            conn.rollback()
     finally:
         if cur:
             cur.close()

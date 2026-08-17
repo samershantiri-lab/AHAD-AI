@@ -200,7 +200,127 @@ def _direction_line(rows, side):
     return f"{side}: {s['n']} trades — {s['win_rate']}% WR, Avg RR {s['avg_rr']}"
 
 
-def build_report_text(data):
+def _fetch_research_snapshots(module_keys):
+    """
+    NEW - read-only lookup of research_snapshots for the given module
+    keys. FAILURE ISOLATION IS MANDATORY here: any failure (missing
+    table, connection issue, module_key never having run) returns an
+    empty dict, NEVER raises - the Daily Report's own trading-report
+    generation must never be broken by a Research Lab problem. This
+    is the only place in this file that reads a research_* table -
+    everything else in _fetch_daily_data() remains untouched, reading
+    only from `trades` as before.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT module_key, summary_data, last_attempt_status FROM research_snapshots WHERE module_key = ANY(%s)",
+            (module_keys,)
+        )
+        result = {}
+        for module_key, summary_data, status in cur.fetchall():
+            result[module_key] = {"summary_data": summary_data, "status": status}
+        return result
+    except Exception as e:
+        print(f"⚠️ Daily Report: research snapshot lookup failed (non-fatal) - {e}")
+        return {}
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _build_market_research_section(snapshots):
+    """
+    NEW - builds the "🔬 MARKET RESEARCH" section from already-
+    persisted research_snapshots data. Performs NO analysis itself -
+    only formats what top_gainers_study/top_losers_study/top_movers_
+    analysis already computed and saved. If snapshots are missing,
+    malformed, or their last attempt was not a SUCCESS, returns a
+    graceful unavailable message instead of raising or displaying
+    stale data - this function must never crash the caller.
+
+    FIX (stale-after-failure): a module_key existing in research_
+    snapshots only proves it succeeded AT SOME POINT in the past -
+    last_attempt_status must also be checked, otherwise a module that
+    just failed or partially completed would still have its OLD
+    successful summary_data on record, and this section could
+    silently present yesterday's (or older) numbers as if they were
+    today's. If any of the three required modules' last attempt was
+    not SUCCESS, the whole section is treated as unavailable rather
+    than mixing fresh and stale data.
+    """
+    try:
+        required_keys = ["top_gainers_study", "top_losers_study", "top_movers_analysis"]
+        if not any(k in snapshots for k in required_keys):
+            return ["🔬 MARKET RESEARCH", "Research data unavailable for this run."]
+
+        for key in required_keys:
+            entry = snapshots.get(key)
+            if entry is None or entry.get("status") != "SUCCESS":
+                return ["🔬 MARKET RESEARCH", "Research data unavailable for this run."]
+
+        gainers_snap = snapshots["top_gainers_study"]["summary_data"] or {}
+        losers_snap = snapshots["top_losers_study"]["summary_data"] or {}
+        movers_snap = snapshots["top_movers_analysis"]["summary_data"] or {}
+
+        lines = ["🔬 MARKET RESEARCH", ""]
+
+        lines.append("📈 TOP GAINERS")
+        lines.append(f"New today: {gainers_snap.get('new_gainers_this_run', 'N/A')} | "
+                     f"Total recorded: {gainers_snap.get('total_gainers_recorded', 'N/A')}")
+        lines.append(f"Avg Move: {gainers_snap.get('avg_change_pct', 'N/A')}% | "
+                     f"Avg Flow: {gainers_snap.get('avg_flow', 'N/A')} | "
+                     f"Avg RSI: {gainers_snap.get('avg_rsi', 'N/A')}")
+        lines.append(f"AHAD matched trades: {gainers_snap.get('gainers_with_ahad_ai_trade', 'N/A')}")
+
+        lines.append("")
+        lines.append("📉 TOP LOSERS")
+        lines.append(f"New today: {losers_snap.get('new_losers_this_run', 'N/A')} | "
+                     f"Total recorded: {losers_snap.get('total_losers_recorded', 'N/A')}")
+        lines.append(f"Avg Move: {losers_snap.get('avg_change_pct', 'N/A')}% | "
+                     f"Avg Flow: {losers_snap.get('avg_flow', 'N/A')} | "
+                     f"Avg RSI: {losers_snap.get('avg_rsi', 'N/A')}")
+        lines.append(f"AHAD matched trades: {losers_snap.get('losers_with_ahad_ai_trade', 'N/A')}")
+
+        lines.append("")
+        top_findings = movers_snap.get("top_findings") or []
+        if top_findings:
+            lines.append("🧬 RESEARCH FINDINGS")
+            for f in top_findings[:3]:
+                direction_note = "Higher in Gainers than Losers" if f.get("difference", 0) > 0 else "Higher in Losers than Gainers"
+                evidence_emoji = "🟡" if f.get("evidence_level") == "CANDIDATE" else "⚪"
+                lines.append(f"🧬 {f.get('feature', 'N/A')}")
+                lines.append(f"{direction_note}")
+                lines.append(f"N={f.get('gainers_n', 'N/A')}/{f.get('losers_n', 'N/A')}")
+                lines.append(f"{evidence_emoji} {f.get('evidence_level', 'N/A')}")
+        else:
+            lines.append("🧬 RESEARCH FINDINGS")
+            lines.append("No sufficiently supported market pattern detected today.")
+            lines.append("Dataset continues accumulating.")
+
+        lines.append("")
+        lines.append("⚠️ RESEARCH STATUS")
+        lines.append(f"Gainers analyzed: {movers_snap.get('gainers_analyzed', 'N/A')} | "
+                     f"Losers analyzed: {movers_snap.get('losers_analyzed', 'N/A')}")
+        lines.append(f"Candidates: {movers_snap.get('candidate_count', 'N/A')} | "
+                     f"Validated: {movers_snap.get('validated_count', 0)} | "
+                     f"Insufficient-data areas: {movers_snap.get('insufficient_data_count', 'N/A')}")
+        lines.append("No Research finding changes AI Brain/Ranking automatically.")
+
+        return lines
+    except Exception as e:
+        # Absolute last-resort guard - even a malformed snapshot must
+        # never break the Daily Report's own trading-report output.
+        print(f"⚠️ Daily Report: failed to build Market Research section (non-fatal) - {e}")
+        return ["🔬 MARKET RESEARCH", "Research data unavailable for this run."]
+
+
+def build_report_text(data, research_snapshots=None):
     today_str = data["cycle_end_amman"].strftime("%Y-%m-%d")
     overall = _summarize(data["closed_today"])
     remaining = max(0, RESEARCH_TARGET_CLOSED_TRADES - data["total_closed_alltime"])
@@ -230,6 +350,14 @@ def build_report_text(data):
     lines.append(f"Closed: {data['total_closed_alltime']} / {RESEARCH_TARGET_CLOSED_TRADES}")
     lines.append(f"Remaining: {remaining}")
 
+    # NEW - Market Research section, built entirely from already-
+    # persisted snapshots (no analysis performed here). Backward
+    # compatible: research_snapshots defaults to None, in which case
+    # the section is skipped entirely rather than guessing.
+    if research_snapshots is not None:
+        lines.append("")
+        lines.extend(_build_market_research_section(research_snapshots))
+
     return "\n".join(lines)
 
 
@@ -252,7 +380,12 @@ def main():
     if data is None:
         print("⚠️ Daily Report: no data - aborting without sending.")
         return
-    text = build_report_text(data)
+    # NEW - research snapshots for the Market Research section. Fully
+    # failure-isolated inside _fetch_research_snapshots() itself - a
+    # Research Lab problem here can never prevent the trading Daily
+    # Report from being generated and sent.
+    research_snapshots = _fetch_research_snapshots(["top_gainers_study", "top_losers_study", "top_movers_analysis"])
+    text = build_report_text(data, research_snapshots)
     print(text)
     sent = send_to_telegram(text)
     print(f"📅 Daily Report {'sent' if sent else 'FAILED to send'} - {datetime.now().isoformat()}")

@@ -239,6 +239,7 @@ RESEARCH_MODULES = [
     # potentially affected by the open Schema Drift question, unlike
     # funding_oi_research above.
     {"name": "Deep Historical Research Export", "file": "deep_research_export.py", "module_key": "deep_research_export"},
+    {"name": "Top Movers Analysis (Gainers vs Losers)", "file": "top_movers_analysis.py", "module_key": "top_movers_analysis"},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for

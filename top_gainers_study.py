@@ -74,6 +74,7 @@ import requests
 import psycopg2
 from datetime import datetime, date
 from snapshot_writer import save_snapshot, update_snapshot_status
+from independent_market_indicators import compute_independent_snapshot
 
 MODULE_KEY = "top_gainers_study"
 MODULE_NAME = "Top Gainers Study"
@@ -114,7 +115,7 @@ def get_db_connection():
 # parity with bot.py's own universe is not required for a descriptive
 # study of overall market movers.
 
-TOP_N_GAINERS = 20
+TOP_N_GAINERS = 10
 REQUEST_DELAY_SECONDS = 0.15  # polite pacing against OKX's public API
 
 
@@ -147,9 +148,20 @@ def fetch_daily_change(symbol):
     Percent change over the most recent ~24h, using 24 hourly candles.
     Returns {"change_pct": float, "price": float, "candles": [...]} or
     None on any failure - a single symbol's fetch failing never stops
-    the rest of the study. `candles` (raw OKX response, most-recent-
-    first) is now included so compute_move_start_proxy() can use the
-    exact same fetch - no second API call needed.
+    the rest of the study. `candles` (CLOSED candles only, most-recent-
+    first) is included so compute_move_start_proxy() can use the exact
+    same fetch - no second API call needed.
+
+    FIXED (previously a confirmed gap): the most recent candle in OKX's
+    response can be the currently-forming, unconfirmed one - it was
+    previously used directly (candles[0][4]) for `latest_close` and
+    `price` with no check, meaning an incomplete candle could influence
+    which symbols entered Top 10 Gainers/Losers. Now: candles are
+    filtered to confirm=="1" (matching OKX's own documented field,
+    verified in this project's own pilot investigation) BEFORE any
+    computation - both change_pct/price AND the candles list handed
+    to compute_move_start_proxy() are now closed-candles-only,
+    consistently.
     """
     try:
         url = "https://www.okx.com/api/v5/market/candles"
@@ -160,11 +172,15 @@ def fetch_daily_change(symbol):
         data = response.json()
         if data.get("code") != "0":
             return None
-        candles = data.get("data", [])
+        raw_candles = data.get("data", [])
+        # CLOSED CANDLES ONLY - confirm is index 8 in OKX's raw array
+        # format [ts,o,h,l,c,vol,volCcy,volCcyQuote,confirm].
+        candles = [c for c in raw_candles if len(c) > 8 and c[8] == "1"]
         if len(candles) < 2:
             return None
 
-        # OKX returns most-recent-first.
+        # OKX returns most-recent-first; after filtering, index 0 is
+        # still the most recent CLOSED candle.
         latest_close = float(candles[0][4])
         oldest_close = float(candles[-1][4])
         if oldest_close == 0:
@@ -339,6 +355,23 @@ def init_research_top_gainers_table():
             ("research_move_start_proxy_90", "TIMESTAMP"),
         ]:
             cur.execute(f"ALTER TABLE research_top_gainers ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+        # New independent-snapshot columns - added here rather than a
+        # new table, per Data Clarity guidance: reuses the existing
+        # 15m technical columns (rsi_15m, flow, momentum_score, ema20/
+        # 50/200, macd, atr, compression_status, market_regime,
+        # volume_ratio) by changing their INSERT SOURCE below from
+        # Trade DNA to independent OHLCV - the columns themselves
+        # already existed and are simply repurposed. Only genuinely
+        # new columns are added here: multi-timeframe RSI, measurement
+        # timing, data provenance, and a GAINER/LOSER classification
+        # kept explicitly separate from `direction` (which remains
+        # AHAD AI's own LONG/SHORT trade direction, unchanged).
+        for col_name, col_type in [
+            ("rsi_1h", "REAL"), ("rsi_4h", "REAL"), ("rsi_1d", "REAL"),
+            ("measurement_timestamp", "TIMESTAMP"), ("data_source", "TEXT"),
+            ("move_direction", "TEXT"),
+        ]:
+            cur.execute(f"ALTER TABLE research_top_gainers ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
         conn.commit()
         print("🔬 Top Gainers Study: research_top_gainers table ready")
     except Exception as e:
@@ -464,6 +497,9 @@ def collect_top_gainers():
             # symbol's committed-later INSERT is preserved.
             cur.execute("SAVEPOINT research_symbol")
             try:
+                indep = compute_independent_snapshot(symbol)
+                measurement_timestamp = indep["measurement_timestamp"]
+
                 cur.execute("""
                 INSERT INTO research_top_gainers (
                     symbol, observed_date, change_pct, price,
@@ -474,7 +510,8 @@ def collect_top_gainers():
                     session, ema20, ema50, ema200, rsi_15m, atr, macd,
                     volume_acceleration, volume_ratio, trade_dna,
                     research_move_start_proxy_60, research_move_start_proxy_75,
-                    research_move_start_proxy_90
+                    research_move_start_proxy_90,
+                    rsi_1h, rsi_4h, rsi_1d, measurement_timestamp, data_source, move_direction
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
@@ -483,7 +520,8 @@ def collect_top_gainers():
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (symbol, observed_date) DO NOTHING
                 """, (
@@ -493,15 +531,31 @@ def collect_top_gainers():
                     trade_info["version_id"] if trade_info else None,
                     trade_info["side"] if trade_info else None,
                     trade_info["result"] if trade_info else None,
+                    # Trade DNA identity fields - UNCHANGED, kept for
+                    # backward compatibility. These describe AHAD AI's
+                    # OWN prior trade on this symbol (if any), never
+                    # the independent market snapshot.
                     dna.get("ai_brain_score"), dna.get("score"), dna.get("ranking_score"),
                     dna.get("quality_grade"), dna.get("rr"),
-                    dna.get("risk_grade"), dna.get("flow"), dna.get("flow_grade"), dna.get("momentum_score"),
-                    dna.get("compression_status"), dna.get("market_regime"), dna.get("sector"), dna.get("market_health"),
-                    dna.get("session"), dna.get("ema20"), dna.get("ema50"), dna.get("ema200"),
-                    dna.get("rsi_15m"), dna.get("atr"), dna.get("macd"),
-                    dna.get("volume_acceleration"), dna.get("volume_ratio"),
+                    dna.get("risk_grade"),
+                    # Independent technical fields - FIXED HERE: now
+                    # sourced from compute_independent_snapshot(symbol)
+                    # (real OHLCV for THIS gainer coin), never from
+                    # dna.get() (AHAD AI's own trade snapshot). This
+                    # was the confirmed root cause of the "wrong
+                    # source" gap: these 9 fields were previously
+                    # NULL for any coin AHAD AI never traded, and
+                    # otherwise reflected the trade's own conditions,
+                    # not the gainer coin's.
+                    indep["flow"], dna.get("flow_grade"), indep["momentum_score"],
+                    indep["compression_status"], indep["market_regime"], dna.get("sector"), dna.get("market_health"),
+                    dna.get("session"), indep["ema20"], indep["ema50"], indep["ema200"],
+                    indep["rsi_15m"], indep["atr"], indep["macd"],
+                    indep["volume_ratio"], indep["volume_ratio"],
                     json.dumps(dna, default=str),
-                    proxy_datetimes[0.60], proxy_datetimes[0.75], proxy_datetimes[0.90]
+                    proxy_datetimes[0.60], proxy_datetimes[0.75], proxy_datetimes[0.90],
+                    indep["rsi_1h"], indep["rsi_4h"], indep["rsi_1d"],
+                    measurement_timestamp, "OKX", "GAINER"
                 ))
                 # ON CONFLICT DO NOTHING never raises on a duplicate -
                 # cur.rowcount is the only way to tell whether a row was

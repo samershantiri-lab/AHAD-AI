@@ -7441,12 +7441,83 @@ def export_command(message):
         bot.reply_to(message, "⛔ This command is admin-only.")
         return
 
+    args = message.text.split()[1:] if message.text else []
+
+    USAGE_TEXT = (
+        "Usage:\n"
+        "/export\n"
+        "/export v23.3.1\n"
+        "/export v23.3.1 v23.3.2\n"
+        "/export versions"
+    )
+
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM trades")
+
+        # ---- /export versions - list only, no CSV ----
+        if args and args[0].lower() == "versions":
+            cur.execute("""
+                SELECT v.version, v.id, v.status, COUNT(t.id) AS trade_count,
+                       MIN(t.signal_time) AS first_trade, MAX(t.signal_time) AS last_trade
+                FROM versions v
+                LEFT JOIN trades t ON t.version_id = v.id
+                GROUP BY v.version, v.id, v.status
+                ORDER BY v.id
+            """)
+            rows = cur.fetchall()
+            if not rows:
+                bot.reply_to(message, "No versions found.")
+                return
+            lines = ["📋 Available Versions", ""]
+            for version, vid, status, trade_count, first_trade, last_trade in rows:
+                lines.append(f"{version}")
+                lines.append(f"version_id: {vid} | status: {status}")
+                lines.append(f"trades: {trade_count}")
+                if first_trade:
+                    lines.append(f"first trade: {first_trade.isoformat()}")
+                    lines.append(f"last trade: {last_trade.isoformat()}")
+                lines.append("")
+            bot.reply_to(message, "\n".join(lines))
+            return
+
+        # ---- /export (no args) - unchanged from current behavior ----
+        if not args:
+            query = "SELECT * FROM trades"
+            params = ()
+            label = "all trades"
+        # ---- /export V1 [V2 ...] - version-filtered export ----
+        else:
+            # Reasonable cap on how many versions can be requested at
+            # once - not a security boundary (the query is already
+            # fully parameterized), just a sane usage limit.
+            MAX_VERSIONS_PER_REQUEST = 10
+            if len(args) > MAX_VERSIONS_PER_REQUEST:
+                bot.reply_to(message, f"❌ Too many versions requested (max {MAX_VERSIONS_PER_REQUEST}).\n\n{USAGE_TEXT}")
+                return
+
+            requested_versions = args
+            cur.execute("SELECT id, version FROM versions WHERE version = ANY(%s)", (requested_versions,))
+            found = cur.fetchall()
+            found_ids = [row[0] for row in found]
+            found_names = {row[1] for row in found}
+            missing = [v for v in requested_versions if v not in found_names]
+
+            if missing:
+                bot.reply_to(
+                    message,
+                    f"❌ Version not found: {', '.join(missing)}\n"
+                    f"Use /export versions to see available versions."
+                )
+                return
+
+            query = "SELECT * FROM trades WHERE version_id = ANY(%s)"
+            params = (found_ids,)
+            label = ", ".join(requested_versions)
+
+        cur.execute(query, params)
         rows = cur.fetchall()
         column_names = [desc[0] for desc in cur.description]
 
@@ -7478,9 +7549,9 @@ def export_command(message):
         csv_bytes.name = filename
 
         bot.send_document(message.chat.id, csv_bytes, visible_file_name=filename,
-                           caption=f"📤 AHAD AI Data Export\n{len(rows)} trades, "
+                           caption=f"📤 AHAD AI Data Export ({label})\n{len(rows)} trades, "
                                    f"{len(column_names)} columns\n{VERSION}")
-        print(f"📤 /export: sent {len(rows)} rows, {len(column_names)} columns to chat {message.chat.id}")
+        print(f"📤 /export: sent {len(rows)} rows, {len(column_names)} columns to chat {message.chat.id} (filter: {label})")
 
     except Exception as e:
         # Never surface the raw exception - it can contain a

@@ -353,11 +353,17 @@ def compute_phase1_budget(universe_size, num_days):
 
 
 def compute_phase2_budget(unique_event_count):
-    """Exact expected request count for Phase 2: per unique event,
-    ceil((96+WARMUP_CANDLES)/100) pages for 15m + 1 funding + 1 OI lookup."""
+    """
+    Exact expected request count for Phase 2: per unique event,
+    ceil((96+WARMUP_CANDLES)/100) pages for 15m + up to 2 funding
+    attempts (after, then before fallback - matches
+    fetch_funding_near_event's actual dual-direction logic exactly,
+    not a single-attempt assumption) + 1 OI lookup (begin/end, single
+    attempt).
+    """
     candles_15m_needed = 96 + WARMUP_CANDLES
     pages_15m = _ceil_div(candles_15m_needed, CANDLES_PER_REQUEST)
-    return unique_event_count * (pages_15m + 1 + 1)
+    return unique_event_count * (pages_15m + 2 + 1)
 
 
 def diagnose_funding_oi_pagination(symbol, event_ts_ms):
@@ -543,9 +549,22 @@ def run_scan(num_days, universe_override=None, max_total_budget=None):
             print(f"  Event {event['event_date']} {event['symbol']} {event['direction']}#{event['rank']} - features + raw saved")
 
     if utils.STATS["total_requests"] >= phase2_cap:
+        print(f"\nℹ️ Phase 2 request count reached its budget estimate ({phase2_cap}) - "
+              f"this is informational only. Actual data completeness (funding_available/"
+              f"oi_available/incomplete_windows below) is the real signal, not this count.")
+
+    # FIXED (confirmed root cause: budget-estimate overshoot was being
+    # misreported as a failure even when all data was actually
+    # complete - 20/20 funding, 20/20 OI, 0 incomplete_windows in the
+    # reported run). api_failures is now derived from ACTUAL data
+    # completeness, never from request-count-vs-estimate alone.
+    if report_stats["funding_unavailable"] > 0 or report_stats["oi_unavailable"] > 0 or \
+       report_stats["incomplete_windows"] > 0 or report_stats["missing_candles"] > 0:
         report_stats["api_failures"] += 1
-        print(f"\n⚠️ Phase 2 hit its budget cap ({phase2_cap}) - some events' 15m/funding/OI data "
-              f"may be incomplete. This is now recorded in api_failures, not silent.")
+        print(f"⚠️ Real data gaps detected: funding_unavailable={report_stats['funding_unavailable']}, "
+              f"oi_unavailable={report_stats['oi_unavailable']}, "
+              f"incomplete_windows={report_stats['incomplete_windows']}, "
+              f"missing_candles={report_stats['missing_candles']} - recorded in api_failures.")
 
     duration = time.time() - start_time
     _write_manifest_and_report(duration)

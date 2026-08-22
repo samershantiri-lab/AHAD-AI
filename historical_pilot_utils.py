@@ -22,7 +22,15 @@ from historical_pilot_config import (
     OKX_BASE_URL, CANDLES_HISTORY_ENDPOINT, INSTRUMENTS_ENDPOINT,
     FUNDING_RATE_HISTORY_ENDPOINT, OPEN_INTEREST_HISTORY_ENDPOINT,
     REQUEST_DELAY_SECONDS, MAX_RETRIES_PER_REQUEST, BACKOFF_BASE_SECONDS,
+    MAX_TOTAL_REQUESTS,
 )
+
+# Mutable single-element holder so fetch_candles_paginated() can read
+# the global cap without a circular import from historical_market_
+# pilot.py. Defaults to the config file's value; historical_market_
+# pilot.py's main() may override it via --max-requests if that's ever
+# added, but is not required to for the default cap to apply.
+MAX_TOTAL_REQUESTS_GLOBAL = [MAX_TOTAL_REQUESTS]
 
 # Mutable counters the caller can inspect after a pilot run - simple
 # module-level state, adequate for a single manual-run script.
@@ -99,32 +107,68 @@ def fetch_historical_candles_page(symbol, bar, before=None, after=None, limit=10
     ]
 
 
-def fetch_candles_paginated(symbol, bar, start_ts_ms, end_ts_ms, limit=100):
+def fetch_candles_paginated(symbol, bar, start_ts_ms, end_ts_ms, limit=100, event_context=""):
     """
     Walks backward from end_ts_ms to start_ts_ms using the `after`
     cursor, one page at a time, until the window is covered or no more
     data is returned. Returns all CLOSED candles in the window,
     oldest-first, de-duplicated by timestamp.
+
+    FIXED (confirmed root cause from the real Render pilot run): this
+    loop previously checked ONLY its own local `max_pages` cap - the
+    global MAX_TOTAL_REQUESTS ceiling was checked exclusively by the
+    caller BEFORE invoking this function, never DURING it. A single
+    call whose pagination cursor doesn't converge as expected against
+    real OKX data could therefore consume up to max_pages requests
+    completely independent of the global budget - across STEP 3's 70
+    calls (10 sample events x 7 offsets), that is a real, evidence-
+    backed path to a very long-running, unbounded-in-practice STEP 3.
+    global_stats and max_total_requests are now threaded through
+    explicitly, and the loop stops the instant the global cap is hit -
+    a single call can never exceed the system-wide budget again.
+
+    max_pages lowered from 200 to a safer local cap (per fix B) - a
+    smaller blast radius even before the global check triggers.
     """
     all_candles = {}
     cursor_after = str(end_ts_ms)
     pages = 0
-    max_pages = 200  # hard safety cap - never an unbounded loop
+    max_pages = 40  # lowered from 200 - safer local cap even before the global check below fires
+    stop_reason = "window_covered"
 
     while pages < max_pages:
+        if STATS["total_requests"] >= MAX_TOTAL_REQUESTS_GLOBAL[0]:
+            stop_reason = "global_request_cap_reached"
+            print(f"⚠️ [{event_context}] {symbol}: STOPPED mid-pagination - "
+                  f"global request cap ({MAX_TOTAL_REQUESTS_GLOBAL[0]}) reached "
+                  f"(page {pages}, candles so far: {len(all_candles)})")
+            break
+
         page = fetch_historical_candles_page(symbol, bar, after=cursor_after, limit=limit)
         pages += 1
+        print(f"  [{event_context}] {symbol} bar={bar} page={pages}/{max_pages} "
+              f"total_requests={STATS['total_requests']} candles_this_page={len(page)}")
+
         if not page:
+            stop_reason = "empty_page"
             break
         for c in page:
             all_candles[c["ts"]] = c
         oldest_ts_this_page = int(page[0]["ts"])
         if oldest_ts_this_page <= start_ts_ms:
+            stop_reason = "window_covered"
             break
         cursor_after = page[0]["ts"]
+    else:
+        stop_reason = "local_max_pages_reached"
+        print(f"⚠️ [{event_context}] {symbol}: local max_pages ({max_pages}) reached "
+              f"(candles so far: {len(all_candles)})")
 
     result = sorted(all_candles.values(), key=lambda c: int(c["ts"]))
-    return [c for c in result if start_ts_ms <= int(c["ts"]) <= end_ts_ms]
+    filtered = [c for c in result if start_ts_ms <= int(c["ts"]) <= end_ts_ms]
+    print(f"  [{event_context}] {symbol} bar={bar}: DONE - {len(filtered)} candles in window, "
+          f"stop_reason={stop_reason}")
+    return filtered
 
 
 def test_historical_universe():

@@ -31,6 +31,7 @@ written - see _assert_no_lookahead().
 
 import argparse
 import csv
+import os
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -215,18 +216,20 @@ def step3_pre_event_snapshots(events):
         # smallest offset to confirm the mechanism works end-to-end.
         sample_events = events[:10]
 
-        for event in sample_events:
+        for event_idx, event in enumerate(sample_events):
             event_ts_ms = int(event["event_timestamp"])
             for offset_min in PRE_EVENT_OFFSETS_MINUTES:
                 if utils.STATS["total_requests"] >= MAX_TOTAL_REQUESTS:
                     print("⚠️ MAX_TOTAL_REQUESTS reached - stopping snapshot fetch early.")
                     break
+                event_context = f"event#{event_idx} {event['direction']} offset=-{offset_min}m"
+                print(f"→ {event_context} symbol={event['symbol']} event_ts={event_ts_ms}")
                 snapshot_target_ms = event_ts_ms - (offset_min * 60 * 1000)
                 # Fetch a 15m window ENDING strictly before snapshot_target_ms
                 window_start_ms = snapshot_target_ms - (250 * 15 * 60 * 1000)  # ~250 candles back
                 candles_15m = utils.fetch_candles_paginated(
                     event["symbol"], "15m", window_start_ms, snapshot_target_ms - 1,
-                    limit=CANDLES_PER_REQUEST
+                    limit=CANDLES_PER_REQUEST, event_context=event_context
                 )
                 if not candles_15m:
                     continue
@@ -246,6 +249,19 @@ def step3_pre_event_snapshots(events):
                     indicators["candles_used"],
                 ])
                 rows_written += 1
+                # FIXED (fix C): flush + fsync immediately, not only at
+                # the with-block's natural close. Confirmed root cause
+                # of the 0-byte snapshots file: an abrupt process kill
+                # never runs the with-block's __exit__, so anything
+                # sitting only in Python's/the OS's write buffer is
+                # lost entirely - even the header row written at the
+                # very start. Flushing after every row means an
+                # abrupt kill loses at most the one row in flight,
+                # never the rows already written.
+                f.flush()
+                os.fsync(f.fileno())
+                if rows_written % 5 == 0:
+                    print(f"  💾 progress checkpoint: {rows_written} snapshot rows on disk so far")
 
     report["snapshots"]["total"] = rows_written
     print(f"Pre-event snapshots written: {rows_written} "

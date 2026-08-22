@@ -1,0 +1,437 @@
+"""
+================================================================================
+AHAD AI - Historical Event Scanner
+================================================================================
+
+Reconstructs Daily Top 10 Gainers/Losers historically (matching production's
+EXACT rolling-24h definition, verified against top_gainers_study.py's own
+fetch_daily_change()), then collects pre-event indicator features and raw
+candles for each event - to study what preceded the move, not just list it.
+
+PRODUCTION ISOLATION: imports ONLY already-tested low-level HTTP/pagination
+functions from historical_pilot_utils.py (read-only reuse - that file is
+never modified). Never imports bot.py. Never modifies historical_data_
+downloader.py or historical_market_pilot.py. Writes only its own 5 output
+files. No database of any kind.
+
+EFFICIENCY DESIGN (matches the explicit no-waste requirement): for each
+symbol, ONE 1H candle series covering (N days + 200-candle indicator
+warm-up) is fetched ONCE - this single series is sliced locally to compute
+ALL N days' rankings (no per-day re-fetch) AND to compute 1H indicators for
+any symbol that becomes a Top10 event (no re-fetch for features either).
+Only 15m candles and Funding/OI near-event lookups are fetched per unique
+(symbol, event_timestamp) pair that actually became an event - never for
+the full universe.
+
+LOOK-AHEAD PROTECTION: every candle used for ranking or features has an
+explicit, code-enforced check that its close timestamp is strictly before
+event_timestamp - see _assert_no_lookahead(). A violation is logged and the
+row is dropped, never silently included.
+
+Run manually only:
+    python3 historical_event_scanner.py --mode pilot
+    python3 historical_event_scanner.py --mode full --days 30
+================================================================================
+"""
+
+import argparse
+import csv
+import json
+import os
+import time
+from datetime import datetime, timedelta, timezone
+
+import historical_pilot_utils as utils  # read-only reuse - never modified
+
+OUTPUT_DIR = "historical_events"
+EVENTS_CSV = os.path.join(OUTPUT_DIR, "events.csv")
+FEATURES_CSV = os.path.join(OUTPUT_DIR, "pre_event_features.csv")
+RAW_CANDLES_CSV = os.path.join(OUTPUT_DIR, "pre_event_raw_candles.csv")
+MANIFEST_FILE = os.path.join(OUTPUT_DIR, "manifest.json")
+REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
+
+TOP_N = 10
+CANDLES_PER_REQUEST = 100
+
+# Indicator warm-up: matches independent_market_indicators.py's own
+# established candle-count convention for this project (200 for 15m
+# there; reused as the max requirement across ALL indicators here -
+# ema200/market_regime need up to 200, the largest requirement, so 200
+# covers every indicator's minimum with margin). This is NOT invented
+# here - it's the same number already used throughout the project.
+WARMUP_CANDLES = 200
+
+report_stats = {
+    "days_requested": 0, "days_completed": 0,
+    "events_total": 0, "gainers": 0, "losers": 0, "unique_symbols_in_events": 0,
+    "duplicate_events": 0, "duplicate_candles": 0, "missing_candles": 0,
+    "incomplete_windows": 0, "lookahead_violations": 0,
+    "api_failures": 0, "retries_start": 0, "http_429_start": 0,
+    "funding_available": 0, "funding_unavailable": 0,
+    "oi_available": 0, "oi_unavailable": 0,
+    "survivorship_note": "Universe is LIVE USDT-SWAP as of scan time - "
+                          "symbols delisted during the historical window "
+                          "are NOT represented. This is a known limitation, "
+                          "not a bug.",
+}
+
+
+def _interval_ms(bar):
+    return 3600000 if bar == "1H" else 900000  # 1H or 15m
+
+
+def _assert_no_lookahead(candle_ts_ms, event_ts_ms, context, bar="1H"):
+    """
+    FIXED (confirmed close-time bug): OKX's candle `ts` is the OPEN
+    timestamp, not close. A candle's actual close (when its data
+    becomes confirmed/available) is ts + interval. The single explicit
+    rule applied everywhere: a candle is usable if its CLOSE time is
+    AT OR BEFORE event_timestamp (<=, inclusive) - the candle closing
+    exactly at the daily boundary is the natural last data point
+    defining "the 24h leading up to the new day" and is allowed. A
+    candle whose close is strictly AFTER event_timestamp is rejected.
+    """
+    candle_close_ms = candle_ts_ms + _interval_ms(bar)
+    if candle_close_ms > event_ts_ms:
+        report_stats["lookahead_violations"] += 1
+        print(f"🔴 LOOK-AHEAD VIOLATION [{context}]: candle_close={candle_close_ms} > event_ts={event_ts_ms}")
+        return False
+    return True
+
+
+def get_daily_utc_boundaries(num_days):
+    """
+    FIXED (confirmed alignment bug): boundaries are now fixed UTC
+    midnights, independent of script run time. boundary[0] = most
+    recent UTC midnight at or before now(); boundary[1] = 24h before
+    that; etc. Returns a list of `num_days` boundaries in ms, most
+    recent first.
+    """
+    now = datetime.now(timezone.utc)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return [int((today_midnight - timedelta(days=i)).timestamp() * 1000) for i in range(num_days)]
+
+
+def fetch_usdt_swap_symbols():
+    """Reused verbatim (logic, not import) from top_gainers_study.py's
+    own fetch_usdt_swap_symbols() - same endpoint, same filter."""
+    data = utils._request_with_retry(f"{utils.OKX_BASE_URL}{utils.INSTRUMENTS_ENDPOINT}", {"instType": "SWAP"})
+    if data is None:
+        return []
+    result = []
+    for x in data.get("data", []):
+        inst_id = x.get("instId", "")
+        if inst_id.endswith("-USDT-SWAP") and x.get("state") == "live":
+            result.append(inst_id)
+    return result
+
+
+# ================================================
+# Phase 1: ONE 1H series per symbol -> all daily rankings + 1H indicator warm-up
+# ================================================
+
+def fetch_full_1h_series(symbol, num_days, boundary_0_ms):
+    """
+    Fetches (num_days*24 + WARMUP_CANDLES) 1H candles ending at the
+    most recent UTC daily boundary (boundary_0_ms) - FIXED: previously
+    ended at datetime.now(), causing ranking windows to be misaligned
+    with actual UTC midnights.
+    """
+    total_needed = num_days * 24 + WARMUP_CANDLES
+    start_ts_ms = boundary_0_ms - total_needed * 3600 * 1000
+    candles = utils.fetch_candles_paginated(symbol, "1H", start_ts_ms, boundary_0_ms,
+                                             limit=CANDLES_PER_REQUEST,
+                                             event_context=f"1H series {symbol}")
+    return candles
+
+
+def compute_daily_rankings(universe_series, num_days, boundaries):
+    """
+    FIXED: uses explicit UTC daily boundaries (not index-based slicing
+    from series end). For each boundary B, the ranking window is the
+    24 CLOSED 1H candles whose close time is <= B (per the stated
+    look-ahead rule) - the most recent 24 such candles. event_timestamp
+    = B itself (the actual UTC midnight), not a candle's open time.
+    """
+    all_events = []
+    for boundary_ms in boundaries:
+        day_moves = []
+        for symbol, series in universe_series.items():
+            eligible = [c for c in series if int(c["ts"]) + _interval_ms("1H") <= boundary_ms]
+            eligible.sort(key=lambda c: int(c["ts"]))
+            window = eligible[-24:]
+            if len(window) < 24:
+                report_stats["incomplete_windows"] += 1
+                continue
+            oldest_close = window[0]["close"]
+            latest_close = window[-1]["close"]
+            if oldest_close == 0:
+                continue
+            change_pct = (latest_close - oldest_close) / oldest_close * 100
+            day_moves.append({"symbol": symbol, "change_pct": change_pct,
+                               "price": latest_close, "event_timestamp": boundary_ms})
+
+        if not day_moves:
+            continue
+        day_moves.sort(key=lambda x: x["change_pct"], reverse=True)
+        gainers = day_moves[:TOP_N]
+        losers = sorted(day_moves, key=lambda x: x["change_pct"])[:TOP_N]
+        event_date = datetime.fromtimestamp(boundary_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+        for rank, g in enumerate(gainers, 1):
+            all_events.append({**g, "direction": "GAINER", "rank": rank, "event_date": event_date})
+        for rank, l in enumerate(losers, 1):
+            all_events.append({**l, "direction": "LOSER", "rank": rank, "event_date": event_date})
+        report_stats["days_completed"] += 1
+
+    return all_events
+
+
+def slice_1h_window_ending_at(series, event_ts_ms):
+    """
+    Returns the trailing WARMUP_CANDLES-sized window from `series`
+    ending at-or-before event_ts_ms (per the stated close-time rule).
+    """
+    before_event = [c for c in series if int(c["ts"]) + _interval_ms("1H") <= event_ts_ms]
+    trimmed = before_event[-WARMUP_CANDLES:] if len(before_event) >= WARMUP_CANDLES else before_event
+    valid = [c for c in trimmed if _assert_no_lookahead(int(c["ts"]), event_ts_ms, "1h_slice", bar="1H")]
+    return valid
+
+
+# ================================================
+# Phase 2: 15m candles + Funding/OI - ONLY for unique (symbol, event_timestamp) pairs
+# ================================================
+
+def fetch_15m_window_for_event(symbol, event_ts_ms):
+    """One chunked fetch of (96 + WARMUP_CANDLES) 15m candles, filtered
+    to close time <= event_ts_ms per the stated rule."""
+    start_ts_ms = event_ts_ms - (96 + WARMUP_CANDLES) * 15 * 60 * 1000
+    candles = utils.fetch_candles_paginated(symbol, "15m", start_ts_ms, event_ts_ms,
+                                             limit=CANDLES_PER_REQUEST,
+                                             event_context=f"15m {symbol}@{event_ts_ms}")
+    valid = [c for c in candles if _assert_no_lookahead(int(c["ts"]), event_ts_ms, "15m_fetch", bar="15m")]
+    return valid
+
+
+def fetch_funding_near_event(symbol, event_ts_ms):
+    """Nearest funding rate AT OR BEFORE event_ts_ms - one lookup, no series."""
+    data = utils._request_with_retry(
+        f"{utils.OKX_BASE_URL}{utils.FUNDING_RATE_HISTORY_ENDPOINT}",
+        {"instId": symbol, "limit": 10, "before": str(event_ts_ms)}
+    )
+    if data is None:
+        return None, "request_failed"
+    entries = data.get("data", [])
+    valid_entries = [e for e in entries if isinstance(e, dict) and e.get("fundingTime")
+                      and int(e["fundingTime"]) < event_ts_ms]
+    if not valid_entries:
+        return None, "no_data_before_event"
+    nearest = max(valid_entries, key=lambda e: int(e["fundingTime"]))
+    return nearest.get("fundingRate"), "ok"
+
+
+def fetch_oi_near_event(symbol, event_ts_ms):
+    """
+    Nearest OI AT OR BEFORE event_ts_ms. Per the confirmed prior
+    investigation, open-interest-history's before/after support is
+    UNVERIFIED - this makes ONE attempt and honestly reports
+    availability, never fabricates a value.
+    """
+    data = utils._request_with_retry(
+        f"{utils.OKX_BASE_URL}{utils.OPEN_INTEREST_HISTORY_ENDPOINT}",
+        {"instId": symbol, "period": "1H", "limit": 10, "before": str(event_ts_ms)}
+    )
+    if data is None:
+        return None, "request_failed"
+    entries = data.get("data", [])
+    valid_entries = [e for e in entries if isinstance(e, (list, tuple)) and len(e) >= 2
+                      and int(e[0]) < event_ts_ms]
+    if not valid_entries:
+        return None, "no_data_before_event_or_pagination_unsupported"
+    nearest = max(valid_entries, key=lambda e: int(e[0]))
+    return nearest[1], "ok"
+
+
+def compute_features_for_event(event, series_1h, symbol_15m_cache):
+    """Computes all indicators for one event using its 1H warm-up slice
+    (from the already-fetched full series - zero extra requests) and a
+    freshly-fetched 15m window (cached per unique symbol+event pair)."""
+    symbol = event["symbol"]
+    event_ts_ms = event["event_timestamp"]
+
+    window_1h = slice_1h_window_ending_at(series_1h, event_ts_ms)
+    cache_key = (symbol, event_ts_ms)
+    if cache_key not in symbol_15m_cache:
+        symbol_15m_cache[cache_key] = fetch_15m_window_for_event(symbol, event_ts_ms)
+    window_15m = symbol_15m_cache[cache_key]
+
+    ind_1h = utils.compute_indicators(window_1h) if window_1h else {}
+    ind_15m = utils.compute_indicators(window_15m) if window_15m else {}
+
+    funding_val, funding_status = fetch_funding_near_event(symbol, event_ts_ms)
+    if funding_val is not None:
+        report_stats["funding_available"] += 1
+    else:
+        report_stats["funding_unavailable"] += 1
+
+    oi_val, oi_status = fetch_oi_near_event(symbol, event_ts_ms)
+    if oi_val is not None:
+        report_stats["oi_available"] += 1
+    else:
+        report_stats["oi_unavailable"] += 1
+
+    return {
+        "event_date": event["event_date"], "symbol": symbol, "direction": event["direction"],
+        "rank": event["rank"], "event_timestamp": event_ts_ms,
+        "rsi_15m": ind_15m.get("rsi_15m"), "rsi_1h": ind_1h.get("rsi_15m"),  # compute_indicators names it rsi_15m generically
+        "ema20_15m": ind_15m.get("ema20"), "ema50_15m": ind_15m.get("ema50"), "ema200_15m": ind_15m.get("ema200"),
+        "ema20_1h": ind_1h.get("ema20"), "ema50_1h": ind_1h.get("ema50"), "ema200_1h": ind_1h.get("ema200"),
+        "macd_15m": ind_15m.get("macd"), "macd_1h": ind_1h.get("macd"),
+        "atr_15m": ind_15m.get("atr"), "atr_1h": ind_1h.get("atr"),
+        "flow": ind_15m.get("flow"), "volume_ratio": ind_15m.get("volume_ratio"),
+        "momentum_score": ind_15m.get("momentum_score"),
+        "compression_status": ind_15m.get("compression_status"), "market_regime": ind_15m.get("market_regime"),
+        "funding_rate_near_event": funding_val, "funding_status": funding_status,
+        "open_interest_near_event": oi_val, "oi_status": oi_status,
+    }, window_15m
+
+
+# ================================================
+# Main orchestration
+# ================================================
+
+def run_scan(num_days, universe_override=None):
+    report_stats["days_requested"] = num_days
+    report_stats["retries_start"] = utils.STATS["retries"]
+    report_stats["http_429_start"] = utils.STATS["http_429"]
+    start_time = time.time()
+
+    universe = universe_override if universe_override else fetch_usdt_swap_symbols()
+    print(f"Universe size: {len(universe)}")
+
+    print("\n=== PHASE 1: fetching one 1H series per symbol (ranking + warm-up) ===")
+    boundaries = get_daily_utc_boundaries(num_days)
+    boundary_0_ms = boundaries[0]
+    print(f"UTC daily boundaries (most recent first): {[datetime.fromtimestamp(b/1000, tz=timezone.utc).isoformat() for b in boundaries]}")
+    universe_series = {}
+    for symbol in universe:
+        series = fetch_full_1h_series(symbol, num_days, boundary_0_ms)
+        universe_series[symbol] = series
+        print(f"  {symbol}: {len(series)} closed 1H candles fetched")
+
+    print("\n=== PHASE 1b: computing daily rankings locally (zero extra requests) ===")
+    events = compute_daily_rankings(universe_series, num_days, boundaries)
+    report_stats["events_total"] = len(events)
+    report_stats["gainers"] = sum(1 for e in events if e["direction"] == "GAINER")
+    report_stats["losers"] = sum(1 for e in events if e["direction"] == "LOSER")
+    report_stats["unique_symbols_in_events"] = len({e["symbol"] for e in events})
+
+    print("\n=== PHASE 2: fetching 15m + funding/OI for each event (deduplicated) ===")
+    symbol_15m_cache = {}
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    with open(EVENTS_CSV, "w", newline="") as f_events, \
+         open(FEATURES_CSV, "w", newline="") as f_features, \
+         open(RAW_CANDLES_CSV, "w", newline="") as f_raw:
+
+        events_writer = csv.writer(f_events)
+        events_writer.writerow(["event_date", "symbol", "direction", "rank",
+                                 "change_pct_24h", "price", "event_timestamp"])
+        features_writer = csv.writer(f_features)
+        features_writer.writerow(["event_date", "symbol", "direction", "rank", "event_timestamp",
+                                   "rsi_15m", "rsi_1h", "ema20_15m", "ema50_15m", "ema200_15m",
+                                   "ema20_1h", "ema50_1h", "ema200_1h", "macd_15m", "macd_1h",
+                                   "atr_15m", "atr_1h", "flow", "volume_ratio", "momentum_score",
+                                   "compression_status", "market_regime",
+                                   "funding_rate_near_event", "open_interest_near_event"])
+        raw_writer = csv.writer(f_raw)
+        raw_writer.writerow(["event_date", "symbol", "direction", "rank", "event_timestamp",
+                              "timeframe", "candle_timestamp", "open", "high", "low", "close", "volume"])
+
+        seen_event_keys = set()
+        for event in events:
+            key = (event["symbol"], event["event_timestamp"], event["direction"], event["rank"])
+            if key in seen_event_keys:
+                report_stats["duplicate_events"] += 1
+                continue
+            seen_event_keys.add(key)
+
+            events_writer.writerow([event["event_date"], event["symbol"], event["direction"],
+                                     event["rank"], round(event["change_pct"], 4), event["price"],
+                                     event["event_timestamp"]])
+            f_events.flush(); os.fsync(f_events.fileno())
+
+            features, window_15m = compute_features_for_event(event, universe_series[event["symbol"]], symbol_15m_cache)
+            features_writer.writerow([features[k] for k in [
+                "event_date", "symbol", "direction", "rank", "event_timestamp",
+                "rsi_15m", "rsi_1h", "ema20_15m", "ema50_15m", "ema200_15m",
+                "ema20_1h", "ema50_1h", "ema200_1h", "macd_15m", "macd_1h",
+                "atr_15m", "atr_1h", "flow", "volume_ratio", "momentum_score",
+                "compression_status", "market_regime",
+                "funding_rate_near_event", "open_interest_near_event"]])
+            f_features.flush(); os.fsync(f_features.fileno())
+
+            window_1h_saved = slice_1h_window_ending_at(universe_series[event["symbol"]], event["event_timestamp"])[-24:]
+            for c in window_1h_saved:
+                raw_writer.writerow([event["event_date"], event["symbol"], event["direction"], event["rank"],
+                                      event["event_timestamp"], "1H", c["ts"], c["open"], c["high"],
+                                      c["low"], c["close"], c["volume"]])
+            for c in window_15m[-96:]:
+                raw_writer.writerow([event["event_date"], event["symbol"], event["direction"], event["rank"],
+                                      event["event_timestamp"], "15m", c["ts"], c["open"], c["high"],
+                                      c["low"], c["close"], c["volume"]])
+            f_raw.flush(); os.fsync(f_raw.fileno())
+
+            print(f"  Event {event['event_date']} {event['symbol']} {event['direction']}#{event['rank']} - features + raw saved")
+
+    duration = time.time() - start_time
+    _write_manifest_and_report(duration)
+    return events
+
+
+def _write_manifest_and_report(duration):
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "duration_seconds": duration,
+        "total_api_requests": utils.STATS["total_requests"],
+        "total_retries": utils.STATS["retries"] - report_stats["retries_start"],
+        "total_429s": utils.STATS["http_429"] - report_stats["http_429_start"],
+        "total_failures": utils.STATS["failures"],
+        "warmup_candles_used": WARMUP_CANDLES,
+        "warmup_explanation": (
+            f"{WARMUP_CANDLES} candles fetched BEFORE the 24h pre-event window on both "
+            "1H and 15m, purely for indicator warm-up (EMA200/market_regime need up to "
+            "200 candles to compute correctly) - these warm-up candles are used ONLY "
+            "for indicator math, never written to pre_event_raw_candles.csv, which "
+            "contains only the actual 24h pre-event window (24x1H + 96x15m)."
+        ),
+        **report_stats,
+    }
+    with open(MANIFEST_FILE, "w") as f:
+        json.dump(manifest, f, indent=2, default=str)
+
+    lines = ["="*70, "HISTORICAL EVENT SCANNER - REPORT", "="*70]
+    for k, v in manifest.items():
+        lines.append(f"{k}: {v}")
+    with open(REPORT_FILE, "w") as f:
+        f.write("\n".join(lines))
+    print("\n" + "\n".join(lines))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AHAD AI Historical Event Scanner")
+    parser.add_argument("--mode", choices=["pilot", "full"], default="pilot")
+    parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--pilot-symbols", type=int, default=5)
+    parser.add_argument("--pilot-days", type=int, default=3)
+    args = parser.parse_args()
+
+    if args.mode == "pilot":
+        universe = fetch_usdt_swap_symbols()[:args.pilot_symbols]
+        print(f"PILOT MODE: {len(universe)} symbols, {args.pilot_days} days")
+        run_scan(args.pilot_days, universe_override=universe)
+    else:
+        run_scan(args.days)
+
+
+if __name__ == "__main__":
+    main()

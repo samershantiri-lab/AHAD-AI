@@ -288,8 +288,25 @@ def step4_funding_oi(universe):
             oi_data = utils.fetch_open_interest_history(symbol, limit=5)
             if oi_data:
                 oi_with_data += 1
+                # FIXED (confirmed root cause from a real OKX response
+                # captured via Render Shell, using this exact endpoint/
+                # params): each entry is an ARRAY, not a dict -
+                # ["1787392800000", "2963891.69...", "29638.53...", "22790941248.71..."]
+                # index[0] = timestamp, index[1] = OI value - per
+                # explicit instruction, no other index's meaning is
+                # invented here. entry.get(...) raised AttributeError
+                # on a list; entry[0]/entry[1] is the correct access.
                 for entry in oi_data:
-                    writer.writerow([symbol, "open_interest", entry.get("ts"), entry.get("oi")])
+                    if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+                        print(f"⚠️ [{symbol}] OI entry has unexpected shape, skipping: {entry}")
+                        continue
+                    writer.writerow([symbol, "open_interest", entry[0], entry[1]])
+            else:
+                # An empty [] is NOT a failure - it means OI history
+                # is genuinely unavailable/empty for this symbol, not
+                # that something broke. Logged distinctly from a
+                # parsing failure above.
+                print(f"ℹ️ [{symbol}] OI history: no data returned (not treated as an error)")
 
     report["funding"]["symbols_with_data"] = funding_with_data
     report["funding"]["available"] = funding_with_data > 0

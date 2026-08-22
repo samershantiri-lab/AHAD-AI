@@ -39,9 +39,15 @@ import csv
 import json
 import os
 import time
+import zipfile
+import requests
 from datetime import datetime, timedelta, timezone
 
 import historical_pilot_utils as utils  # read-only reuse - never modified
+
+TELEGRAM_ZIP_NAME = "historical_event_scanner_30d.zip"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
 
 OUTPUT_DIR = "historical_events"
 EVENTS_CSV = os.path.join(OUTPUT_DIR, "events.csv")
@@ -417,20 +423,88 @@ def _write_manifest_and_report(duration):
     print("\n" + "\n".join(lines))
 
 
+def create_results_zip():
+    """Zips the 5 output files into one archive at OUTPUT_DIR level.
+    Returns the zip path, or None if any required file is missing."""
+    zip_path = os.path.join(OUTPUT_DIR, TELEGRAM_ZIP_NAME)
+    required_files = [EVENTS_CSV, FEATURES_CSV, RAW_CANDLES_CSV, MANIFEST_FILE, REPORT_FILE]
+    missing = [f for f in required_files if not os.path.exists(f)]
+    if missing:
+        print(f"❌ Cannot create ZIP - missing files: {missing}")
+        return None
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in required_files:
+            zf.write(f, arcname=os.path.basename(f))
+    size_mb = os.path.getsize(zip_path) / (1024 * 1024)
+    print(f"📦 ZIP created: {zip_path} ({size_mb:.2f} MB)")
+    return zip_path
+
+
+def send_zip_to_telegram(zip_path):
+    """
+    Sends the ZIP via Telegram's sendDocument, using the EXACT same
+    env vars and chat_id pattern already proven working in daily_
+    report.py's own send_to_telegram() (ADMIN_USER_ID used directly
+    as chat_id) - no telebot import, no bot.py dependency. Returns
+    (success: bool, detail: str) - never silently swallows a failure.
+    """
+    if not BOT_TOKEN or not ADMIN_USER_ID:
+        detail = "BOT_TOKEN or ADMIN_USER_ID not set in environment - cannot send."
+        print(f"❌ Telegram send failed: {detail}")
+        return False, detail
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+    try:
+        with open(zip_path, "rb") as f:
+            response = requests.post(
+                url,
+                data={"chat_id": ADMIN_USER_ID,
+                      "caption": f"📦 Historical Event Scanner results\n{os.path.basename(zip_path)}"},
+                files={"document": (os.path.basename(zip_path), f)},
+                timeout=60,
+            )
+        if response.status_code == 200 and response.json().get("ok"):
+            print(f"✅ Telegram upload SUCCESS: {zip_path} sent to chat {ADMIN_USER_ID}")
+            return True, "ok"
+        else:
+            detail = f"HTTP {response.status_code} - {response.text[:500]}"
+            print(f"❌ Telegram upload FAILED: {detail}")
+            return False, detail
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+        print(f"❌ Telegram upload EXCEPTION: {detail}")
+        return False, detail
+
+
 def main():
     parser = argparse.ArgumentParser(description="AHAD AI Historical Event Scanner")
-    parser.add_argument("--mode", choices=["pilot", "full"], default="pilot")
+    parser.add_argument("--mode", choices=["pilot", "full", "test-telegram"], default="pilot")
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--pilot-symbols", type=int, default=5)
     parser.add_argument("--pilot-days", type=int, default=3)
     args = parser.parse_args()
 
-    if args.mode == "pilot":
+    if args.mode == "test-telegram":
+        # Smallest possible end-to-end test: 1 symbol, 1 day - just to
+        # prove ZIP creation + Telegram delivery work, before any real run.
+        universe = fetch_usdt_swap_symbols()[:1]
+        print(f"TEST-TELEGRAM MODE: {len(universe)} symbol, 1 day - proving ZIP + Telegram delivery only")
+        run_scan(1, universe_override=universe)
+    elif args.mode == "pilot":
         universe = fetch_usdt_swap_symbols()[:args.pilot_symbols]
         print(f"PILOT MODE: {len(universe)} symbols, {args.pilot_days} days")
         run_scan(args.pilot_days, universe_override=universe)
     else:
         run_scan(args.days)
+
+    zip_path = create_results_zip()
+    if zip_path:
+        success, detail = send_zip_to_telegram(zip_path)
+        if not success:
+            print(f"\n⚠️ ZIP was created successfully at {zip_path} but Telegram delivery FAILED: {detail}")
+            print("The ZIP file still exists locally - you can retrieve it another way if needed.")
+    else:
+        print("⚠️ ZIP creation failed - nothing sent to Telegram.")
 
 
 if __name__ == "__main__":

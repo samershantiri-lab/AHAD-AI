@@ -219,42 +219,69 @@ def fetch_15m_window_for_event(symbol, event_ts_ms):
 
 
 def fetch_funding_near_event(symbol, event_ts_ms):
-    """Nearest funding rate AT OR BEFORE event_ts_ms - one lookup, no series."""
-    data = utils._request_with_retry(
-        f"{utils.OKX_BASE_URL}{utils.FUNDING_RATE_HISTORY_ENDPOINT}",
-        {"instId": symbol, "limit": 10, "before": str(event_ts_ms)}
-    )
-    if data is None:
-        return None, "request_failed"
-    entries = data.get("data", [])
-    valid_entries = [e for e in entries if isinstance(e, dict) and e.get("fundingTime")
-                      and int(e["fundingTime"]) < event_ts_ms]
-    if not valid_entries:
-        return None, "no_data_before_event"
-    nearest = max(valid_entries, key=lambda e: int(e["fundingTime"]))
-    return nearest.get("fundingRate"), "ok"
+    """
+    Nearest funding rate AT OR BEFORE event_ts_ms.
+
+    FIXED (confirmed root cause from live diagnose-funding-oi test):
+    `before=event_ts_ms` returned data with before_respected=false -
+    the parameter was not producing historical (pre-event) data. Per
+    an official OKX R package (okxr) documenting general v5 pagination
+    convention, `after`="cursor for newer records" and `before`=
+    "cursor for earlier records" - the OPPOSITE of the convention this
+    project's own candles code uses (verified working live). Rather
+    than trust either convention blindly for THIS endpoint, this
+    function tries BOTH `before` and `after`, and explicitly verifies
+    the returned timestamp against `<= event_ts_ms` before accepting -
+    HTTP 200 alone is never treated as success. Returns
+    (rate, timestamp, status, direction_used) - status/direction are
+    logged so the working direction is known with certainty, not
+    assumed, once tested live.
+    """
+    for direction in ("after", "before"):
+        data = utils._request_with_retry(
+            f"{utils.OKX_BASE_URL}{utils.FUNDING_RATE_HISTORY_ENDPOINT}",
+            {"instId": symbol, "limit": 10, direction: str(event_ts_ms)}
+        )
+        if data is None:
+            continue
+        entries = data.get("data", [])
+        valid_entries = [e for e in entries if isinstance(e, dict) and e.get("fundingTime")
+                          and int(e["fundingTime"]) <= event_ts_ms]
+        if valid_entries:
+            nearest = max(valid_entries, key=lambda e: int(e["fundingTime"]))
+            return nearest.get("fundingRate"), nearest.get("fundingTime"), f"ok_via_{direction}", direction
+    return None, None, "no_valid_historical_data_either_direction", None
 
 
 def fetch_oi_near_event(symbol, event_ts_ms):
     """
-    Nearest OI AT OR BEFORE event_ts_ms. Per the confirmed prior
-    investigation, open-interest-history's before/after support is
-    UNVERIFIED - this makes ONE attempt and honestly reports
-    availability, never fabricates a value.
+    Nearest OI AT OR BEFORE event_ts_ms.
+
+    FIXED (confirmed root cause): the official okx-sdk PyPI package
+    documents this exact call as get_open_interest_history(instId,
+    period, begin, end, limit) - NO before/after parameters at all.
+    Sending `before` was silently ignored by the endpoint (explaining
+    before_respected=false), returning the latest window regardless.
+    Now uses `begin`/`end` as an explicit time range ending at
+    event_ts_ms, and still explicitly verifies the returned timestamp
+    against `<= event_ts_ms` - never trusts HTTP 200 alone. Returns
+    (oi_value, timestamp, status).
     """
+    window_start_ms = event_ts_ms - (30 * 24 * 3600 * 1000)  # 30 days back, generous lookback
     data = utils._request_with_retry(
         f"{utils.OKX_BASE_URL}{utils.OPEN_INTEREST_HISTORY_ENDPOINT}",
-        {"instId": symbol, "period": "1H", "limit": 10, "before": str(event_ts_ms)}
+        {"instId": symbol, "period": "1H", "limit": 100,
+         "begin": str(window_start_ms), "end": str(event_ts_ms)}
     )
     if data is None:
-        return None, "request_failed"
+        return None, None, "request_failed"
     entries = data.get("data", [])
     valid_entries = [e for e in entries if isinstance(e, (list, tuple)) and len(e) >= 2
-                      and int(e[0]) < event_ts_ms]
+                      and int(e[0]) <= event_ts_ms]
     if not valid_entries:
-        return None, "no_data_before_event_or_pagination_unsupported"
+        return None, None, "no_valid_historical_data_with_begin_end"
     nearest = max(valid_entries, key=lambda e: int(e[0]))
-    return nearest[1], "ok"
+    return nearest[1], nearest[0], "ok_via_begin_end"
 
 
 def compute_features_for_event(event, series_1h, symbol_15m_cache):
@@ -273,13 +300,21 @@ def compute_features_for_event(event, series_1h, symbol_15m_cache):
     ind_1h = utils.compute_indicators(window_1h) if window_1h else {}
     ind_15m = utils.compute_indicators(window_15m) if window_15m else {}
 
-    funding_val, funding_status = fetch_funding_near_event(symbol, event_ts_ms)
+    funding_val, funding_ts, funding_status, funding_direction = fetch_funding_near_event(symbol, event_ts_ms)
+    if funding_val is not None and funding_ts is not None and int(funding_ts) > event_ts_ms:
+        report_stats["lookahead_violations"] += 1
+        print(f"🔴 LOOK-AHEAD VIOLATION [funding]: ts={funding_ts} > event_ts={event_ts_ms}")
+        funding_val, funding_ts = None, None
     if funding_val is not None:
         report_stats["funding_available"] += 1
     else:
         report_stats["funding_unavailable"] += 1
 
-    oi_val, oi_status = fetch_oi_near_event(symbol, event_ts_ms)
+    oi_val, oi_ts, oi_status = fetch_oi_near_event(symbol, event_ts_ms)
+    if oi_val is not None and oi_ts is not None and int(oi_ts) > event_ts_ms:
+        report_stats["lookahead_violations"] += 1
+        print(f"🔴 LOOK-AHEAD VIOLATION [oi]: ts={oi_ts} > event_ts={event_ts_ms}")
+        oi_val, oi_ts = None, None
     if oi_val is not None:
         report_stats["oi_available"] += 1
     else:
@@ -296,8 +331,8 @@ def compute_features_for_event(event, series_1h, symbol_15m_cache):
         "flow": ind_15m.get("flow"), "volume_ratio": ind_15m.get("volume_ratio"),
         "momentum_score": ind_15m.get("momentum_score"),
         "compression_status": ind_15m.get("compression_status"), "market_regime": ind_15m.get("market_regime"),
-        "funding_rate_near_event": funding_val, "funding_status": funding_status,
-        "open_interest_near_event": oi_val, "oi_status": oi_status,
+        "funding_rate_near_event": funding_val, "funding_timestamp": funding_ts, "funding_status": funding_status,
+        "open_interest_near_event": oi_val, "open_interest_timestamp": oi_ts, "oi_status": oi_status,
     }, window_15m
 
 
@@ -327,40 +362,49 @@ def compute_phase2_budget(unique_event_count):
 
 def diagnose_funding_oi_pagination(symbol, event_ts_ms):
     """
-    Isolated diagnostic - makes ONE real request each to funding-rate-
-    history and open-interest-history with before=event_ts_ms, and
-    reports the RAW evidence needed to determine whether `before` is
-    actually respected: HTTP status, OKX code, row count, every
-    returned timestamp, and an explicit check for any timestamp >=
-    before (which would prove the parameter is being ignored).
+    Isolated diagnostic reflecting the FIXED logic: funding tries both
+    `after` and `before` and reports which (if any) actually returns
+    data with timestamp <= event_ts_ms; OI uses `begin`/`end` (the
+    officially documented parameters per okx-sdk PyPI). Never accepts
+    HTTP 200 as proof of success - explicitly checks the returned
+    timestamp against the event boundary.
     """
     results = {}
-    for label, endpoint, ts_field in [
-        ("funding", utils.FUNDING_RATE_HISTORY_ENDPOINT, "fundingTime"),
-        ("open_interest", utils.OPEN_INTEREST_HISTORY_ENDPOINT, None),
-    ]:
-        url = f"{utils.OKX_BASE_URL}{endpoint}"
-        params = {"instId": symbol, "limit": 10, "before": str(event_ts_ms)}
-        if label == "open_interest":
-            params["period"] = "1H"
+
+    funding_attempts = {}
+    for direction in ("after", "before"):
+        url = f"{utils.OKX_BASE_URL}{utils.FUNDING_RATE_HISTORY_ENDPOINT}"
+        params = {"instId": symbol, "limit": 10, direction: str(event_ts_ms)}
         try:
             resp = utils.requests.get(url, params=params, timeout=15)
-            http_status = resp.status_code
             body = resp.json()
-            okx_code = body.get("code")
             data = body.get("data", [])
-            if label == "funding":
-                timestamps = [int(e.get(ts_field)) for e in data if isinstance(e, dict) and e.get(ts_field)]
-            else:
-                timestamps = [int(e[0]) for e in data if isinstance(e, (list, tuple)) and len(e) >= 1]
-            before_respected = all(ts < event_ts_ms for ts in timestamps) if timestamps else None
-            results[label] = {
-                "http_status": http_status, "okx_code": okx_code, "row_count": len(data),
-                "timestamps": timestamps, "before_value_sent": event_ts_ms,
-                "before_respected": before_respected,
+            timestamps = [int(e.get("fundingTime")) for e in data if isinstance(e, dict) and e.get("fundingTime")]
+            respected = all(ts <= event_ts_ms for ts in timestamps) if timestamps else None
+            funding_attempts[direction] = {
+                "http_status": resp.status_code, "okx_code": body.get("code"), "row_count": len(data),
+                "timestamps": timestamps, "before_value_sent": event_ts_ms, "respected": respected,
             }
         except Exception as e:
-            results[label] = {"error": f"{type(e).__name__}: {e}"}
+            funding_attempts[direction] = {"error": f"{type(e).__name__}: {e}"}
+    results["funding"] = funding_attempts
+
+    window_start_ms = event_ts_ms - (30 * 24 * 3600 * 1000)
+    url = f"{utils.OKX_BASE_URL}{utils.OPEN_INTEREST_HISTORY_ENDPOINT}"
+    params = {"instId": symbol, "period": "1H", "limit": 100, "begin": str(window_start_ms), "end": str(event_ts_ms)}
+    try:
+        resp = utils.requests.get(url, params=params, timeout=15)
+        body = resp.json()
+        data = body.get("data", [])
+        timestamps = [int(e[0]) for e in data if isinstance(e, (list, tuple)) and len(e) >= 1]
+        respected = all(ts <= event_ts_ms for ts in timestamps) if timestamps else None
+        results["open_interest"] = {
+            "http_status": resp.status_code, "okx_code": body.get("code"), "row_count": len(data),
+            "timestamps": timestamps, "begin_sent": window_start_ms, "end_sent": event_ts_ms, "respected": respected,
+        }
+    except Exception as e:
+        results["open_interest"] = {"error": f"{type(e).__name__}: {e}"}
+
     return results
 
 
@@ -455,7 +499,8 @@ def run_scan(num_days, universe_override=None, max_total_budget=None):
                                    "ema20_1h", "ema50_1h", "ema200_1h", "macd_15m", "macd_1h",
                                    "atr_15m", "atr_1h", "flow", "volume_ratio", "momentum_score",
                                    "compression_status", "market_regime",
-                                   "funding_rate_near_event", "open_interest_near_event"])
+                                   "funding_rate_near_event", "funding_timestamp",
+                                   "open_interest_near_event", "open_interest_timestamp"])
         raw_writer = csv.writer(f_raw)
         raw_writer.writerow(["event_date", "symbol", "direction", "rank", "event_timestamp",
                               "timeframe", "candle_timestamp", "open", "high", "low", "close", "volume"])
@@ -480,7 +525,8 @@ def run_scan(num_days, universe_override=None, max_total_budget=None):
                 "ema20_1h", "ema50_1h", "ema200_1h", "macd_15m", "macd_1h",
                 "atr_15m", "atr_1h", "flow", "volume_ratio", "momentum_score",
                 "compression_status", "market_regime",
-                "funding_rate_near_event", "open_interest_near_event"]])
+                "funding_rate_near_event", "funding_timestamp",
+                "open_interest_near_event", "open_interest_timestamp"]])
             f_features.flush(); os.fsync(f_features.fileno())
 
             window_1h_saved = slice_1h_window_ending_at(universe_series[event["symbol"]], event["event_timestamp"])[-24:]

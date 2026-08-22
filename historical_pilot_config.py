@@ -23,7 +23,16 @@ FUNDING_RATE_HISTORY_ENDPOINT = "/api/v5/public/funding-rate-history"
 OPEN_INTEREST_HISTORY_ENDPOINT = "/api/v5/rubik/stat/contracts/open-interest-history"
 
 # Pilot scope - deliberately small, per the approved design.
-PILOT_UNIVERSE_SIZE = 12
+#
+# FIXED (confirmed design flaw from the real OKX pilot run): 12 was too
+# small - selecting Top 10 from only 12 symbols means ~83% of the
+# universe is selected every single hour, which does not exercise the
+# actual ranking/selection logic at all. 60 keeps the pilot small
+# enough to measure rate limits meaningfully (still tiny next to the
+# hundreds of symbols a full 120-day backfill would use), while making
+# Top 10 a real ~17% selection - a genuine test of the sorting logic,
+# not a near-pass-through.
+PILOT_UNIVERSE_SIZE = 60
 PILOT_DAYS = 3
 TOP_N_PER_HOUR = 10
 

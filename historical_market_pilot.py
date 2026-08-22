@@ -29,6 +29,7 @@ written - see _assert_no_lookahead().
 ================================================================================
 """
 
+import argparse
 import csv
 import time
 from datetime import datetime, timedelta, timezone
@@ -39,6 +40,40 @@ from historical_pilot_config import (
     CANDLES_PER_REQUEST, MAX_TOTAL_REQUESTS,
     EVENTS_CSV, SNAPSHOTS_CSV, UNIVERSE_CSV, FUNDING_OI_CSV, REPORT_TXT,
 )
+
+
+def _parse_args():
+    """
+    FIXED (confirmed missing before): plain sys.argv was never
+    inspected, so `--help` silently ran the full pilot instead of
+    showing help. argparse now handles -h/--help correctly (argparse
+    prints help and calls sys.exit(0) on its own - main() never runs
+    in that case). --universe-size/--days are optional overrides for
+    rate-limit testing at different scales without editing
+    historical_pilot_config.py each time; both default to the config
+    file's values, so a bare `python3 historical_market_pilot.py` run
+    behaves identically to before, just with the corrected default
+    universe size (60, not 12).
+    """
+    parser = argparse.ArgumentParser(
+        prog="historical_market_pilot.py",
+        description=(
+            "AHAD AI - Historical Market Pilot. Standalone, manual-run-only "
+            "test of the Historical Market Scanner approach against real OKX "
+            "data, on a small scope, before committing to a full 120-day "
+            "backfill. Writes 5 output files (events/snapshots/universe/"
+            "funding-oi CSVs + a GO/NO-GO text report) to the current "
+            "directory. Read-only against OKX; never touches PostgreSQL or "
+            "any Production file."
+        ),
+    )
+    parser.add_argument("--universe-size", type=int, default=PILOT_UNIVERSE_SIZE,
+                         help=f"Number of live USDT-SWAP symbols to test against (default: {PILOT_UNIVERSE_SIZE}). "
+                              f"Must be meaningfully larger than --top-n so the Top N selection is a real test, "
+                              f"not a near-pass-through of the whole universe.")
+    parser.add_argument("--days", type=int, default=PILOT_DAYS,
+                         help=f"Number of historical days to test (default: {PILOT_DAYS}).")
+    return parser.parse_args()
 
 report = {
     "started_at": None, "finished_at": None,
@@ -63,7 +98,7 @@ def _assert_no_lookahead(snapshot_ts_ms, event_ts_ms):
     return True
 
 
-def step1_test_universe():
+def step1_test_universe(universe_size):
     print("\n=== STEP 1: Historical Universe test ===")
     success, instruments, states = utils.test_historical_universe()
     report["universe_test"] = {
@@ -91,8 +126,13 @@ def step1_test_universe():
         i["instId"] for i in instruments
         if i.get("state") == "live" and i.get("instId", "").endswith("-USDT-SWAP")
     )
-    pilot_universe = live_usdt_swaps[:PILOT_UNIVERSE_SIZE]
-    print(f"Pilot universe selected: {pilot_universe}")
+    pilot_universe = live_usdt_swaps[:universe_size]
+    selection_rate = (TOP_N_PER_HOUR / len(pilot_universe) * 100) if pilot_universe else 0
+    print(f"Pilot universe selected: {len(pilot_universe)} symbols "
+          f"(Top {TOP_N_PER_HOUR} selection rate: {selection_rate:.0f}% per hour)")
+    if selection_rate > 50:
+        print(f"⚠️ WARNING: selection rate {selection_rate:.0f}% is high - Top {TOP_N_PER_HOUR} "
+              f"will not meaningfully test ranking logic. Consider a larger --universe-size.")
     return pilot_universe
 
 
@@ -312,17 +352,19 @@ def write_final_report():
 
 
 def main():
+    args = _parse_args()  # --help exits here via argparse, before any work happens
+
     start = time.time()
     report["started_at"] = datetime.now(timezone.utc).isoformat()
     print(f"🚀 AHAD AI Historical Market Pilot starting - {report['started_at']}")
-    print(f"Scope: {PILOT_UNIVERSE_SIZE} symbols, {PILOT_DAYS} days")
+    print(f"Scope: {args.universe_size} symbols, {args.days} days")
 
     end_ts = datetime.now(timezone.utc)
-    start_ts = end_ts - timedelta(days=PILOT_DAYS)
+    start_ts = end_ts - timedelta(days=args.days)
     end_ts_ms = int(end_ts.timestamp() * 1000)
     start_ts_ms = int(start_ts.timestamp() * 1000)
 
-    universe = step1_test_universe()
+    universe = step1_test_universe(args.universe_size)
     if not universe:
         print("❌ No universe available - aborting remaining steps.")
         write_final_report()

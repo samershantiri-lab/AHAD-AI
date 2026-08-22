@@ -305,7 +305,66 @@ def compute_features_for_event(event, series_1h, symbol_15m_cache):
 # Main orchestration
 # ================================================
 
-def run_scan(num_days, universe_override=None):
+def _ceil_div(a, b):
+    return -(-a // b)
+
+
+def compute_phase1_budget(universe_size, num_days):
+    """Exact expected request count for Phase 1: universe_size symbols,
+    each needing ceil((num_days*24 + WARMUP_CANDLES) / 100) pages."""
+    candles_per_symbol = num_days * 24 + WARMUP_CANDLES
+    pages_per_symbol = _ceil_div(candles_per_symbol, CANDLES_PER_REQUEST)
+    return universe_size * pages_per_symbol
+
+
+def compute_phase2_budget(unique_event_count):
+    """Exact expected request count for Phase 2: per unique event,
+    ceil((96+WARMUP_CANDLES)/100) pages for 15m + 1 funding + 1 OI lookup."""
+    candles_15m_needed = 96 + WARMUP_CANDLES
+    pages_15m = _ceil_div(candles_15m_needed, CANDLES_PER_REQUEST)
+    return unique_event_count * (pages_15m + 1 + 1)
+
+
+def diagnose_funding_oi_pagination(symbol, event_ts_ms):
+    """
+    Isolated diagnostic - makes ONE real request each to funding-rate-
+    history and open-interest-history with before=event_ts_ms, and
+    reports the RAW evidence needed to determine whether `before` is
+    actually respected: HTTP status, OKX code, row count, every
+    returned timestamp, and an explicit check for any timestamp >=
+    before (which would prove the parameter is being ignored).
+    """
+    results = {}
+    for label, endpoint, ts_field in [
+        ("funding", utils.FUNDING_RATE_HISTORY_ENDPOINT, "fundingTime"),
+        ("open_interest", utils.OPEN_INTEREST_HISTORY_ENDPOINT, None),
+    ]:
+        url = f"{utils.OKX_BASE_URL}{endpoint}"
+        params = {"instId": symbol, "limit": 10, "before": str(event_ts_ms)}
+        if label == "open_interest":
+            params["period"] = "1H"
+        try:
+            resp = utils.requests.get(url, params=params, timeout=15)
+            http_status = resp.status_code
+            body = resp.json()
+            okx_code = body.get("code")
+            data = body.get("data", [])
+            if label == "funding":
+                timestamps = [int(e.get(ts_field)) for e in data if isinstance(e, dict) and e.get(ts_field)]
+            else:
+                timestamps = [int(e[0]) for e in data if isinstance(e, (list, tuple)) and len(e) >= 1]
+            before_respected = all(ts < event_ts_ms for ts in timestamps) if timestamps else None
+            results[label] = {
+                "http_status": http_status, "okx_code": okx_code, "row_count": len(data),
+                "timestamps": timestamps, "before_value_sent": event_ts_ms,
+                "before_respected": before_respected,
+            }
+        except Exception as e:
+            results[label] = {"error": f"{type(e).__name__}: {e}"}
+    return results
+
+
+def run_scan(num_days, universe_override=None, max_total_budget=None):
     report_stats["days_requested"] = num_days
     report_stats["retries_start"] = utils.STATS["retries"]
     report_stats["http_429_start"] = utils.STATS["http_429"]
@@ -314,15 +373,56 @@ def run_scan(num_days, universe_override=None):
     universe = universe_override if universe_override else fetch_usdt_swap_symbols()
     print(f"Universe size: {len(universe)}")
 
-    print("\n=== PHASE 1: fetching one 1H series per symbol (ranking + warm-up) ===")
     boundaries = get_daily_utc_boundaries(num_days)
     boundary_0_ms = boundaries[0]
+
+    # ---- PRE-FLIGHT BUDGET (Phase 1 known exactly; Phase 2 is an
+    # upper-bound estimate here since exact unique-event count isn't
+    # known until Phase 1 runs - TOP_N*2 directions*num_days is the
+    # worst case with zero symbol reuse across days) ----
+    phase1_budget = compute_phase1_budget(len(universe), num_days)
+    phase2_worst_case = compute_phase2_budget(TOP_N * 2 * num_days)
+    estimated_total = phase1_budget + phase2_worst_case
+
+    print("\n" + "="*70)
+    print("PRE-FLIGHT REQUEST BUDGET")
+    print("="*70)
+    print(f"Phase 1 (1H ranking series, {len(universe)} symbols x {num_days}d+{WARMUP_CANDLES} warmup): "
+          f"{phase1_budget} requests (EXACT)")
+    print(f"Phase 2 (15m + funding + OI, worst case up to {TOP_N*2*num_days} unique events): "
+          f"{phase2_worst_case} requests (UPPER BOUND ESTIMATE)")
+    print(f"ESTIMATED TOTAL: {estimated_total} requests")
+
+    if max_total_budget is not None and estimated_total > max_total_budget:
+        print(f"\n❌ ABORTING BEFORE ANY REQUEST: estimated total ({estimated_total}) exceeds "
+              f"--max-total-budget ({max_total_budget}). Increase the budget explicitly and "
+              f"re-run, or reduce universe/days. No partial run, no silent truncation.")
+        return None
+
+    # ---- PHASE 1: hard-capped at ITS OWN budget + 5% margin, so it
+    # can NEVER consume Phase 2's allocation. If Phase 1 itself hits
+    # this cap, that means the universe needed more than computed -
+    # abort cleanly rather than continue with a silently incomplete
+    # Phase 1 into Phase 2. ----
+    phase1_cap = int(phase1_budget * 1.05) + 10
+    utils.MAX_TOTAL_REQUESTS_GLOBAL[0] = phase1_cap
+    utils.STATS["total_requests"] = 0
+    print(f"\n=== PHASE 1: fetching one 1H series per symbol (budget cap: {phase1_cap} requests) ===")
     print(f"UTC daily boundaries (most recent first): {[datetime.fromtimestamp(b/1000, tz=timezone.utc).isoformat() for b in boundaries]}")
     universe_series = {}
     for symbol in universe:
         series = fetch_full_1h_series(symbol, num_days, boundary_0_ms)
         universe_series[symbol] = series
         print(f"  {symbol}: {len(series)} closed 1H candles fetched")
+
+    phase1_actual = utils.STATS["total_requests"]
+    if phase1_actual >= phase1_cap:
+        print(f"\n❌ ABORTING: Phase 1 hit its own budget cap ({phase1_cap} requests) before "
+              f"completing the full universe - some symbols' 1H series are incomplete. "
+              f"This means the universe is larger than the pre-flight estimate accounted for. "
+              f"NOT proceeding to Phase 2 with incomplete Phase 1 data.")
+        return None
+    print(f"Phase 1 actual usage: {phase1_actual}/{phase1_cap} requests - within budget, proceeding.")
 
     print("\n=== PHASE 1b: computing daily rankings locally (zero extra requests) ===")
     events = compute_daily_rankings(universe_series, num_days, boundaries)
@@ -331,7 +431,14 @@ def run_scan(num_days, universe_override=None):
     report_stats["losers"] = sum(1 for e in events if e["direction"] == "LOSER")
     report_stats["unique_symbols_in_events"] = len({e["symbol"] for e in events})
 
-    print("\n=== PHASE 2: fetching 15m + funding/OI for each event (deduplicated) ===")
+    unique_pairs = len({(e["symbol"], e["event_timestamp"]) for e in events})
+    phase2_exact_budget = compute_phase2_budget(unique_pairs)
+    phase2_cap = phase1_actual + int(phase2_exact_budget * 1.05) + 10
+    utils.MAX_TOTAL_REQUESTS_GLOBAL[0] = phase2_cap
+    print(f"\n=== PHASE 2: fetching 15m + funding/OI for each event (deduplicated) ===")
+    print(f"Unique (symbol, event_timestamp) pairs needing 15m/funding/OI: {unique_pairs}")
+    print(f"Phase 2 EXACT budget: {phase2_exact_budget} requests | "
+          f"new global cap: {phase2_cap} (= Phase 1 usage {phase1_actual} + Phase 2 budget + 5% margin)")
     symbol_15m_cache = {}
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -388,6 +495,11 @@ def run_scan(num_days, universe_override=None):
             f_raw.flush(); os.fsync(f_raw.fileno())
 
             print(f"  Event {event['event_date']} {event['symbol']} {event['direction']}#{event['rank']} - features + raw saved")
+
+    if utils.STATS["total_requests"] >= phase2_cap:
+        report_stats["api_failures"] += 1
+        print(f"\n⚠️ Phase 2 hit its budget cap ({phase2_cap}) - some events' 15m/funding/OI data "
+              f"may be incomplete. This is now recorded in api_failures, not silent.")
 
     duration = time.time() - start_time
     _write_manifest_and_report(duration)
@@ -478,24 +590,43 @@ def send_zip_to_telegram(zip_path):
 
 def main():
     parser = argparse.ArgumentParser(description="AHAD AI Historical Event Scanner")
-    parser.add_argument("--mode", choices=["pilot", "full", "test-telegram"], default="pilot")
+    parser.add_argument("--mode", choices=["pilot", "full", "test-telegram", "diagnose-funding-oi"], default="pilot")
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--pilot-symbols", type=int, default=5)
     parser.add_argument("--pilot-days", type=int, default=3)
+    parser.add_argument("--max-total-budget", type=int, default=50000,
+                         help="Explicit hard ceiling on total requests for the whole run (not "
+                              "'unlimited' - default 50000). If the pre-flight estimate exceeds "
+                              "this, the run aborts before making any request.")
+    parser.add_argument("--diagnose-symbol", default="BTC-USDT-SWAP")
+    parser.add_argument("--diagnose-days-ago", type=int, default=15,
+                         help="How many days back the test event_timestamp should be (default 15 - "
+                              "a genuinely historical point, not 'now').")
     args = parser.parse_args()
 
+    if args.mode == "diagnose-funding-oi":
+        boundaries = get_daily_utc_boundaries(args.diagnose_days_ago + 1)
+        event_ts_ms = boundaries[-1]
+        print(f"Diagnosing {args.diagnose_symbol} @ event_timestamp={event_ts_ms} "
+              f"({datetime.fromtimestamp(event_ts_ms/1000, tz=timezone.utc).isoformat()})")
+        results = diagnose_funding_oi_pagination(args.diagnose_symbol, event_ts_ms)
+        print(json.dumps(results, indent=2, default=str))
+        return
+
     if args.mode == "test-telegram":
-        # Smallest possible end-to-end test: 1 symbol, 1 day - just to
-        # prove ZIP creation + Telegram delivery work, before any real run.
         universe = fetch_usdt_swap_symbols()[:1]
         print(f"TEST-TELEGRAM MODE: {len(universe)} symbol, 1 day - proving ZIP + Telegram delivery only")
-        run_scan(1, universe_override=universe)
+        result = run_scan(1, universe_override=universe, max_total_budget=args.max_total_budget)
     elif args.mode == "pilot":
         universe = fetch_usdt_swap_symbols()[:args.pilot_symbols]
         print(f"PILOT MODE: {len(universe)} symbols, {args.pilot_days} days")
-        run_scan(args.pilot_days, universe_override=universe)
+        result = run_scan(args.pilot_days, universe_override=universe, max_total_budget=args.max_total_budget)
     else:
-        run_scan(args.days)
+        result = run_scan(args.days, max_total_budget=args.max_total_budget)
+
+    if result is None:
+        print("\n⚠️ Run aborted before completion (see message above) - no ZIP created, nothing sent.")
+        return
 
     zip_path = create_results_zip()
     if zip_path:

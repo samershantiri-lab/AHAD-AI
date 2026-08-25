@@ -2055,7 +2055,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.3.1"
+VERSION = "v23.3.2"
 BUILD_DATE = "2026-08-09"
 
 # ================================================

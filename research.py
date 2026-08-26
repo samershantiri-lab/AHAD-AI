@@ -241,6 +241,7 @@ RESEARCH_MODULES = [
     # funding_oi_research above.
     {"name": "Deep Historical Research Export", "file": "deep_research_export.py", "module_key": "deep_research_export"},
     {"name": "Top Movers Analysis (Gainers vs Losers)", "file": "top_movers_analysis.py", "module_key": "top_movers_analysis"},
+    {"name": "Research Intelligence Collector (5m + Intelligence State)", "file": "research_data_foundation.py", "module_key": "research_intelligence_collector", "has_snapshot": False},
 ]
 
 # Generous on purpose: Top Gainers/Losers Study fetch OHLCV data for
@@ -258,7 +259,7 @@ _RECORDS_PATTERN = re.compile(r"recorded (\d+)")
 # ================================================
 
 MODULE_STALE_SECONDS = MODULE_TIMEOUT_SECONDS + 120  # 720s, per LOCKED spec
-RUN_STALE_SECONDS = (len(RESEARCH_MODULES) * MODULE_TIMEOUT_SECONDS) + 300  # 7500s, per LOCKED spec
+RUN_STALE_SECONDS = (len(RESEARCH_MODULES) * MODULE_TIMEOUT_SECONDS) + 300  # now 13*600+300=8100s (was 7500s with 12 modules) - formula is dynamic, this updates automatically as modules are added/removed
 
 
 def init_run_history_tables():
@@ -305,8 +306,10 @@ def check_and_mark_stale():
     1. Module-level: any research_module_run still RUNNING older than
        MODULE_STALE_SECONDS (720s) -> FAILED_STALE.
     2. Run-level: any research_run still RUNNING older than
-       RUN_STALE_SECONDS (7500s) -> FAILED (the Controller itself
-       never finished that run - a prior process likely died).
+       RUN_STALE_SECONDS (dynamic - currently 8100s with 13 modules,
+       recomputed automatically as len(RESEARCH_MODULES) changes) ->
+       FAILED (the Controller itself never finished that run - a
+       prior process likely died).
 
     Never raises - a failure here must not prevent the actual research
     run that follows from starting.
@@ -442,7 +445,7 @@ def run_module(module_info):
         if proc.returncode == 0:
             result["success"] = True
 
-            if module_key:
+            if module_key and module_info.get("has_snapshot", True):
                 last_success = _get_snapshot_last_success(module_key)
                 if last_success is None or last_success < started_at:
                     result["partial"] = True
@@ -585,6 +588,7 @@ def run_research_lab(modules=None):
 
     run_id = uuid.uuid4()
     _create_research_run(run_id, started_at)
+    os.environ["RESEARCH_RUN_ID"] = str(run_id)  # inherited automatically by every subprocess.run() call below - no env= param needed
 
     print("=" * 50)
     print("AHAD AI RESEARCH LAB")

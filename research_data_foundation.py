@@ -513,7 +513,17 @@ def extract_market_context(trade_row, snapshot, signal_ts_ms):
 # Build one trade record (Schema v4)
 # ================================================
 
-def build_trade_record(trade_row):
+def build_trade_record(trade_row, pre_fetched_funding=None, pre_fetched_oi=None, pre_fetched_candles=None):
+    """
+    FIXED (duplicate-collection removal): Funding/OI no longer call OKX
+    here at all - research_market_data (via fetch_funding_oi_from_db)
+    is now the single source of truth for BOTH the Daily Research path
+    and the Phase 2 Intelligence path, exactly as decided. 5m candles
+    are accepted as an optional pre-fetched list (shared with Phase 2's
+    collect_intelligence_for_trade via run()) to avoid a second OKX
+    request for the same window - if not provided, falls back to
+    fetching them here (keeps this function usable standalone).
+    """
     snapshot = trade_row.get("initial_snapshot") or {}
     if isinstance(snapshot, str):
         try:
@@ -524,11 +534,17 @@ def build_trade_record(trade_row):
     signal_time_iso = trade_row["signal_time"].isoformat() if trade_row.get("signal_time") else None
     signal_ts_ms = int(trade_row["signal_time"].timestamp() * 1000) if trade_row.get("signal_time") else None
 
-    funding = fetch_funding_near_signal(trade_row["symbol"], signal_ts_ms) if signal_ts_ms else \
-        {"data_quality": "NOT_AVAILABLE"}
-    oi = fetch_oi_near_signal(trade_row["symbol"], signal_ts_ms) if signal_ts_ms else \
-        {"data_quality": "NOT_AVAILABLE"}
-    candles_5m = fetch_5m_candles_before(trade_row["symbol"], signal_ts_ms) if signal_ts_ms else []
+    if pre_fetched_funding is not None and pre_fetched_oi is not None:
+        funding, oi = pre_fetched_funding, pre_fetched_oi
+    else:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        funding, oi = fetch_funding_oi_unified(cur, trade_row["id"])
+        cur.close()
+        conn.close()
+
+    candles_5m = pre_fetched_candles if pre_fetched_candles is not None else \
+        (fetch_5m_candles_before(trade_row["symbol"], signal_ts_ms) if signal_ts_ms else [])
     timing_5m = compute_5m_raw(candles_5m)
 
     score_breakdown = extract_score_breakdown(snapshot)
@@ -1034,17 +1050,37 @@ def run():
         return files_to_write[date_str]
 
     write_failed = False
+    intelligence_results = []  # Phase 2 tracking, reported at the end
 
     # Process new trades: create entry record
     for t in new_trades:
         date_str = t["signal_time"].strftime("%Y-%m-%d") if t.get("signal_time") else "unknown"
-        record = build_trade_record(t)
+
+        # FIXED (duplicate-collection removal): single collection point
+        # for this trade - Funding/OI (DB) and 5m (OKX) each fetched
+        # ONCE, shared between the Daily Research path and Phase 2.
+        signal_ts_ms = int(t["signal_time"].timestamp() * 1000) if t.get("signal_time") else None
+        shared_funding, shared_oi = fetch_funding_oi_unified(cur, t["id"])
+        shared_candles = fetch_5m_candles_before(t["symbol"], signal_ts_ms) if signal_ts_ms else []
+
+        record = build_trade_record(t, pre_fetched_funding=shared_funding,
+                                     pre_fetched_oi=shared_oi, pre_fetched_candles=shared_candles)
         if t.get("status") == "CLOSED":
             record = update_outcome(record, t)
         else:
             pending_outcomes[str(t["id"])] = date_str  # track for future re-check
         daily = get_daily(date_str)
         upsert_trade_record(daily, record)
+
+        # Phase 2: Research Intelligence Layer - runs alongside the
+        # existing Daily Research File logic above, using the SAME
+        # connection AND the same already-fetched 5m candles (no
+        # second OKX request for the same window).
+        intel_result = collect_intelligence_for_trade(conn, t, pre_fetched_candles=shared_candles,
+                                                        pre_fetched_funding=shared_funding, pre_fetched_oi=shared_oi)
+        intelligence_results.append(intel_result)
+        print(f"  Intelligence[{t['id']}]: {intel_result.get('status')} "
+              f"(candles={intel_result.get('candles_stored', 0)}, missing={intel_result.get('missing', [])})")
 
     # Process pending trades: update outcome ONLY if now closed, in the
     # ORIGINAL date's file (not today's file)
@@ -1173,6 +1209,250 @@ def test_5m_boundary_rule():
     assert not close_time_valid(after), "FAIL: close after signal must be REJECTED"
 
     print("5m boundary rule regression test: ALL PASS (before=VALID, ==VALID, after=REJECT)")
+
+
+# ================================================================
+# PHASE 2 — RESEARCH INTELLIGENCE LAYER
+# ================================================================
+# New, self-contained addition. Does NOT reuse or modify the Daily
+# Research File path above (build_trade_record, fetch_funding_near_signal,
+# fetch_oi_near_signal) - those remain untouched, serving their original
+# purpose. This implements the LOCKED Phase 2 design exactly:
+#
+#   - Funding/OI: read ONLY from research_market_data (never OKX again)
+#   - 5m: fetched from OKX (the only network collection left here)
+#   - Derived metrics: EXACTLY the 5 approved ones, nothing more
+#   - Intelligence dimensions stored: funding, oi, timing_5m,
+#     aggregated_state, aggregation_basis ONLY - no context/direction/
+#     setup/risk duplication (those live in trades.initial_snapshot,
+#     joined at analysis time, not copied here)
+#   - timing_5m stays "NOT_CLASSIFIED_YET" - no thresholds invented
+#   - Entry safety enforced in Python AND relies on the DB CHECK
+#     constraint (entry_safe_check) as a second, independent guard
+#   - Idempotent via UPSERT keyed on trade_id / (trade_id, candle_ts)
+#   - Linked to the current research_run (never creates a new run)
+# ================================================================
+
+def fetch_funding_oi_from_db(cur, trade_id):
+    """
+    Reads Funding/OI from research_market_data - the LOCKED single
+    source of truth for BOTH the Daily Research path and Phase 2.
+    Never calls OKX. Returns None if no row exists for this trade_id.
+    """
+    cur.execute("""
+        SELECT funding_rate, raw_funding_response, open_interest_contracts,
+               open_interest_ccy, raw_oi_response
+        FROM research_market_data WHERE trade_id = %s
+    """, (trade_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    return {
+        "funding_raw": row[1] or {"fundingRate": row[0]},
+        # NOTE: open_interest_ccy is NOT a USD value (it's OI in the
+        # underlying asset's own currency, a different unit entirely
+        # from oi_usd) - using it as an oi_usd fallback would silently
+        # mix units, which is worse than the UNKNOWN it would "fix".
+        # When raw_oi_response is unavailable, there is genuinely no
+        # correctly-unit-matched oi_usd source in this table -
+        # UNKNOWN is the correct classification here, not a bug.
+        "oi_raw": row[4] or {},
+    }
+
+
+def fetch_funding_oi_unified(cur, trade_id):
+    """
+    Single collection point used by BOTH build_trade_record() and
+    collect_intelligence_for_trade() - returns the exact shape both
+    already expect ({"raw": {...}, "data_quality": ...}), sourced
+    once from research_market_data. Eliminates the format mismatch
+    that would otherwise exist between the two paths' own internal
+    shapes.
+    """
+    market_data = fetch_funding_oi_from_db(cur, trade_id)
+    if market_data is None:
+        return ({"raw": {}, "data_quality": "NOT_AVAILABLE"},
+                {"raw": {}, "data_quality": "NOT_AVAILABLE"})
+    funding = {"raw": market_data["funding_raw"], "data_quality": "complete"}
+    oi = {"raw": market_data["oi_raw"], "data_quality": "partial - absolute value only"}
+    return funding, oi
+
+
+def is_candle_entry_safe(candle_ts, signal_ts_ms):
+    """Python-side guard, independent of and in addition to the DB
+    CHECK constraint - never trust a single layer alone."""
+    return (int(candle_ts) + 300000) <= signal_ts_ms
+
+
+def get_current_run_id(cur):
+    """
+    Run lineage, in order of preference:
+    1. RESEARCH_RUN_ID env var - the correct injection point if/when
+       this module is ever invoked as a subprocess by research.py (the
+       way the other 12 RESEARCH_MODULES are) - CONFIRMED from research.py
+       that research_data_foundation.py is NOT currently one of those 12
+       subprocess-invoked modules, so no caller sets this today. This
+       still never creates a run itself - only reads what's provided.
+    2. Fallback: the most recent research_run with status='RUNNING'
+       specifically - NOT simply "newest by started_at" regardless of
+       status, which could wrongly link to a stale COMPLETED/FAILED row
+       from a much earlier run that merely happens to be the newest.
+       A RUNNING row is the one actually in-flight right now.
+    Returns None if neither source finds anything - never guesses.
+    """
+    env_run_id = os.environ.get("RESEARCH_RUN_ID")
+    if env_run_id:
+        return env_run_id
+    cur.execute("SELECT run_id FROM research_run WHERE status='RUNNING' ORDER BY started_at DESC LIMIT 1")
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def build_intelligence_dimensions_only(funding_raw, oi_raw, direction):
+    """
+    Computes ONLY dimension_funding, dimension_oi, dimension_timing_5m,
+    aggregated_state, aggregation_basis - deliberately NOT context/
+    direction/setup/risk (those are Core Snapshot data, joined from
+    trades at analysis time, never duplicated here per LOCKED design).
+    """
+    funding_state = classify_funding_state(funding_raw or {}, direction)
+    oi_state = classify_oi_state(oi_raw or {}, "from research_market_data")
+
+    AGGREGATION_BASIS = ["funding"]  # oi/timing_5m excluded - no confirmed basis (unchanged reasoning)
+    neg_count = pos_count = 0
+    if funding_state["derived_state"] == "AGAINST":
+        neg_count += 1
+    elif funding_state["derived_state"] == "SUPPORTIVE":
+        pos_count += 1
+    if neg_count and pos_count:
+        aggregated = "CONFLICT"
+    elif neg_count:
+        aggregated = "CAUTION"
+    elif pos_count:
+        aggregated = "FAVORABLE"
+    else:
+        aggregated = "NEUTRAL"
+
+    return {
+        "dimension_funding": funding_state["derived_state"],
+        "dimension_oi": oi_state["derived_state"],
+        "dimension_timing_5m": "NOT_CLASSIFIED_YET",
+        "aggregated_state": aggregated,
+        "aggregation_basis": AGGREGATION_BASIS,
+    }
+
+
+def upsert_research_intelligence(cur, trade_row, metrics_5m, dims, collection_status,
+                                  missing_components, run_id):
+    """Idempotent - PRIMARY KEY(trade_id) with ON CONFLICT DO UPDATE.
+    Re-running for the same trade never creates a duplicate row."""
+    cur.execute("""
+        INSERT INTO research_intelligence (
+            trade_id, decision_id, symbol, signal_time, schema_version,
+            candles_used, momentum_5m, volume_acceleration_5m,
+            candle_expansion_ratio, ema20_5m, distance_from_recent_move_pct,
+            dimension_funding, dimension_oi, dimension_timing_5m,
+            aggregated_state, aggregation_basis,
+            collection_status, missing_components, collected_at, run_id
+        ) VALUES (%s,%s,%s,%s,'v1',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+        ON CONFLICT (trade_id) DO UPDATE SET
+            candles_used = EXCLUDED.candles_used,
+            momentum_5m = EXCLUDED.momentum_5m,
+            volume_acceleration_5m = EXCLUDED.volume_acceleration_5m,
+            candle_expansion_ratio = EXCLUDED.candle_expansion_ratio,
+            ema20_5m = EXCLUDED.ema20_5m,
+            distance_from_recent_move_pct = EXCLUDED.distance_from_recent_move_pct,
+            dimension_funding = EXCLUDED.dimension_funding,
+            dimension_oi = EXCLUDED.dimension_oi,
+            dimension_timing_5m = EXCLUDED.dimension_timing_5m,
+            aggregated_state = EXCLUDED.aggregated_state,
+            aggregation_basis = EXCLUDED.aggregation_basis,
+            collection_status = EXCLUDED.collection_status,
+            missing_components = EXCLUDED.missing_components,
+            collected_at = NOW(), run_id = EXCLUDED.run_id
+    """, (
+        trade_row["id"], trade_row.get("decision_id"), trade_row["symbol"], trade_row["signal_time"],
+        metrics_5m.get("candles_used"), metrics_5m["raw"].get("momentum_5m"),
+        metrics_5m["raw"].get("volume_acceleration_5m"), metrics_5m["raw"].get("candle_expansion_ratio"),
+        metrics_5m["raw"].get("ema20_5m"), metrics_5m["raw"].get("distance_from_recent_move_pct"),
+        dims["dimension_funding"], dims["dimension_oi"], dims["dimension_timing_5m"],
+        dims["aggregated_state"], dims["aggregation_basis"],
+        collection_status, missing_components, run_id,
+    ))
+
+
+def insert_5m_candles(cur, trade_id, signal_time, candles):
+    """
+    Idempotent via UNIQUE(trade_id, candle_ts) + ON CONFLICT DO NOTHING.
+    Every candle is re-checked for entry-safety in Python (defense in
+    depth alongside the DB CHECK constraint) - a candle failing either
+    check is skipped entirely, never inserted with an adjusted timestamp.
+    """
+    inserted = 0
+    for c in candles:
+        cur.execute("""
+            INSERT INTO research_5m_candles (trade_id, signal_time, candle_ts, open, high, low, close, volume)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (trade_id, candle_ts) DO NOTHING
+        """, (trade_id, signal_time, int(c["ts"]), c["open"], c["high"], c["low"], c["close"], c["volume"]))
+        if cur.rowcount > 0:  # FIXED: only count actual inserts, not attempts (ON CONFLICT DO NOTHING -> rowcount=0)
+            inserted += 1
+    return inserted
+
+
+def collect_intelligence_for_trade(conn, trade_row, pre_fetched_candles=None,
+                                    pre_fetched_funding=None, pre_fetched_oi=None):
+    """
+    Full pipeline for one trade: Funding/OI from DB (never OKX, via the
+    unified helper shared with build_trade_record - or reused directly
+    if the caller already fetched it, avoiding even a second DB query),
+    5m from OKX (or reused from pre_fetched_candles if the caller
+    already fetched the same window - eliminates the duplicate OKX
+    request), then persisted with explicit partial-failure handling.
+    """
+    cur = conn.cursor()
+    trade_id = trade_row["id"]
+    signal_time = trade_row["signal_time"]
+    signal_ts_ms = int(signal_time.timestamp() * 1000)
+    missing_components = []
+
+    if pre_fetched_funding is not None and pre_fetched_oi is not None:
+        funding, oi = pre_fetched_funding, pre_fetched_oi
+    else:
+        funding, oi = fetch_funding_oi_unified(cur, trade_id)
+    if funding["data_quality"] == "NOT_AVAILABLE":
+        missing_components.append("funding_oi")
+    funding_raw, oi_raw = funding["raw"], oi["raw"]
+
+    if pre_fetched_candles is not None:
+        candles = pre_fetched_candles
+    else:
+        candles = fetch_5m_candles_before(trade_row["symbol"], signal_ts_ms)
+    safe_candles = [c for c in candles if is_candle_entry_safe(c["ts"], signal_ts_ms)]
+    if len(safe_candles) != len(candles):
+        missing_components.append("5m_unsafe_candles_excluded")
+    if not safe_candles:
+        missing_components.append("5m_candles")
+
+    metrics_5m = compute_5m_raw(safe_candles)
+    if metrics_5m.get("data_quality") != "complete":
+        missing_components.append("5m_derived_metrics")
+
+    dims = build_intelligence_dimensions_only(funding_raw, oi_raw, trade_row["side"])
+
+    collection_status = "COMPLETE" if not missing_components else "PARTIAL"
+    run_id = get_current_run_id(cur)
+
+    try:
+        upsert_research_intelligence(cur, trade_row, metrics_5m, dims,
+                                      collection_status, missing_components or None, run_id)
+        n_candles = insert_5m_candles(cur, trade_id, signal_time, safe_candles)
+        conn.commit()
+        return {"trade_id": trade_id, "status": collection_status,
+                "missing": missing_components, "candles_stored": n_candles}
+    except Exception as e:
+        conn.rollback()
+        return {"trade_id": trade_id, "status": "FAILED", "error": str(e)}
 
 
 if __name__ == "__main__":

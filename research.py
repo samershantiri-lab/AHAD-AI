@@ -63,6 +63,7 @@ import sys
 import subprocess
 import time
 import json
+import uuid
 import psycopg2
 from datetime import datetime
 
@@ -253,8 +254,140 @@ _RECORDS_PATTERN = re.compile(r"recorded (\d+)")
 
 
 # ================================================
-# ▶ MODULE EXECUTION - one isolated subprocess per module
+# ▶ RESEARCH RUN HISTORY - Source of Truth (LOCKED design)
 # ================================================
+
+MODULE_STALE_SECONDS = MODULE_TIMEOUT_SECONDS + 120  # 720s, per LOCKED spec
+RUN_STALE_SECONDS = (len(RESEARCH_MODULES) * MODULE_TIMEOUT_SECONDS) + 300  # 7500s, per LOCKED spec
+
+
+def init_run_history_tables():
+    """CREATE TABLE IF NOT EXISTS only - never drops or alters existing
+    data, per explicit Database Safety requirement."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS research_run (
+            run_id UUID PRIMARY KEY,
+            started_at TIMESTAMP NOT NULL,
+            finished_at TIMESTAMP,
+            trigger_source TEXT,
+            status TEXT NOT NULL DEFAULT 'RUNNING'
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS research_module_run (
+            id SERIAL PRIMARY KEY,
+            run_id UUID NOT NULL REFERENCES research_run(run_id),
+            module_key TEXT NOT NULL,
+            module_name TEXT,
+            status TEXT NOT NULL,
+            started_at TIMESTAMP NOT NULL,
+            finished_at TIMESTAMP,
+            duration_seconds REAL,
+            n_records INTEGER,
+            headline_stat TEXT,
+            summary_data JSONB,
+            error_detail TEXT,
+            UNIQUE(run_id, module_key)
+        )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def check_and_mark_stale():
+    """
+    Called at the START of every run_research_lab() call, before any
+    new run_id is created. Two independent checks, per LOCKED design:
+
+    1. Module-level: any research_module_run still RUNNING older than
+       MODULE_STALE_SECONDS (720s) -> FAILED_STALE.
+    2. Run-level: any research_run still RUNNING older than
+       RUN_STALE_SECONDS (7500s) -> FAILED (the Controller itself
+       never finished that run - a prior process likely died).
+
+    Never raises - a failure here must not prevent the actual research
+    run that follows from starting.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE research_module_run
+            SET status = 'FAILED_STALE', finished_at = NOW()
+            WHERE status = 'RUNNING'
+              AND started_at < NOW() - (%s || ' seconds')::interval
+        """, (MODULE_STALE_SECONDS,))
+        cur.execute("""
+            UPDATE research_run
+            SET status = 'FAILED', finished_at = NOW()
+            WHERE status = 'RUNNING'
+              AND started_at < NOW() - (%s || ' seconds')::interval
+        """, (RUN_STALE_SECONDS,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ check_and_mark_stale() failed (non-fatal, continuing) - {e}")
+
+
+def _classify_module_status(result):
+    """
+    Controller-side classification, per LOCKED state machine. This is
+    the ONLY place that decides research_module_run.status - a
+    module's own internal status (SUCCESS/FAILED it wrote to
+    research_snapshots) is never consulted here, per the explicit
+    Source-of-Truth rule: if the module said SUCCESS internally but
+    the Controller received returncode != 0, the result here is
+    FAILED_PROCESS, not SUCCESS.
+    """
+    if not result.get("exists"):
+        return "FAILED_UNKNOWN"
+    error = result.get("error") or ""
+    if result.get("success") and not result.get("partial"):
+        return "SUCCESS"
+    if result.get("success") and result.get("partial"):
+        return "SUCCESS_EMPTY"
+    if "timed out after" in error:
+        return "FAILED_TIMEOUT"
+    if "exited with code" in error:
+        return "FAILED_PROCESS"
+    return "FAILED_UNKNOWN"
+
+
+def _record_module_run(run_id, result, started_at):
+    """Controller-side INSERT into research_module_run - the historical
+    Source of Truth. Never raises - a failure here must not stop the
+    rest of the modules from running."""
+    try:
+        status = _classify_module_status(result)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO research_module_run (
+                run_id, module_key, module_name, status, started_at,
+                finished_at, duration_seconds, n_records, error_detail
+            ) VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+            ON CONFLICT (run_id, module_key) DO UPDATE SET
+                status = EXCLUDED.status,
+                finished_at = EXCLUDED.finished_at,
+                duration_seconds = EXCLUDED.duration_seconds,
+                n_records = EXCLUDED.n_records,
+                error_detail = EXCLUDED.error_detail
+        """, (
+            str(run_id), result.get("module_key") or result.get("file"), result.get("name"),
+            status, started_at, result.get("duration_seconds"), result.get("records"),
+            result.get("error"),
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ _record_module_run() failed for {result.get('name')} (non-fatal) - {e}")
+
+
 
 def _module_path(filename):
     """Resolves a module's path relative to this controller's own
@@ -393,6 +526,41 @@ def _print_summary(results, started_at):
 # ▶ ENTRY POINT
 # ================================================
 
+def _create_research_run(run_id, started_at):
+    """Insert the research_run row for this execution. Never raises -
+    if this fails, the run still proceeds (module results still print),
+    it just won't have historical run tracking for this one execution."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO research_run (run_id, started_at, trigger_source, status)
+            VALUES (%s, %s, %s, 'RUNNING')
+        """, (str(run_id), started_at, "cron"))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ _create_research_run() failed (non-fatal) - {e}")
+
+
+def _complete_research_run(run_id):
+    """Marks research_run COMPLETED - only reached if the Controller's
+    loop over every module finished naturally (no crash)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE research_run SET status = 'COMPLETED', finished_at = NOW()
+            WHERE run_id = %s
+        """, (str(run_id),))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ _complete_research_run() failed (non-fatal) - {e}")
+
+
 def run_research_lab(modules=None):
     """
     Runs every registered module in order, printing each result as it
@@ -412,6 +580,11 @@ def run_research_lab(modules=None):
     started_at = datetime.now()
 
     init_research_runs_table()
+    init_run_history_tables()
+    check_and_mark_stale()  # Phase: fix stale RUNNING before starting a new run
+
+    run_id = uuid.uuid4()
+    _create_research_run(run_id, started_at)
 
     print("=" * 50)
     print("AHAD AI RESEARCH LAB")
@@ -419,10 +592,13 @@ def run_research_lab(modules=None):
 
     results = []
     for module_info in modules:
+        module_started_at = datetime.now()
         result = run_module(module_info)
+        _record_module_run(run_id, result, module_started_at)
         _print_module_result(result)
         results.append(result)
 
+    _complete_research_run(run_id)
     _print_summary(results, started_at)
     _save_research_run(started_at, results)
     return results

@@ -538,7 +538,7 @@ def build_trade_record(trade_row, pre_fetched_funding=None, pre_fetched_oi=None,
         funding, oi = pre_fetched_funding, pre_fetched_oi
     else:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         funding, oi = fetch_funding_oi_unified(cur, trade_row["id"])
         cur.close()
         conn.close()
@@ -1248,7 +1248,13 @@ def fetch_funding_oi_from_db(cur, trade_id):
     if not row:
         return None
     return {
-        "funding_raw": row[1] or {"fundingRate": row[0]},
+        # FIXED (Production KeyError: 1): row is a RealDictRow when this
+        # is called via run()'s shared cursor (cursor_factory=RealDictCursor) -
+        # positional indexing (row[1]) looks for an integer dict KEY,
+        # not a tuple position, and raises KeyError: 1. Column-name
+        # access is correct for both RealDictCursor and matches the
+        # SELECT above exactly.
+        "funding_raw": row["raw_funding_response"] or {"fundingRate": row["funding_rate"]},
         # NOTE: open_interest_ccy is NOT a USD value (it's OI in the
         # underlying asset's own currency, a different unit entirely
         # from oi_usd) - using it as an oi_usd fallback would silently
@@ -1256,7 +1262,7 @@ def fetch_funding_oi_from_db(cur, trade_id):
         # When raw_oi_response is unavailable, there is genuinely no
         # correctly-unit-matched oi_usd source in this table -
         # UNKNOWN is the correct classification here, not a bug.
-        "oi_raw": row[4] or {},
+        "oi_raw": row["raw_oi_response"] or {},
     }
 
 
@@ -1305,7 +1311,10 @@ def get_current_run_id(cur):
         return env_run_id
     cur.execute("SELECT run_id FROM research_run WHERE status='RUNNING' ORDER BY started_at DESC LIMIT 1")
     row = cur.fetchone()
-    return row[0] if row else None
+    # FIXED (same root cause as fetch_funding_oi_from_db): row is a
+    # RealDictRow here too (same shared cursor from run()) - row[0]
+    # raised KeyError: 0. Column-name access is correct.
+    return row["run_id"] if row else None
 
 
 def build_intelligence_dimensions_only(funding_raw, oi_raw, direction):
@@ -1410,7 +1419,7 @@ def collect_intelligence_for_trade(conn, trade_row, pre_fetched_candles=None,
     already fetched the same window - eliminates the duplicate OKX
     request), then persisted with explicit partial-failure handling.
     """
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     trade_id = trade_row["id"]
     signal_time = trade_row["signal_time"]
     signal_ts_ms = int(signal_time.timestamp() * 1000)

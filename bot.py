@@ -2350,6 +2350,16 @@ def init_database():
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS context_candidate_rank INTEGER")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS context_expanded_pool_size INTEGER")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_reason TEXT")
+        # v23.4 measurement fix - raw OI/Price capture values, so
+        # price_t0==price_t1 (or not) can be proven directly from Neon.
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_price_t0 REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_price_t1 REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_oi_t0 REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_oi_t1 REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_timestamp_t0 TIMESTAMPTZ")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_timestamp_t1 TIMESTAMPTZ")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_measurement_actual_elapsed_seconds REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_change_pct REAL")
 
         # Generation 2 (Funding Rate + Open Interest) - independent research
         # table, deliberately with NO strict FOREIGN KEY on trade_id (per
@@ -3026,7 +3036,15 @@ def save_trade(trade_data):
                 direction_fit_score = %s,
                 context_candidate_rank = %s,
                 context_expanded_pool_size = %s,
-                decision_reason = %s
+                decision_reason = %s,
+                oi_measurement_price_t0 = %s,
+                oi_measurement_price_t1 = %s,
+                oi_measurement_oi_t0 = %s,
+                oi_measurement_oi_t1 = %s,
+                oi_measurement_timestamp_t0 = %s,
+                oi_measurement_timestamp_t1 = %s,
+                oi_measurement_actual_elapsed_seconds = %s,
+                oi_change_pct = %s
             WHERE id = %s AND status = 'OPEN'
             """, (
                 datetime.now(),
@@ -3060,6 +3078,14 @@ def save_trade(trade_data):
                 trade_data.get('context_candidate_rank'),
                 trade_data.get('context_expanded_pool_size'),
                 trade_data.get('decision_reason'),
+                trade_data.get('oi_measurement_price_t0'),
+                trade_data.get('oi_measurement_price_t1'),
+                trade_data.get('oi_measurement_oi_t0'),
+                trade_data.get('oi_measurement_oi_t1'),
+                trade_data.get('oi_measurement_timestamp_t0'),
+                trade_data.get('oi_measurement_timestamp_t1'),
+                trade_data.get('oi_measurement_actual_elapsed_seconds'),
+                trade_data.get('oi_change_pct'),
                 existing_id
             ))
 
@@ -3124,7 +3150,15 @@ def save_trade(trade_data):
             direction_fit_score,
             context_candidate_rank,
             context_expanded_pool_size,
-            decision_reason
+            decision_reason,
+            oi_measurement_price_t0,
+            oi_measurement_price_t1,
+            oi_measurement_oi_t0,
+            oi_measurement_oi_t1,
+            oi_measurement_timestamp_t0,
+            oi_measurement_timestamp_t1,
+            oi_measurement_actual_elapsed_seconds,
+            oi_change_pct
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -3143,7 +3177,8 @@ def save_trade(trade_data):
             %s, %s,
             %s, %s,
             %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s
         )
         RETURNING id
         """, (
@@ -3205,7 +3240,15 @@ def save_trade(trade_data):
             trade_data.get('direction_fit_score'),
             trade_data.get('context_candidate_rank'),
             trade_data.get('context_expanded_pool_size'),
-            trade_data.get('decision_reason')
+            trade_data.get('decision_reason'),
+            trade_data.get('oi_measurement_price_t0'),
+            trade_data.get('oi_measurement_price_t1'),
+            trade_data.get('oi_measurement_oi_t0'),
+            trade_data.get('oi_measurement_oi_t1'),
+            trade_data.get('oi_measurement_timestamp_t0'),
+            trade_data.get('oi_measurement_timestamp_t1'),
+            trade_data.get('oi_measurement_actual_elapsed_seconds'),
+            trade_data.get('oi_change_pct')
         ))
 
         trade_id = cur.fetchone()[0]
@@ -7243,30 +7286,51 @@ Coins Analyzed  : {total_analyzed}
         try:
             direction = "LONG" if signal["direction"] == "🟢 LONG" else "SHORT"
             funding_result = _fetch_funding_rate(signal["coin"])
+
+            # MEASUREMENT FIX per review: Price + OI captured TOGETHER at
+            # t0, then TOGETHER again at t1 - nothing else executes
+            # between either pair, so actual_elapsed_seconds reflects
+            # the true gap between the two paired measurements, not an
+            # inflated gap caused by an unrelated request (Funding) in
+            # between. Timestamps and raw values are now stored
+            # explicitly so price_t0==price_t1 (or not) can be proven
+            # directly from Neon, instead of inferred only from the
+            # final computed percentage.
+            timestamp_t0 = datetime.now()
             oi_prior_result = _fetch_open_interest(signal["coin"])
             price_prior_result = _fetch_live_price(signal["coin"])
-            # Real time gap for a genuine OI delta AND real price
-            # movement - bounded to the expanded pool only (max
-            # 2*CONTEXT_CANDIDATE_LIMIT symbols), not the full universe.
+
             time.sleep(OI_DELTA_WINDOW_SECONDS)
+
+            timestamp_t1 = datetime.now()
             oi_signal_result = _fetch_open_interest(signal["coin"])
             price_signal_result = _fetch_live_price(signal["coin"])
+            actual_elapsed_seconds = round((timestamp_t1 - timestamp_t0).total_seconds(), 3)
 
-            # FIXED per review: price_change_pct is now REAL price
-            # movement captured at the same moments as the OI
-            # measurements - never substituted with the candidate's
-            # own LONG/SHORT label (that conflation was a confirmed
-            # defect). None when either price measurement failed.
+            price_t0 = price_t1 = None
             price_change_pct = None
             if (price_prior_result and price_prior_result.get("success") and
                     price_signal_result and price_signal_result.get("success")):
                 try:
-                    p_prior = float(price_prior_result["last_price"])
-                    p_now = float(price_signal_result["last_price"])
-                    if p_prior != 0:
-                        price_change_pct = round(((p_now - p_prior) / p_prior) * 100, 4)
+                    price_t0 = float(price_prior_result["last_price"])
+                    price_t1 = float(price_signal_result["last_price"])
+                    if price_t0 != 0:
+                        price_change_pct = round(((price_t1 - price_t0) / price_t0) * 100, 4)
                 except (TypeError, ValueError):
                     price_change_pct = None
+
+            oi_t0 = oi_t1 = None
+            oi_change_pct = None
+            if (oi_prior_result and oi_prior_result.get("success") and
+                    oi_signal_result and oi_signal_result.get("success")):
+                try:
+                    oi_t0 = float(oi_prior_result.get("oi_contracts"))
+                    oi_t1 = float(oi_signal_result.get("oi_contracts"))
+                    if oi_t0 != 0:
+                        oi_change_pct = round(((oi_t1 - oi_t0) / oi_t0) * 100, 4)
+                except (TypeError, ValueError):
+                    oi_change_pct = None
+
             funding_ctx = classify_funding_context(funding_result, direction)
             oi_ctx = classify_oi_context(oi_signal_result, oi_prior_result, price_change_pct, direction)
             market_ctx = compute_market_context_score(direction, signal.get("trade_data", {}).get("market_regime"), market_health_score)
@@ -7284,6 +7348,14 @@ Coins Analyzed  : {total_analyzed}
             signal["direction_fit_score"] = market_ctx["regime_fit_component"]
             signal["context_expanded_pool_size"] = pool_size
             signal["price_change_pct_for_oi"] = price_change_pct
+            signal["oi_measurement_price_t0"] = price_t0
+            signal["oi_measurement_price_t1"] = price_t1
+            signal["oi_measurement_oi_t0"] = oi_t0
+            signal["oi_measurement_oi_t1"] = oi_t1
+            signal["oi_measurement_timestamp_t0"] = timestamp_t0
+            signal["oi_measurement_timestamp_t1"] = timestamp_t1
+            signal["oi_measurement_actual_elapsed_seconds"] = actual_elapsed_seconds
+            signal["oi_change_pct"] = oi_change_pct
             signal["decision_reason"] = (
                 f"technical={signal['technical_score']:.1f}, market_ctx={market_ctx['score']:.1f}, "
                 f"funding={funding_ctx['context']}, oi={oi_ctx['context']}, "
@@ -7477,6 +7549,14 @@ Coins Analyzed  : {total_analyzed}
             s['trade_data']['context_candidate_rank'] = s.get('rank')
             s['trade_data']['context_expanded_pool_size'] = s.get('context_expanded_pool_size')
             s['trade_data']['decision_reason'] = s.get('decision_reason')
+            s['trade_data']['oi_measurement_price_t0'] = s.get('oi_measurement_price_t0')
+            s['trade_data']['oi_measurement_price_t1'] = s.get('oi_measurement_price_t1')
+            s['trade_data']['oi_measurement_oi_t0'] = s.get('oi_measurement_oi_t0')
+            s['trade_data']['oi_measurement_oi_t1'] = s.get('oi_measurement_oi_t1')
+            s['trade_data']['oi_measurement_timestamp_t0'] = s.get('oi_measurement_timestamp_t0')
+            s['trade_data']['oi_measurement_timestamp_t1'] = s.get('oi_measurement_timestamp_t1')
+            s['trade_data']['oi_measurement_actual_elapsed_seconds'] = s.get('oi_measurement_actual_elapsed_seconds')
+            s['trade_data']['oi_change_pct'] = s.get('oi_change_pct')
 
             try:
                 trade_id, was_update = save_trade(s['trade_data'])

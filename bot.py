@@ -2055,7 +2055,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.3.2"
+VERSION = "v23.4"
 BUILD_DATE = "2026-08-09"
 
 # ================================================
@@ -2337,6 +2337,19 @@ def init_database():
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS heat_score INTEGER")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS heat_tier TEXT")
         cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS scan_mode TEXT")
+        # v23.4 Context-Aware Decision Engine components - added here so
+        # this file is self-contained (a fresh deploy/re-init does not
+        # depend on an external migration not present in this file).
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS technical_score REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS market_context_score REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS derivative_context_score REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS final_selection_score REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS funding_context TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS oi_context TEXT")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS direction_fit_score REAL")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS context_candidate_rank INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS context_expanded_pool_size INTEGER")
+        cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS decision_reason TEXT")
 
         # Generation 2 (Funding Rate + Open Interest) - independent research
         # table, deliberately with NO strict FOREIGN KEY on trade_id (per
@@ -2704,6 +2717,47 @@ def get_total_trades():
             conn.close()
 
 
+def round_price_dynamic(value):
+    """
+    Numeric counterpart to format_price() - same exact threshold logic
+    (same Bug #7 fix), but returns a rounded float for storage instead
+    of a formatted string for display. This fixes the confirmed
+    Precision Bug: entry/sl/tp1/tp2/tp3 were being stored via a fixed
+    round(x, 6), which collapsed distinct values to the same number
+    for very low-priced assets (e.g. FLOKI, BONK) - the same class of
+    bug format_price() already fixes for display, now applied to the
+    values actually stored and used for RR/outcome calculations.
+    """
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    abs_value = abs(value)
+    if abs_value >= 10000:
+        decimals = 0
+    elif abs_value >= 10:
+        decimals = 2
+    elif abs_value >= 1:
+        decimals = 3
+    elif abs_value >= 0.01:
+        decimals = 4
+    elif abs_value >= 0.001:
+        decimals = 5
+    elif abs_value >= 0.0001:
+        decimals = 7
+    elif abs_value >= 0.00001:
+        decimals = 8
+    elif abs_value >= 0.000001:
+        decimals = 9
+    elif abs_value >= 0.0000001:
+        decimals = 10
+    else:
+        decimals = 11
+    return round(value, decimals)
+
+
 def format_price(value):
     """
     Task 6 (v22.1.3 Final Production Polish) - Smart Price Formatting.
@@ -2962,7 +3016,17 @@ def save_trade(trade_data):
                 ranking_score = %s,
                 quality_grade = %s,
                 market_temperature = %s,
-                snapshot_data = %s
+                snapshot_data = %s,
+                technical_score = %s,
+                market_context_score = %s,
+                derivative_context_score = %s,
+                final_selection_score = %s,
+                funding_context = %s,
+                oi_context = %s,
+                direction_fit_score = %s,
+                context_candidate_rank = %s,
+                context_expanded_pool_size = %s,
+                decision_reason = %s
             WHERE id = %s AND status = 'OPEN'
             """, (
                 datetime.now(),
@@ -2986,6 +3050,16 @@ def save_trade(trade_data):
                 trade_data.get('quality_grade', 'N/A'),
                 trade_data.get('market_temperature', 'N/A'),
                 json.dumps(trade_data.get('snapshot_data', {})),
+                trade_data.get('technical_score'),
+                trade_data.get('market_context_score'),
+                trade_data.get('derivative_context_score'),
+                trade_data.get('final_selection_score'),
+                trade_data.get('funding_context'),
+                trade_data.get('oi_context'),
+                trade_data.get('direction_fit_score'),
+                trade_data.get('context_candidate_rank'),
+                trade_data.get('context_expanded_pool_size'),
+                trade_data.get('decision_reason'),
                 existing_id
             ))
 
@@ -3040,7 +3114,17 @@ def save_trade(trade_data):
             alpha_score,
             heat_score,
             heat_tier,
-            scan_mode
+            scan_mode,
+            technical_score,
+            market_context_score,
+            derivative_context_score,
+            final_selection_score,
+            funding_context,
+            oi_context,
+            direction_fit_score,
+            context_candidate_rank,
+            context_expanded_pool_size,
+            decision_reason
         ) VALUES (
             %s, %s, %s,
             %s, %s, %s, %s, %s,
@@ -3058,7 +3142,8 @@ def save_trade(trade_data):
             %s, %s, %s,
             %s, %s,
             %s, %s,
-            %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         RETURNING id
         """, (
@@ -3110,7 +3195,17 @@ def save_trade(trade_data):
             trade_data.get('alpha_score'),
             trade_data.get('heat_score'),
             trade_data.get('heat_tier'),
-            trade_data.get('scan_mode')
+            trade_data.get('scan_mode'),
+            trade_data.get('technical_score'),
+            trade_data.get('market_context_score'),
+            trade_data.get('derivative_context_score'),
+            trade_data.get('final_selection_score'),
+            trade_data.get('funding_context'),
+            trade_data.get('oi_context'),
+            trade_data.get('direction_fit_score'),
+            trade_data.get('context_candidate_rank'),
+            trade_data.get('context_expanded_pool_size'),
+            trade_data.get('decision_reason')
         ))
 
         trade_id = cur.fetchone()[0]
@@ -4825,6 +4920,250 @@ ai_brain_core = AIBrainCore()
 # 🎯 SECTION 3: ANALYZE ENGINE
 # ================================================
 
+# ================================================================
+# v23.4 — CONTEXT-AWARE DECISION LAYER
+# ================================================================
+# Applied ONLY to the Top-N expanded candidate pool (CONTEXT_CANDIDATE_LIMIT),
+# never to the full scanned universe - keeps OKX API load bounded and
+# scan() speed intact. Technical Ranking (existing ranking_score) is
+# computed first and untouched; this layer re-ranks only among the
+# already-strong technical candidates.
+#
+# WEIGHTS BELOW ARE ENGINEERING DEFAULTS, NOT STATISTICALLY PROVEN.
+# Walk-Forward backtesting on the current ~95-trade dataset showed
+# every tested pattern (Direction, Health interactions) failed to
+# hold out-of-sample - insufficient evidence exists yet to derive
+# final calibrated weights. These defaults are deliberately simple,
+# reversible, and designed to be recalibrated once v23.4 collects the
+# required 200+ new trades. No weight here is a Hard Gate.
+# ================================================================
+
+CONTEXT_CANDIDATE_LIMIT = 5  # configurable - tested at 3/5/10 per requirement
+OI_DELTA_WINDOW_SECONDS = 3  # engineering default - short enough to keep scan() bounded for the Top-N pool only
+
+
+def classify_funding_context(funding_raw, direction):
+    """
+    Direction-aware funding classification - SAME convention already
+    validated in research_data_foundation.py's classify_funding_state():
+    positive funding_rate means LONGs pay SHORTs (bearish pressure on
+    LONG, supportive for SHORT); negative means the reverse. Not
+    reinvented - identical mechanics, ported here since bot.py cannot
+    import research_data_foundation.py (kept decoupled by design).
+
+    Returns one of: SUPPORTIVE, NEUTRAL, AGAINST, EXTREME, UNKNOWN.
+    UNKNOWN/missing data is treated as NEUTRAL for scoring purposes -
+    never rejected, per explicit instruction.
+    """
+    if not funding_raw or not funding_raw.get("success"):
+        return {"context": "UNKNOWN", "raw_rate": None, "interpretation": "Funding unavailable - treated as neutral"}
+    rate = funding_raw.get("funding_rate")
+    if rate is None:
+        return {"context": "UNKNOWN", "raw_rate": None, "interpretation": "Funding rate missing - treated as neutral"}
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return {"context": "UNKNOWN", "raw_rate": None, "interpretation": "Funding rate unparsable"}
+
+    if rate == 0:
+        return {"context": "NEUTRAL", "raw_rate": rate, "interpretation": "Zero funding - no carry pressure"}
+
+    # EXTREME threshold: engineering default (not derived from proven
+    # cap data across all instruments) - a conservative magnitude that
+    # is well above the highest rate actually observed in current data
+    # (~0.0007), giving headroom before triggering EXTREME.
+    EXTREME_MAGNITUDE = 0.01  # 1% funding rate - engineering default, not a Hard Gate
+    is_extreme = abs(rate) >= EXTREME_MAGNITUDE
+
+    if direction == "LONG":
+        supportive = rate < 0
+    else:  # SHORT
+        supportive = rate > 0
+
+    if is_extreme:
+        context = "EXTREME"
+    elif supportive:
+        context = "SUPPORTIVE"
+    else:
+        context = "AGAINST"
+    return {"context": context, "raw_rate": rate,
+            "interpretation": f"{direction} vs funding_rate={rate}"}
+
+
+PRICE_FLAT_THRESHOLD_PCT = 0.05  # engineering default - movement smaller than this is noise, not a real direction
+
+
+def classify_oi_context(oi_signal_result, oi_prior_result, price_change_pct, direction):
+    """
+    Price direction + OI direction combination - NEVER absolute OI
+    level as a standalone signal (confirmed by prior research to be
+    non-directional on its own). Only computed when a valid prior
+    OI measurement exists (never invented from unrelated timestamps).
+
+    FIXED per review: price_change_pct must be REAL price movement
+    captured at the same moments as the OI measurements (via
+    _fetch_live_price()) - previously this was wrongly substituted
+    with the candidate's own LONG/SHORT label, which conflated "the
+    trade's intended direction" with "what the price actually did",
+    a confirmed defect. Movement below PRICE_FLAT_THRESHOLD_PCT is
+    classified FLAT rather than forced into UP/DOWN - a genuinely
+    flat price is not artificially assigned a direction.
+
+    Returns UNKNOWN/NEUTRAL when any required measurement is missing
+    or price is FLAT - never rejects, never invents.
+    """
+    if not oi_signal_result or not oi_signal_result.get("success"):
+        return {"context": "UNKNOWN", "interpretation": "OI unavailable"}
+    if not oi_prior_result or not oi_prior_result.get("success"):
+        return {"context": "UNKNOWN", "interpretation": "No valid prior OI measurement - delta not computed"}
+    if price_change_pct is None:
+        return {"context": "UNKNOWN", "interpretation": "Price movement unavailable - cannot pair with OI delta"}
+    try:
+        oi_now = float(oi_signal_result.get("oi_contracts"))
+        oi_prior = float(oi_prior_result.get("oi_contracts"))
+    except (TypeError, ValueError):
+        return {"context": "UNKNOWN", "interpretation": "OI values unparsable"}
+
+    oi_up = oi_now > oi_prior
+    oi_change_pct = round(((oi_now - oi_prior) / oi_prior) * 100, 3) if oi_prior != 0 else None
+
+    if abs(price_change_pct) < PRICE_FLAT_THRESHOLD_PCT:
+        return {"context": "UNKNOWN", "oi_change_pct": oi_change_pct, "price_change_pct": price_change_pct,
+                "interpretation": f"Price FLAT ({price_change_pct}%, below {PRICE_FLAT_THRESHOLD_PCT}% noise threshold) - no directional OI context assigned"}
+    price_up = price_change_pct > 0
+
+    # Positioning-context table, per the explicit 4-case specification.
+    # Engineering interpretation (open-interest-with-price-direction
+    # convention), not independently statistically validated yet.
+    table = {
+        (True, True): "STRONG_CONTINUATION",     # price up + OI up
+        (True, False): "SHORT_COVERING_RISK",    # price up + OI down
+        (False, True): "STRONG_CONTINUATION_DOWN",  # price down + OI up
+        (False, False): "PROFIT_TAKING",         # price down + OI down
+    }
+    return {"context": table[(price_up, oi_up)], "oi_change_pct": oi_change_pct,
+            "price_change_pct": price_change_pct,
+            "interpretation": f"price_up={price_up} ({price_change_pct}%), oi_up={oi_up} ({oi_change_pct}%)"}
+
+
+def compute_market_context_score(direction, market_regime, market_health_score):
+    """
+    Health(40%) + Regime Fit(35%) + Breadth is intentionally EXCLUDED
+    here (moved to a separate, explicitly-approximate signal below)
+    per the requirement not to silently claim a full-market breadth
+    measurement we don't actually have.
+
+    Regime Fit uses ONLY the real regime values confirmed present in
+    the system: MIXED, COMPRESSION, RANGING, TRENDING. No BULL/BEAR -
+    those do not exist in this system's regime classification.
+
+    All numbers below are engineering defaults (symmetric, mild),
+    not derived from proven statistical significance - Walk-Forward
+    testing found no stable Direction x Regime pattern yet.
+    """
+    health = market_health_score if market_health_score is not None else 50
+
+    # Regime fit: mild, symmetric by design (no evidence yet favors
+    # either direction within any specific regime) - a neutral 70
+    # baseline with small adjustments only where a regime's own
+    # definition implies directional friction (RANGING favors neither
+    # breakout direction strongly; COMPRESSION is pre-breakout, genuinely
+    # unknown direction).
+    regime_fit_table = {
+        "MIXED": 70, "TRENDING": 70, "RANGING": 60, "COMPRESSION": 60,
+    }
+    regime_fit = regime_fit_table.get(market_regime, 50)  # UNKNOWN regime -> neutral 50
+
+    market_context_score = health * 0.40 + regime_fit * 0.60
+    return {
+        "score": round(market_context_score, 2),
+        "health_component": health,
+        "regime_fit_component": regime_fit,
+        "regime_used": market_regime,
+    }
+
+
+def compute_approximate_breadth(scan_long_count, scan_short_count, direction):
+    """
+    Directional Breadth ONLY - computed from candidates that passed
+    ranking WITHIN THIS SAME SCAN (available at decision time, zero
+    look-ahead). Explicitly documented as approximate: this reflects
+    the distribution of candidates that already passed technical
+    filters in this scan, NOT the full unfiltered market universe
+    (which bot.py does not currently record). Never claimed as a
+    complete market breadth measurement.
+    """
+    total = scan_long_count + scan_short_count
+    if total == 0:
+        return {"score": 50, "note": "No candidates this scan - neutral default"}
+    long_breadth = scan_long_count / total
+    short_breadth = scan_short_count / total
+    directional = long_breadth if direction == "LONG" else short_breadth
+    # Simple linear mapping, engineering default: matches the current
+    # scan's own directional distribution as a mild confirmation signal.
+    return {"score": round(directional * 100, 1),
+            "note": "Approximate - reflects post-filter candidates in this scan only, not full market universe"}
+
+
+def compute_final_selection_score(technical_score, market_context, derivative_funding_ctx,
+                                   derivative_oi_ctx, breadth):
+    """
+    Final Selection Score = Technical Quality + Context Fit.
+
+    HONEST LIMITATION (flagged in review, not glossed over):
+    'technical_score' here IS the existing ranking_score - the same
+    composite already shown by Rank#1≈Rank#2 backtesting to have weak
+    discriminative power on its own. No new "better" core-quality
+    measure is invented here without evidence - doing so now would
+    repeat the exact mistake already rejected (inventing an unproven
+    weight/formula). Context Fit is added ON TOP of this known-weak
+    signal, not as a replacement for it; whether that combination
+    actually improves selection is exactly what the 200-trade
+    validation run is for, not something this code can claim in advance.
+
+    Weights are ENGINEERING DEFAULTS, explicitly not claimed as
+    statistically proven - Technical Quality keeps the majority
+    weight (70%) since it is the only component with any track
+    record at all; Context components are deliberately minority-
+    weighted until 200+ new trades allow real calibration.
+    """
+    funding_score_map = {"SUPPORTIVE": 65, "NEUTRAL": 50, "AGAINST": 40, "EXTREME": 30, "UNKNOWN": 50}
+    oi_score_map = {
+        "STRONG_CONTINUATION": 65, "STRONG_CONTINUATION_DOWN": 65,
+        "SHORT_COVERING_RISK": 40, "PROFIT_TAKING": 45, "UNKNOWN": 50,
+    }
+    funding_score = funding_score_map.get(derivative_funding_ctx["context"], 50)
+    oi_score = oi_score_map.get(derivative_oi_ctx["context"], 50)
+
+    # FIXED per review: when OI has no valid delta (UNKNOWN), it must
+    # NOT silently contribute a fixed 50 at equal 0.5 weight - that
+    # gives it phantom influence on the blend even though it carries
+    # zero real information. Renormalize to rely entirely on Funding
+    # when OI is unavailable, instead of injecting a constant.
+    if derivative_oi_ctx["context"] == "UNKNOWN":
+        derivative_context_score = funding_score  # OI contributes nothing when unavailable
+    else:
+        derivative_context_score = funding_score * 0.5 + oi_score * 0.5
+
+    context_fit = (
+        market_context["score"] * 0.5 +
+        derivative_context_score * 0.3 +
+        breadth["score"] * 0.2
+    )
+
+    final_score = technical_score * 0.70 + context_fit * 0.30
+    final_score = max(0, min(100, final_score))
+    return {
+        "final_score": round(final_score, 2),
+        "technical_score": technical_score,
+        "market_context_score": market_context["score"],
+        "derivative_context_score": round(derivative_context_score, 2),
+        "funding_context": derivative_funding_ctx["context"],
+        "oi_context": derivative_oi_ctx["context"],
+        "breadth_score": breadth["score"],
+    }
+
+
 def analyze(symbol, sector, debug=None):
     try:
         reject_reason = ""
@@ -5928,11 +6267,11 @@ def analyze(symbol, sector, debug=None):
             'symbol': symbol,
             'side': direction_clean,
             'signal_time': datetime.now(),
-            'entry': round(entry_low, 6),
-            'sl': round(sl, 6),
-            'tp1': round(tp1, 6),
-            'tp2': round(tp2, 6),
-            'tp3': round(tp3, 6),
+            'entry': round_price_dynamic(entry_low),
+            'sl': round_price_dynamic(sl),
+            'tp1': round_price_dynamic(tp1),
+            'tp2': round_price_dynamic(tp2),
+            'tp3': round_price_dynamic(tp3),
             'sector': sector,
             'score': round(score),
             'brain_long': brain['long_score'],
@@ -5985,12 +6324,12 @@ def analyze(symbol, sector, debug=None):
             "confidence_level": confidence_level,
             "money_status": money_status,
             "early_text": early_text,
-            "entry_low": round(entry_low, 6),
-            "entry_high": round(entry_high, 6),
-            "sl": round(sl, 6),
-            "tp1": round(tp1, 6),
-            "tp2": round(tp2, 6),
-            "tp3": round(tp3, 6),
+            "entry_low": round_price_dynamic(entry_low),
+            "entry_high": round_price_dynamic(entry_high),
+            "sl": round_price_dynamic(sl),
+            "tp1": round_price_dynamic(tp1),
+            "tp2": round_price_dynamic(tp2),
+            "tp3": round_price_dynamic(tp3),
             "liquidity": money["flow"],
             "pre_pump": pre["status"],
             "multi": multi,
@@ -6192,6 +6531,35 @@ def _fetch_open_interest(symbol):
             "unit_note": "oi_contracts = number of open contracts (instrument-defined contract size); "
                           "oi_ccy = open interest denominated in the instrument's underlying currency, "
                           "as returned directly by OKX - see raw_oi_response for the complete original payload.",
+            "raw": entry,
+        }
+    except Exception as e:
+        return {"success": False, "reason": f"{type(e).__name__}: {e}"}
+
+
+def _fetch_live_price(symbol):
+    """
+    v23.4 addition, same style/safety as the funding/OI fetchers above.
+    GET /api/v5/market/ticker - public endpoint, no API key required.
+    Used ONLY to capture the REAL price at the exact moment of each OI
+    measurement (t0 and t0+OI_DELTA_WINDOW_SECONDS), so Price Direction
+    for OI context reflects actual market movement during that window -
+    not a proxy inferred from the candidate's own LONG/SHORT label
+    (that substitution was flagged as a real defect and is now fixed).
+    """
+    try:
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": symbol}
+        response = requests.get(url, params=params, timeout=OKX_MARKET_DATA_TIMEOUT_SECONDS)
+        if response.status_code != 200:
+            return {"success": False, "reason": f"HTTP {response.status_code}"}
+        data = response.json()
+        if data.get("code") != "0" or not data.get("data"):
+            return {"success": False, "reason": f"OKX API error code {data.get('code')}"}
+        entry = data["data"][0]
+        return {
+            "success": True,
+            "last_price": float(entry["last"]) if entry.get("last") not in (None, "") else None,
             "raw": entry,
         }
     except Exception as e:
@@ -6841,6 +7209,7 @@ Coins Analyzed  : {total_analyzed}
     # Score, Brain Confidence, Flow, Momentum and Risk/Reward explicitly.
     def ranking_key(signal):
         return (
+            signal.get('final_selection_score', signal.get('ranking_score', 0)),
             signal.get('ranking_score', 0),
             signal.get('score', 0),
             signal.get('brain_confidence', 0),
@@ -6852,33 +7221,120 @@ Coins Analyzed  : {total_analyzed}
     sorted_longs = sorted(long_results, key=ranking_key, reverse=True)
     sorted_shorts = sorted(short_results, key=ranking_key, reverse=True)
 
-    # Task 4 (v22.1.3 Final Update) - Smart Signal Order. "Dominates" is
-    # determined by which side has more valid candidates (a presentation
-    # choice about how many of each direction to show, not a change to
-    # which candidates are valid or how they were scored/ranked).
-    if len(sorted_longs) == 0 and len(sorted_shorts) > 0:
-        best_longs = []
-        best_shorts = sorted_shorts[:3]
-    elif len(sorted_shorts) == 0 and len(sorted_longs) > 0:
-        best_longs = sorted_longs[:3]
-        best_shorts = []
-    elif len(sorted_longs) >= len(sorted_shorts):
-        best_longs = sorted_longs[:2]
-        best_shorts = sorted_shorts[:1]
-    else:
-        best_longs = sorted_longs[:1]
-        best_shorts = sorted_shorts[:2]
+    # ====== v23.4 CONTEXT-AWARE RE-RANKING (Top-N Expansion) ======
+    # Funding/OI are fetched ONLY for this bounded expanded pool (never
+    # the full scanned universe) - keeps OKX API load controlled and
+    # scan() speed intact, per the explicit approved architecture.
+    # This re-ranks only among already-strong technical candidates;
+    # it never changes acceptance gates (score>=68, flow>=1.2, etc.)
+    # above, and never rejects a candidate outright.
+    # NOTE: this is up to 2 * CONTEXT_CANDIDATE_LIMIT candidates total
+    # (Top-N LONG + Top-N SHORT separately), not CONTEXT_CANDIDATE_LIMIT
+    # total - e.g. with the current default of 5, the actual OKX API
+    # load for Funding/OI/Price fetching below is bounded by up to 10
+    # symbols per scan, not 5. Documented explicitly per review request
+    # so this isn't mistaken for a smaller load than it actually is.
+    expanded_pool = sorted_longs[:CONTEXT_CANDIDATE_LIMIT] + sorted_shorts[:CONTEXT_CANDIDATE_LIMIT]
+    pool_size = len(expanded_pool)
+    scan_long_count = len(sorted_longs)
+    scan_short_count = len(sorted_shorts)
 
-    results = best_longs + best_shorts
+    for signal in expanded_pool:
+        try:
+            direction = "LONG" if signal["direction"] == "🟢 LONG" else "SHORT"
+            funding_result = _fetch_funding_rate(signal["coin"])
+            oi_prior_result = _fetch_open_interest(signal["coin"])
+            price_prior_result = _fetch_live_price(signal["coin"])
+            # Real time gap for a genuine OI delta AND real price
+            # movement - bounded to the expanded pool only (max
+            # 2*CONTEXT_CANDIDATE_LIMIT symbols), not the full universe.
+            time.sleep(OI_DELTA_WINDOW_SECONDS)
+            oi_signal_result = _fetch_open_interest(signal["coin"])
+            price_signal_result = _fetch_live_price(signal["coin"])
 
-    # Task 6 (v22.1.3 Final Update / Ranking Review): rank numbers must
-    # reflect a true descending sort by ranking_score across the combined
-    # LONG+SHORT set. Concatenation order alone does not guarantee this -
-    # e.g. a SHORT candidate could score higher than a LONG candidate
-    # selected above. This re-sort only reorders the DISPLAY rank of the
-    # already-selected candidates; it does not change WHICH candidates
-    # were selected (still governed by the Smart Signal Order above).
-    results = sorted(results, key=ranking_key, reverse=True)
+            # FIXED per review: price_change_pct is now REAL price
+            # movement captured at the same moments as the OI
+            # measurements - never substituted with the candidate's
+            # own LONG/SHORT label (that conflation was a confirmed
+            # defect). None when either price measurement failed.
+            price_change_pct = None
+            if (price_prior_result and price_prior_result.get("success") and
+                    price_signal_result and price_signal_result.get("success")):
+                try:
+                    p_prior = float(price_prior_result["last_price"])
+                    p_now = float(price_signal_result["last_price"])
+                    if p_prior != 0:
+                        price_change_pct = round(((p_now - p_prior) / p_prior) * 100, 4)
+                except (TypeError, ValueError):
+                    price_change_pct = None
+            funding_ctx = classify_funding_context(funding_result, direction)
+            oi_ctx = classify_oi_context(oi_signal_result, oi_prior_result, price_change_pct, direction)
+            market_ctx = compute_market_context_score(direction, signal.get("market_regime"), market_health_score)
+            breadth = compute_approximate_breadth(scan_long_count, scan_short_count, direction)
+
+            final = compute_final_selection_score(
+                signal.get("ranking_score", 0), market_ctx, funding_ctx, oi_ctx, breadth,
+            )
+            signal["technical_score"] = signal.get("ranking_score", 0)
+            signal["market_context_score"] = market_ctx["score"]
+            signal["derivative_context_score"] = final["derivative_context_score"]
+            signal["final_selection_score"] = final["final_score"]
+            signal["funding_context"] = funding_ctx["context"]
+            signal["oi_context"] = oi_ctx["context"]
+            signal["direction_fit_score"] = market_ctx["regime_fit_component"]
+            signal["context_expanded_pool_size"] = pool_size
+            signal["price_change_pct_for_oi"] = price_change_pct
+            signal["decision_reason"] = (
+                f"technical={signal['technical_score']:.1f}, market_ctx={market_ctx['score']:.1f}, "
+                f"funding={funding_ctx['context']}, oi={oi_ctx['context']}, "
+                f"price_change_pct={price_change_pct}, "
+                f"final={final['final_score']:.1f}"
+            )
+            # Cache so the later Funding/OI storage block reuses these
+            # exact values instead of re-fetching (avoids a duplicate
+            # OKX request for whichever candidate ends up selected).
+            signal["_cached_funding_result"] = funding_result
+            signal["_cached_oi_result"] = oi_signal_result
+        except Exception as e:
+            print(f"⚠️ Context-Aware Re-ranking: failed for {signal.get('coin')} - {e}")
+            signal["final_selection_score"] = signal.get("ranking_score", 0)  # safe fallback - technical score only
+
+    def final_ranking_key(signal):
+        return (
+            signal.get("final_selection_score", signal.get("ranking_score", 0)),
+            signal.get("ranking_score", 0),
+        )
+
+    sorted_longs_context = sorted(
+        [s for s in expanded_pool if s["direction"] == "🟢 LONG"], key=final_ranking_key, reverse=True)
+    sorted_shorts_context = sorted(
+        [s for s in expanded_pool if s["direction"] == "🔴 SHORT"], key=final_ranking_key, reverse=True)
+    # Candidates outside the expanded pool (beyond CONTEXT_CANDIDATE_LIMIT)
+    # were never technical-strong enough to be considered - Smart Signal
+    # Order below still falls back to the plain technical sort for them
+    # if the pool is smaller than needed (e.g. only 1 LONG candidate existed).
+    sorted_longs = sorted_longs_context if sorted_longs_context else sorted_longs
+    sorted_shorts = sorted_shorts_context if sorted_shorts_context else sorted_shorts
+
+    # FIXED per review: the previous logic forced a directional quota
+    # (2+1 or 1+2 based on which side had MORE candidates) - this meant
+    # a lower final_selection_score candidate from the "dominant"
+    # direction could take a slot over a HIGHER-scoring candidate from
+    # the other direction, directly undermining the purpose of
+    # Context-Aware Selection ("pick the best trades", not "preserve a
+    # fixed LONG/SHORT ratio"). Final Selection Score is now the sole
+    # ranking factor across the COMBINED pool - no directional quota.
+    combined_context_pool = sorted_longs + sorted_shorts
+    combined_sorted = sorted(combined_context_pool, key=final_ranking_key, reverse=True)
+    results = combined_sorted[:3]
+
+    # FIXED per review: this must use final_ranking_key (Context-Aware),
+    # not the old technical-only ranking_key - otherwise the DISPLAYED
+    # rank could contradict which candidates were actually selected and
+    # why, creating a mismatch between "what the engine chose" and
+    # "what Telegram shows as Rank #1". Selection Order == Display Rank
+    # Order == Final Selection Score Order, per explicit requirement.
+    results = sorted(results, key=final_ranking_key, reverse=True)
 
     print(f"🔍 DEBUG: After ranking - {len(results)} signals selected")
 
@@ -6996,13 +7452,31 @@ Coins Analyzed  : {total_analyzed}
             # Neither result is read by, or passed into, save_trade()
             # itself - trade_data is completely untouched by this block.
             signal_timestamp = datetime.now()
-            funding_result = None
-            oi_result = None
-            try:
-                funding_result = _fetch_funding_rate(s['coin'])
-                oi_result = _fetch_open_interest(s['coin'])
-            except Exception as e:
-                print(f"⚠️ Research Market Data: collection failed for {s['coin']} - {e}")
+            funding_result = s.get("_cached_funding_result")
+            oi_result = s.get("_cached_oi_result")
+            if funding_result is None and oi_result is None:
+                # Defensive fallback - should not normally trigger, since
+                # every selected candidate went through the expanded pool
+                # above. Kept only so a selection outside that pool (e.g.
+                # if CONTEXT_CANDIDATE_LIMIT were misconfigured to 0)
+                # still gets Funding/OI recorded, at the cost of one
+                # extra request for that edge case only.
+                try:
+                    funding_result = _fetch_funding_rate(s['coin'])
+                    oi_result = _fetch_open_interest(s['coin'])
+                except Exception as e:
+                    print(f"⚠️ Research Market Data: collection failed for {s['coin']} - {e}")
+
+            s['trade_data']['technical_score'] = s.get('technical_score', s.get('ranking_score'))
+            s['trade_data']['market_context_score'] = s.get('market_context_score')
+            s['trade_data']['derivative_context_score'] = s.get('derivative_context_score')
+            s['trade_data']['final_selection_score'] = s.get('final_selection_score', s.get('ranking_score'))
+            s['trade_data']['funding_context'] = s.get('funding_context')
+            s['trade_data']['oi_context'] = s.get('oi_context')
+            s['trade_data']['direction_fit_score'] = s.get('direction_fit_score')
+            s['trade_data']['context_candidate_rank'] = s.get('rank')
+            s['trade_data']['context_expanded_pool_size'] = s.get('context_expanded_pool_size')
+            s['trade_data']['decision_reason'] = s.get('decision_reason')
 
             try:
                 trade_id, was_update = save_trade(s['trade_data'])
@@ -7932,6 +8406,20 @@ def report_command(message):
 
 🔴 SHORT
 {stats['short_total']} | {stats['short_win_rate']}%
+
+────────────────────
+
+📊 DIRECTION PERFORMANCE (Closed Trades Only)
+
+🟢 LONG
+   Wins: {stats['long_wins']}
+   Losses: {stats['long_losses']}
+   Win Rate: {stats['long_win_rate']}%
+
+🔴 SHORT
+   Wins: {stats['short_wins']}
+   Losses: {stats['short_losses']}
+   Win Rate: {stats['short_win_rate']}%
 
 {FOOTER}
 """

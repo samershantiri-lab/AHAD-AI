@@ -1457,6 +1457,34 @@ def collect_intelligence_for_trade(conn, trade_row, pre_fetched_candles=None,
                                       collection_status, missing_components or None, run_id)
         n_candles = insert_5m_candles(cur, trade_id, signal_time, safe_candles)
         conn.commit()
+
+        # v23.4 Shadow Mode: complete the experimental_context row
+        # (created by bot.py at signal time with SIGNAL_ONLY data) with
+        # the 5m Intelligence dimensions computed just above - isolated
+        # in its own try/except/commit so a failure here can never roll
+        # back the research_intelligence/research_5m_candles writes
+        # already committed. Only updates a row that already exists
+        # (created at signal time) - never creates one here.
+        try:
+            cur.execute("""
+                UPDATE experimental_context SET
+                    momentum_5m=%s, volume_acceleration_5m=%s, candle_expansion_ratio=%s,
+                    ema20_5m=%s, distance_from_recent_move_pct=%s,
+                    dimension_funding=%s, dimension_oi=%s, dimension_timing_5m=%s,
+                    aggregated_state=%s, context_stage='COMPLETE', updated_at=NOW()
+                WHERE trade_id=%s
+            """, (
+                metrics_5m["raw"].get("momentum_5m"), metrics_5m["raw"].get("volume_acceleration_5m"),
+                metrics_5m["raw"].get("candle_expansion_ratio"), metrics_5m["raw"].get("ema20_5m"),
+                metrics_5m["raw"].get("distance_from_recent_move_pct"),
+                dims["dimension_funding"], dims["dimension_oi"], dims["dimension_timing_5m"],
+                dims["aggregated_state"], trade_id,
+            ))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"⚠️ Experimental Context 5m update (non-fatal): {e}")
+
         return {"trade_id": trade_id, "status": collection_status,
                 "missing": missing_components, "candles_stored": n_candles}
     except Exception as e:

@@ -7269,7 +7269,7 @@ Coins Analyzed  : {total_analyzed}
                     price_change_pct = None
             funding_ctx = classify_funding_context(funding_result, direction)
             oi_ctx = classify_oi_context(oi_signal_result, oi_prior_result, price_change_pct, direction)
-            market_ctx = compute_market_context_score(direction, signal.get("market_regime"), market_health_score)
+            market_ctx = compute_market_context_score(direction, signal.get("trade_data", {}).get("market_regime"), market_health_score)
             breadth = compute_approximate_breadth(scan_long_count, scan_short_count, direction)
 
             final = compute_final_selection_score(

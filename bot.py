@@ -8384,6 +8384,166 @@ def send_version_report(message, target_version=None):
             conn.close()
 
 
+def send_detailed_version_report(message, target_version):
+    """
+    New "/report <version>" detailed breakdown - completely separate
+    from send_version_report() (the existing "/report version" scoreboard,
+    left untouched). Uses trades.version directly, per explicit
+    requirement (not version_id/versions table join).
+
+    Acceptance is NOT computed here: it is a scan-time-only value
+    (compute_approximate_breadth in scan()) never persisted per-trade
+    in trades - displaying "N/A — Not Stored" is the honest choice,
+    not a proxy or reconstruction, per explicit instruction.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM trades WHERE version = %s", (target_version,))
+        total = cur.fetchone()[0]
+        if total == 0:
+            bot.reply_to(message, f"❌ No trades found for version '{target_version}'.\n{FOOTER}")
+            return
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE status='CLOSED') as closed,
+                COUNT(*) FILTER (WHERE status='OPEN') as open_trades,
+                COUNT(*) FILTER (WHERE status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as wins,
+                COUNT(*) FILTER (WHERE status='CLOSED' AND result='LOSS_SL') as losses,
+                AVG(CASE WHEN status='CLOSED' THEN rr END) as avg_rr,
+                AVG(brain_confidence) as avg_brain,
+                AVG(score) as avg_score,
+                AVG(final_selection_score) as avg_final,
+                AVG(technical_score) as avg_technical,
+                AVG(market_context_score) as avg_context,
+                AVG(market_health_score) as avg_health,
+                COUNT(*) FILTER (WHERE side='LONG') as long_total,
+                COUNT(*) FILTER (WHERE side='LONG' AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as long_wins,
+                COUNT(*) FILTER (WHERE side='LONG' AND status='CLOSED' AND result='LOSS_SL') as long_losses,
+                COUNT(*) FILTER (WHERE side='SHORT') as short_total,
+                COUNT(*) FILTER (WHERE side='SHORT' AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as short_wins,
+                COUNT(*) FILTER (WHERE side='SHORT' AND status='CLOSED' AND result='LOSS_SL') as short_losses,
+                COUNT(*) FILTER (WHERE market_regime='MIXED') as regime_mixed,
+                COUNT(*) FILTER (WHERE market_regime='RANGING') as regime_ranging,
+                COUNT(*) FILTER (WHERE market_regime='TRENDING') as regime_trending,
+                COUNT(*) FILTER (WHERE market_regime='COMPRESSION') as regime_compression,
+                COUNT(*) FILTER (WHERE funding_context='SUPPORTIVE') as funding_supportive,
+                COUNT(*) FILTER (WHERE funding_context='NEUTRAL') as funding_neutral,
+                COUNT(*) FILTER (WHERE funding_context='AGAINST') as funding_against,
+                COUNT(*) FILTER (WHERE funding_context='EXTREME') as funding_extreme,
+                COUNT(*) FILTER (WHERE oi_context IS NOT NULL AND oi_context != 'UNKNOWN') as oi_known,
+                COUNT(*) FILTER (WHERE oi_context='UNKNOWN' OR oi_context IS NULL) as oi_unknown,
+                COUNT(*) FILTER (WHERE context_candidate_rank=1 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as rank1_wins,
+                COUNT(*) FILTER (WHERE context_candidate_rank=1 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3','LOSS_SL')) as rank1_decided,
+                COUNT(*) FILTER (WHERE context_candidate_rank=2 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as rank2_wins,
+                COUNT(*) FILTER (WHERE context_candidate_rank=2 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3','LOSS_SL')) as rank2_decided,
+                COUNT(*) FILTER (WHERE context_candidate_rank=3 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3')) as rank3_wins,
+                COUNT(*) FILTER (WHERE context_candidate_rank=3 AND status='CLOSED' AND result IN ('WIN_TP1','WIN_TP2','WIN_TP3','LOSS_SL')) as rank3_decided
+            FROM trades WHERE version = %s
+        """, (target_version,))
+        r = cur.fetchone()
+        (closed, open_trades, wins, losses, avg_rr, avg_brain, avg_score, avg_final, avg_technical,
+         avg_context, avg_health, long_total, long_wins, long_losses, short_total, short_wins, short_losses,
+         regime_mixed, regime_ranging, regime_trending, regime_compression,
+         funding_supportive, funding_neutral, funding_against, funding_extreme,
+         oi_known, oi_unknown, rank1_wins, rank1_decided, rank2_wins, rank2_decided,
+         rank3_wins, rank3_decided) = r
+
+        decided = wins + losses
+        win_rate = round(100.0 * wins / decided, 1) if decided > 0 else 0.0
+        long_decided = long_wins + long_losses
+        long_wr = round(100.0 * long_wins / long_decided, 1) if long_decided > 0 else 0.0
+        short_decided = short_wins + short_losses
+        short_wr = round(100.0 * short_wins / short_decided, 1) if short_decided > 0 else 0.0
+        rank1_wr = round(100.0 * rank1_wins / rank1_decided, 1) if rank1_decided > 0 else 0.0
+        rank2_wr = round(100.0 * rank2_wins / rank2_decided, 1) if rank2_decided > 0 else 0.0
+        rank3_wr = round(100.0 * rank3_wins / rank3_decided, 1) if rank3_decided > 0 else 0.0
+
+        def fmt(v, decimals=1):
+            return f"{v:.{decimals}f}" if v is not None else "N/A"
+
+        msg = f"""📊 AHAD AI — {target_version}
+
+Trades       : {total}
+Closed       : {closed}
+Open         : {open_trades}
+
+🟢 Wins       : {wins}
+🔴 Losses     : {losses}
+🎯 Win Rate   : {win_rate}%
+
+⚖️ Avg RR     : {fmt(avg_rr, 2)}R
+🧠 Avg Brain  : {fmt(avg_brain)}
+⭐ Avg Score  : {fmt(avg_score)}
+🏆 Avg Final  : {fmt(avg_final)}
+
+────────────────
+
+🟢 LONG
+Trades : {long_total}
+Wins   : {long_wins}
+Losses : {long_losses}
+WR     : {long_wr}%
+
+🔴 SHORT
+Trades : {short_total}
+Wins   : {short_wins}
+Losses : {short_losses}
+WR     : {short_wr}%
+
+────────────────
+
+🌍 MARKET CONTEXT
+
+Regime:
+MIXED       {regime_mixed}
+RANGING     {regime_ranging}
+TRENDING    {regime_trending}
+COMPRESSION {regime_compression}
+
+Health Avg   : {fmt(avg_health)}
+Acceptance   : N/A — Not Stored
+
+────────────────
+
+💰 FUNDING
+
+SUPPORTIVE : {funding_supportive}
+NEUTRAL    : {funding_neutral}
+AGAINST    : {funding_against}
+EXTREME    : {funding_extreme}
+
+📈 OI
+KNOWN      : {oi_known}
+UNKNOWN    : {oi_unknown}
+
+────────────────
+
+🎯 SELECTION
+
+Technical Avg : {fmt(avg_technical)}
+Context Avg   : {fmt(avg_context)}
+Final Avg     : {fmt(avg_final)}
+
+Rank #1 WR : {rank1_wr}%
+Rank #2 WR : {rank2_wr}%
+Rank #3 WR : {rank3_wr}%
+
+{FOOTER}"""
+        bot.reply_to(message, msg)
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error generating detailed version report: {e}\n{FOOTER}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @bot.message_handler(commands=['report'])
 def report_command(message):
     # Version Analytics (v22.3.0, Task 6): "/report version [vX.Y.Z]"
@@ -8393,6 +8553,15 @@ def report_command(message):
     if len(parts) >= 2 and parts[1].lower() == "version":
         target_version = parts[2] if len(parts) >= 3 else None
         send_version_report(message, target_version)
+        return
+
+    # NEW: direct "/report <version>" syntax (e.g. "/report v23.4"),
+    # completely separate from "/report version <version>" above -
+    # detected by the argument looking like a version string (starts
+    # with "v" followed by a digit), so bare "/report" and "/report
+    # version ..." remain entirely unaffected.
+    if len(parts) >= 2 and re.match(r"^v\d", parts[1].lower()):
+        send_detailed_version_report(message, parts[1])
         return
 
     try:

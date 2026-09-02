@@ -7929,16 +7929,6 @@ def _pack_into_messages(chunks, max_chars=RESEARCH_REPORT_MAX_CHARS):
 
 
 # ================================================
-# 🩺 TEMPORARY DIAGNOSTIC COMMAND (remove once identified)
-# ================================================
-# /whoami - reports the exact raw values involved in the admin check,
-# with no masking or formatting. Does not modify _is_admin() or any
-# authorization logic - it only calls the existing function to report
-# what it returns. Deliberately NOT admin-gated: gating a command
-# whose purpose is to diagnose why admin access is failing would make
-# it useless in exactly the scenario it exists for.
-
-# ================================================
 # 📤 DATA EXPORT (/export) - AHAD AI v23.3.1, Data Export label only
 # ================================================
 # Read-only, admin-gated, no relation to AI Brain/Ranking/Scanner/
@@ -8077,42 +8067,9 @@ def export_command(message):
             conn.close()
 
 
-@bot.message_handler(commands=["whoami"])
-def whoami_command(message):
-    sender = getattr(message, "from_user", None)
-    user_id = getattr(sender, "id", None) if sender is not None else None
-    username = getattr(sender, "username", None) if sender is not None else None
-    first_name = getattr(sender, "first_name", None) if sender is not None else None
-    chat = getattr(message, "chat", None)
-    chat_id = getattr(chat, "id", None) if chat is not None else None
-
-    admin_result = _is_admin(message)
-
-    msg = f"""Telegram User ID: {user_id}
-Chat ID: {chat_id}
-Username: {username}
-First Name: {first_name}
-
-ADMIN_USER_ID: {ADMIN_USER_ID}
-ADMIN_USER_ID type: {type(ADMIN_USER_ID)}
-
-Telegram User ID type: {type(user_id)}
-
-_is_admin() result: {admin_result}"""
-
-    bot.reply_to(message, msg)
-
-
 @bot.message_handler(commands=["research_report"])
 def research_report_command(message):
-    # --- TEMPORARY DIAGNOSTIC LOGGING (remove once diagnosed) ---
-    print("[ADMIN DEBUG] /research_report command received")
-    # --- END TEMPORARY DIAGNOSTIC LOGGING ---
-
     if not _is_admin(message):
-        # --- TEMPORARY DIAGNOSTIC LOGGING ---
-        print("[ADMIN DEBUG] Sending rejection message: 'This command is admin-only.'")
-        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         bot.reply_to(message, "⛔ This command is admin-only.")
         return
 

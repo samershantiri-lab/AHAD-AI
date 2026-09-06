@@ -5487,8 +5487,24 @@ def analyze(symbol, sector, debug=None):
         # reject_reason + return None pattern as every other rejection
         # in this function, so it is automatically logged to
         # research_rejections like "High Price Asset"/"Brain"/"Candles".
+        #
+        # BUG FIX (confirmed): the initial implementation set reject_reason
+        # and returned None, but never actually called
+        # research_record_rejection() nor updated the debug dict - unlike
+        # every other rejection point in this function. The Gate itself
+        # was working correctly (rejecting candidates), but was invisible
+        # to /debug and research_rejections. Fixed to match the exact
+        # same pattern as Candles/Brain/High Price Asset below.
         if vol["status"] not in ("🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"):
             reject_reason = "Compression Gate"
+            if debug is not None:
+                debug["compression_gate"] = debug.get("compression_gate", 0) + 1
+                debug.setdefault("reject_reasons", {})
+                debug["reject_reasons"][reject_reason] = debug["reject_reasons"].get(reject_reason, 0) + 1
+            research_record_rejection(
+                symbol, sector=sector, reject_reason=reject_reason,
+                compression_status=vol["status"]
+            )
             return None
 
         # rsi_15m already computed earlier (reused for fomo_filter) - Task 7

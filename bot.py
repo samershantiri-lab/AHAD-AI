@@ -2055,7 +2055,7 @@ SCAN_MODE = "STANDARD"  # "STANDARD" or "OPPORTUNITY"
 # 📋 BUILD INFORMATION
 # ================================================
 
-VERSION = "v23.4"
+VERSION = "v23.4.1"
 BUILD_DATE = "2026-08-09"
 
 # ================================================
@@ -2103,14 +2103,57 @@ ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
 
 
 def _is_admin(message):
+    # --- TEMPORARY DIAGNOSTIC LOGGING (remove once diagnosed) ---
+    print("=" * 50)
+    print("[ADMIN DEBUG]")
+    print("=" * 50)
+
+    command_text = getattr(message, "text", "N/A")
+    sender = getattr(message, "from_user", None)
+    debug_user_id = getattr(sender, "id", None) if sender is not None else None
+    debug_username = getattr(sender, "username", None) if sender is not None else None
+    debug_chat = getattr(message, "chat", None)
+    debug_chat_id = getattr(debug_chat, "id", "N/A") if debug_chat is not None else "N/A"
+
+    print(f"Command: {command_text}")
+    print(f"User ID: {debug_user_id}")
+    print(f"Chat ID: {debug_chat_id}")
+    print(f"Username: {debug_username}")
+    print(f"ADMIN_USER_ID: {ADMIN_USER_ID}")
+    print(f"User ID Type: {type(debug_user_id)}")
+    print(f"ADMIN Type: {type(ADMIN_USER_ID)}")
+    # --- END TEMPORARY DIAGNOSTIC LOGGING (setup) ---
+
     if not ADMIN_USER_ID:
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("Comparison Result: N/A - ADMIN_USER_ID is not set")
+        print("_is_admin(): False")
+        print("Rejected at: 'if not ADMIN_USER_ID' - ADMIN_USER_ID is missing or empty")
+        print("=" * 50)
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         return False
 
     sender = getattr(message, "from_user", None)
     if sender is None:
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("Comparison Result: N/A - message.from_user is None")
+        print("_is_admin(): False")
+        print("Rejected at: 'if sender is None' - this message has no from_user")
+        print("=" * 50)
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         return False
 
     result = str(sender.id) == str(ADMIN_USER_ID)
+
+    # --- TEMPORARY DIAGNOSTIC LOGGING ---
+    print(f"Comparison Result: {result}")
+    print(f"_is_admin(): {result}")
+    if not result:
+        print("Rejected at: final return - str(sender.id) != str(ADMIN_USER_ID)")
+    else:
+        print("Accepted: str(sender.id) == str(ADMIN_USER_ID)")
+    print("=" * 50)
+    # --- END TEMPORARY DIAGNOSTIC LOGGING ---
 
     return result
 
@@ -5435,6 +5478,19 @@ def analyze(symbol, sector, debug=None):
         regime = market_regime(c15, vol["score"])
         record_market_regime_stats(regime.get("regime"), vol.get("status"), debug)
 
+        # ====== v23.4.1 EXPERIMENT: COMPRESSION GATE ======
+        # Converts Compression's role from a ranking Bonus (v23.4) to a
+        # hard Gate (v23.4.1) - candidate is rejected before any further
+        # scoring if Compression is not confirmed. Uses the exact same
+        # calculation/thresholds/source data as before (vol["status"],
+        # unchanged) - only the ROLE changes, not the definition. Same
+        # reject_reason + return None pattern as every other rejection
+        # in this function, so it is automatically logged to
+        # research_rejections like "High Price Asset"/"Brain"/"Candles".
+        if vol["status"] not in ("🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"):
+            reject_reason = "Compression Gate"
+            return None
+
         # rsi_15m already computed earlier (reused for fomo_filter) - Task 7
         rsi_1h = rsi(closes1h)
         rsi_4h = rsi(closes4h)
@@ -5998,8 +6054,12 @@ def analyze(symbol, sector, debug=None):
             ranking_penalty
         )
 
-        if vol["status"] in ("🔥 SPRING LOADED", "⚡ BUILDING PRESSURE"):
-            ranking_score += compression_bonus
+        # v23.4.1: Compression Bonus removed from ranking_score - its
+        # role is now the Gate above. Every surviving candidate already
+        # has Compression=TRUE (guaranteed by the Gate), so this bonus
+        # would only add a constant with zero discriminative effect -
+        # removed entirely per explicit instruction, not left as dead
+        # weight. Whale Bonus is untouched (out of scope for this experiment).
         if pre["status"] == "🐋 WHALE LOADING":
             ranking_score += whale_bonus
 
@@ -7929,6 +7989,16 @@ def _pack_into_messages(chunks, max_chars=RESEARCH_REPORT_MAX_CHARS):
 
 
 # ================================================
+# 🩺 TEMPORARY DIAGNOSTIC COMMAND (remove once identified)
+# ================================================
+# /whoami - reports the exact raw values involved in the admin check,
+# with no masking or formatting. Does not modify _is_admin() or any
+# authorization logic - it only calls the existing function to report
+# what it returns. Deliberately NOT admin-gated: gating a command
+# whose purpose is to diagnose why admin access is failing would make
+# it useless in exactly the scenario it exists for.
+
+# ================================================
 # 📤 DATA EXPORT (/export) - AHAD AI v23.3.1, Data Export label only
 # ================================================
 # Read-only, admin-gated, no relation to AI Brain/Ranking/Scanner/
@@ -8067,9 +8137,42 @@ def export_command(message):
             conn.close()
 
 
+@bot.message_handler(commands=["whoami"])
+def whoami_command(message):
+    sender = getattr(message, "from_user", None)
+    user_id = getattr(sender, "id", None) if sender is not None else None
+    username = getattr(sender, "username", None) if sender is not None else None
+    first_name = getattr(sender, "first_name", None) if sender is not None else None
+    chat = getattr(message, "chat", None)
+    chat_id = getattr(chat, "id", None) if chat is not None else None
+
+    admin_result = _is_admin(message)
+
+    msg = f"""Telegram User ID: {user_id}
+Chat ID: {chat_id}
+Username: {username}
+First Name: {first_name}
+
+ADMIN_USER_ID: {ADMIN_USER_ID}
+ADMIN_USER_ID type: {type(ADMIN_USER_ID)}
+
+Telegram User ID type: {type(user_id)}
+
+_is_admin() result: {admin_result}"""
+
+    bot.reply_to(message, msg)
+
+
 @bot.message_handler(commands=["research_report"])
 def research_report_command(message):
+    # --- TEMPORARY DIAGNOSTIC LOGGING (remove once diagnosed) ---
+    print("[ADMIN DEBUG] /research_report command received")
+    # --- END TEMPORARY DIAGNOSTIC LOGGING ---
+
     if not _is_admin(message):
+        # --- TEMPORARY DIAGNOSTIC LOGGING ---
+        print("[ADMIN DEBUG] Sending rejection message: 'This command is admin-only.'")
+        # --- END TEMPORARY DIAGNOSTIC LOGGING ---
         bot.reply_to(message, "⛔ This command is admin-only.")
         return
 

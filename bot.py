@@ -220,7 +220,7 @@ app = Flask(
 def home():
 
     return (
-        "🐋 AHAD AI v11.3 "
+        f"🐋 AHAD AI {VERSION} "
         "LIQUIDITY HUNTER ONLINE 🚀"
     )
 
@@ -1710,8 +1710,8 @@ def start(message):
 
     bot.reply_to(
         message,
-        """
-🐋 AHAD AI v11.3 ONLINE 🚀
+        f"""
+🐋 AHAD AI {VERSION} ONLINE 🚀
 
 🧠 AI Brain ACTIVE
 🐋 Liquidity Hunter ACTIVE
@@ -1722,7 +1722,7 @@ def start(message):
 🔥 Heat Control ACTIVE
 
 🎯 Goal:
-Best 3 quality LONG setups
+Best 3 quality LONG or SHORT setups
 
 Send /scan
         """
@@ -1740,12 +1740,12 @@ def scan(message):
 
     bot.reply_to(
         message,
-        """
-🐋 AHAD AI v11.3 SCANNING...
+        f"""
+🐋 AHAD AI {VERSION} SCANNING...
 
 🔍 Checking Market Flow
 🏦 Finding Hot Sector
-🟢 Hunting TOP 3 LONG setups
+🎯 Hunting TOP 3 LONG/SHORT setups
 🐋 Tracking Smart Money
 ⚡ Detecting Pre-Pump
 🔥 Heat Control ACTIVE

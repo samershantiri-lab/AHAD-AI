@@ -21,7 +21,7 @@ from datetime import datetime
 from flask import Flask
 import telebot
 
-VERSION = "v11.4"
+VERSION = "v11.5"
 
 
 # =====================================
@@ -80,11 +80,23 @@ def init_database():
             status TEXT DEFAULT 'OPEN',
             result TEXT,
             close_time TIMESTAMPTZ,
-            pnl_percent REAL
+            pnl_percent REAL,
+            peak_price REAL,
+            peak_profit_pct REAL,
+            peak_reached_at TIMESTAMPTZ
         )
     """)
     cur.execute("""
         ALTER TABLE trades_v11 ADD COLUMN IF NOT EXISTS pnl_percent REAL
+    """)
+    cur.execute("""
+        ALTER TABLE trades_v11 ADD COLUMN IF NOT EXISTS peak_price REAL
+    """)
+    cur.execute("""
+        ALTER TABLE trades_v11 ADD COLUMN IF NOT EXISTS peak_profit_pct REAL
+    """)
+    cur.execute("""
+        ALTER TABLE trades_v11 ADD COLUMN IF NOT EXISTS peak_reached_at TIMESTAMPTZ
     """)
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_v11_no_dup
@@ -145,11 +157,12 @@ def save_trade(trade_data):
     try:
         cur.execute("""
             INSERT INTO trades_v11 (
-                symbol, sector, direction, score, entry_low, entry_high,
+                version, symbol, sector, direction, score, entry_low, entry_high,
                 sl, tp1, tp2, liquidity, money_status, pre_pump_status
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
         """, (
+            VERSION,
             trade_data["coin"], trade_data["sector"], trade_data["direction"],
             trade_data["score"],
             round_price_dynamic(trade_data["entry_low"]),
@@ -173,19 +186,35 @@ def save_trade(trade_data):
 def update_open_trades():
     """
     Checks OPEN trades against current price to detect TP1/TP2/SL hits.
+    Also tracks peak_profit_pct/peak_price/peak_reached_at on every check
+    (independent of close decision) - answers "how far did it actually go"
+    without changing the close-on-first-TP-hit behavior itself.
     Runs independently of scan() - does not affect signal generation.
     """
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, symbol, direction, entry_low, entry_high, sl, tp1, tp2 FROM trades_v11 WHERE status='OPEN'")
+    cur.execute("SELECT id, symbol, direction, entry_low, entry_high, sl, tp1, tp2, peak_profit_pct FROM trades_v11 WHERE status='OPEN'")
     open_trades = cur.fetchall()
-    for (tid, symbol, direction, entry_low, entry_high, sl, tp1, tp2) in open_trades:
+    for (tid, symbol, direction, entry_low, entry_high, sl, tp1, tp2, prev_peak_profit) in open_trades:
         try:
             candles = get_candles(symbol, "15m")
             if not candles:
                 continue
             current_price = candles[-1]["close"]
             entry_mid = (entry_low + entry_high) / 2
+
+            if direction == "🟢 LONG":
+                current_profit_pct = ((current_price - entry_mid) / entry_mid) * 100
+            else:
+                current_profit_pct = ((entry_mid - current_price) / entry_mid) * 100
+
+            if prev_peak_profit is None or current_profit_pct > prev_peak_profit:
+                cur.execute(
+                    "UPDATE trades_v11 SET peak_price=%s, peak_profit_pct=%s, peak_reached_at=NOW() WHERE id=%s",
+                    (current_price, round(current_profit_pct, 3), tid)
+                )
+                conn.commit()
+
             result = None
             if direction == "🟢 LONG":
                 if current_price <= sl:
@@ -304,7 +333,11 @@ def open_command(message):
 def history_command(message):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, symbol, direction, result, close_time, pnl_percent FROM trades_v11 WHERE status='CLOSED' ORDER BY id DESC LIMIT 10")
+    cur.execute("""
+        SELECT id, symbol, direction, result, pnl_percent, peak_profit_pct,
+               EXTRACT(EPOCH FROM (peak_reached_at - signal_time))/60 as minutes_to_peak
+        FROM trades_v11 WHERE status='CLOSED' ORDER BY id DESC LIMIT 10
+    """)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -314,10 +347,13 @@ def history_command(message):
         return
 
     msg = "📜 LAST 10 CLOSED TRADES\n\n"
-    for (tid, symbol, direction, result, close_time, pnl_percent) in rows:
+    for (tid, symbol, direction, result, pnl_percent, peak_profit_pct, minutes_to_peak) in rows:
         icon = "🟢" if result and "WIN" in result else "🔴"
         pnl_str = f"{pnl_percent:+.2f}%" if pnl_percent is not None else "N/A"
         msg += f"{icon} #{tid} {direction} {symbol} — {result} ({pnl_str})\n"
+        if peak_profit_pct is not None:
+            mins = int(minutes_to_peak) if minutes_to_peak is not None else 0
+            msg += f"   📈 Peak: {peak_profit_pct:+.2f}% (reached in {mins} min)\n"
     bot.reply_to(message, msg)
 
 
@@ -1667,15 +1703,15 @@ def analyze(symbol, sector):
         if brain["direction"] == "🟢 LONG":
 
             sl = sr["support"] * 0.995
-            tp1 = price + move * 2
-            tp2 = price + move * 3
+            tp1 = max(price + move * 2, price * 1.01)
+            tp2 = max(price + move * 3, tp1 + move)
 
 
         else:
 
             sl = sr["resistance"] * 1.005
-            tp1 = price - move * 2
-            tp2 = price - move * 3
+            tp1 = min(price - move * 2, price * 0.99)
+            tp2 = min(price - move * 3, tp1 - move)
 
 
 

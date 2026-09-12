@@ -79,8 +79,12 @@ def init_database():
             signal_time TIMESTAMPTZ DEFAULT NOW(),
             status TEXT DEFAULT 'OPEN',
             result TEXT,
-            close_time TIMESTAMPTZ
+            close_time TIMESTAMPTZ,
+            pnl_percent REAL
         )
+    """)
+    cur.execute("""
+        ALTER TABLE trades_v11 ADD COLUMN IF NOT EXISTS pnl_percent REAL
     """)
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_v11_no_dup
@@ -181,6 +185,7 @@ def update_open_trades():
             if not candles:
                 continue
             current_price = candles[-1]["close"]
+            entry_mid = (entry_low + entry_high) / 2
             result = None
             if direction == "🟢 LONG":
                 if current_price <= sl:
@@ -197,9 +202,13 @@ def update_open_trades():
                 elif current_price <= tp1:
                     result = "WIN_TP1"
             if result:
+                if direction == "🟢 LONG":
+                    pnl_percent = ((current_price - entry_mid) / entry_mid) * 100
+                else:
+                    pnl_percent = ((entry_mid - current_price) / entry_mid) * 100
                 cur.execute(
-                    "UPDATE trades_v11 SET status='CLOSED', result=%s, close_time=NOW() WHERE id=%s",
-                    (result, tid)
+                    "UPDATE trades_v11 SET status='CLOSED', result=%s, close_time=NOW(), pnl_percent=%s WHERE id=%s",
+                    (result, round(pnl_percent, 3), tid)
                 )
                 conn.commit()
         except Exception as e:
@@ -295,7 +304,7 @@ def open_command(message):
 def history_command(message):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, symbol, direction, result, close_time FROM trades_v11 WHERE status='CLOSED' ORDER BY id DESC LIMIT 10")
+    cur.execute("SELECT id, symbol, direction, result, close_time, pnl_percent FROM trades_v11 WHERE status='CLOSED' ORDER BY id DESC LIMIT 10")
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -305,9 +314,10 @@ def history_command(message):
         return
 
     msg = "📜 LAST 10 CLOSED TRADES\n\n"
-    for (tid, symbol, direction, result, close_time) in rows:
+    for (tid, symbol, direction, result, close_time, pnl_percent) in rows:
         icon = "🟢" if result and "WIN" in result else "🔴"
-        msg += f"{icon} #{tid} {direction} {symbol} — {result}\n"
+        pnl_str = f"{pnl_percent:+.2f}%" if pnl_percent is not None else "N/A"
+        msg += f"{icon} #{tid} {direction} {symbol} — {result} ({pnl_str})\n"
     bot.reply_to(message, msg)
 
 

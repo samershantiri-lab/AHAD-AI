@@ -204,14 +204,16 @@ def update_open_trades():
             entry_mid = (entry_low + entry_high) / 2
 
             if direction == "🟢 LONG":
-                current_profit_pct = ((current_price - entry_mid) / entry_mid) * 100
+                best_price_in_candles = max(c["high"] for c in candles)
+                best_profit_pct = ((best_price_in_candles - entry_mid) / entry_mid) * 100
             else:
-                current_profit_pct = ((entry_mid - current_price) / entry_mid) * 100
+                best_price_in_candles = min(c["low"] for c in candles)
+                best_profit_pct = ((entry_mid - best_price_in_candles) / entry_mid) * 100
 
-            if prev_peak_profit is None or current_profit_pct > prev_peak_profit:
+            if prev_peak_profit is None or best_profit_pct > prev_peak_profit:
                 cur.execute(
                     "UPDATE trades_v11 SET peak_price=%s, peak_profit_pct=%s, peak_reached_at=NOW() WHERE id=%s",
-                    (current_price, round(current_profit_pct, 3), tid)
+                    (best_price_in_candles, round(best_profit_pct, 3), tid)
                 )
                 conn.commit()
 

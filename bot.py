@@ -2056,7 +2056,10 @@ def telegram_engine():
 
 
 
-init_database()
+try:
+    init_database()
+except Exception as e:
+    print(f"⚠️ init_database() failed at startup (will retry per-request): {e}")
 
 
 def open_trades_monitor():

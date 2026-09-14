@@ -2065,7 +2065,7 @@ def open_trades_monitor():
             update_open_trades()
         except Exception as e:
             print(f"⚠️ open_trades_monitor error: {e}")
-        time.sleep(60)
+        time.sleep(600)
 
 
 threading.Thread(

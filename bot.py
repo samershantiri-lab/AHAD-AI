@@ -281,10 +281,10 @@ def report_command(message):
         cur.execute("""
             SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
                    COUNT(*) FILTER (WHERE status='OPEN'),
-                   COUNT(*) FILTER (WHERE result LIKE 'WIN%'),
+                   COUNT(*) FILTER (WHERE result LIKE %s),
                    COUNT(*) FILTER (WHERE result='LOSS_SL')
             FROM trades_v11 WHERE version=%s
-        """, (version_filter,))
+        """, ('WIN%', version_filter))
     else:
         cur.execute("""
             SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
@@ -299,9 +299,9 @@ def report_command(message):
 
     if version_filter:
         cur.execute("""
-            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')
+            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE %s), COUNT(*) FILTER (WHERE result='LOSS_SL')
             FROM trades_v11 WHERE status='CLOSED' AND version=%s GROUP BY direction
-        """, (version_filter,))
+        """, ('WIN%', version_filter))
     else:
         cur.execute("""
             SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')

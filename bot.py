@@ -21,7 +21,7 @@ from datetime import datetime
 from flask import Flask
 import telebot
 
-VERSION = "v11.7"
+VERSION = "v11.8"
 
 
 # =====================================
@@ -1900,11 +1900,6 @@ Please wait ⏳
         if result:
 
 
-            if result["score"] > 100:
-
-                result["score"] = 100
-
-
 
             if result["direction"] == "🟢 LONG":
 
@@ -1977,7 +1972,7 @@ Please wait ⏳
 
 
 
-    for s in results:
+    for idx, s in enumerate(results, start=1):
 
         trade_id, is_duplicate = save_trade(s)
 
@@ -2014,11 +2009,19 @@ Please wait ⏳
             rr1_str = ""
             rr2_str = ""
 
+        rsi_15m = s['multi']['15m']
+        if rsi_15m > 70:
+            entry_timing = "🟡 WAIT FOR PULLBACK"
+        elif rsi_15m < 40:
+            entry_timing = "🔴 LATE (already dropped)"
+        else:
+            entry_timing = "🟢 READY TO ENTER"
+
         msg = f"""
 🚨 AHAD AI {VERSION} 🐋
 
-{s['direction']} | 🪙 {s['coin']}
-🏦 Sector: {s['sector']}
+🏆 {s['direction']} • Rank #{idx}
+🪙 {s['coin']}
 
 🔥 Score: {s['score']} {quality_label}
 💧 Flow: {s['liquidity']}X
@@ -2032,9 +2035,7 @@ Please wait ⏳
 🥇 TP1: {round_price_dynamic(s['tp1'])}{rr1_str}
 🥈 TP2: {round_price_dynamic(s['tp2'])}{rr2_str}
 
-📊 RSI:
-15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
-4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
+{entry_timing}
 
 {id_line}
         """

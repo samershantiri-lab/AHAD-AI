@@ -1993,6 +1993,25 @@ Please wait ⏳
         else:
             id_line = "⚠️ SAVE FAILED"
 
+        entry_mid = (s['entry_low'] + s['entry_high']) / 2
+        if s['direction'] == "🟢 LONG":
+            risk = entry_mid - s['sl']
+        else:
+            risk = s['sl'] - entry_mid
+
+        if risk > 0:
+            if s['direction'] == "🟢 LONG":
+                rr1 = (s['tp1'] - entry_mid) / risk
+                rr2 = (s['tp2'] - entry_mid) / risk
+            else:
+                rr1 = (entry_mid - s['tp1']) / risk
+                rr2 = (entry_mid - s['tp2']) / risk
+            rr1_str = f"  ⚖️{rr1:.1f}R"
+            rr2_str = f"  ⚖️{rr2:.1f}R"
+        else:
+            rr1_str = ""
+            rr2_str = ""
+
         msg = f"""
 🚨 AHAD AI {VERSION} 🐋
 
@@ -2007,8 +2026,8 @@ Please wait ⏳
 🎯 Entry: {round_price_dynamic(s['entry_low'])} - {round_price_dynamic(s['entry_high'])}
 🛑 SL: {round_price_dynamic(s['sl'])}
 
-🥇 TP1: {round_price_dynamic(s['tp1'])}
-🥈 TP2: {round_price_dynamic(s['tp2'])}
+🥇 TP1: {round_price_dynamic(s['tp1'])}{rr1_str}
+🥈 TP2: {round_price_dynamic(s['tp2'])}{rr2_str}
 
 📊 RSI:
 15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}

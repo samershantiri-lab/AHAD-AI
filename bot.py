@@ -21,7 +21,7 @@ from datetime import datetime
 from flask import Flask
 import telebot
 
-VERSION = "v11.6"
+VERSION = "v11.7"
 
 
 # =====================================
@@ -1006,7 +1006,7 @@ def sector_flow(symbols):
                                 volumes[-50:]
                             )
                             /
-                            10
+                            50
                         )
 
 
@@ -1088,7 +1088,7 @@ def smart_money(candles):
         volume_avg = (
             sum(volumes[-50:])
             /
-            10
+            50
         )
 
 
@@ -1640,7 +1640,7 @@ def analyze(symbol, sector):
 
 
         if (
-            len(c15)<60
+            len(c15)<96
             or len(c1h)<60
             or len(c4h)<60
             or len(c1d)<60

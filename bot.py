@@ -151,6 +151,7 @@ def save_trade(trade_data):
     Duplicate protection: unique index on (symbol, direction) WHERE
     status='OPEN' prevents a second open trade for the same symbol+
     direction combo - matches the spirit of v23.4's protection.
+    Returns (trade_id, is_duplicate).
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -174,10 +175,17 @@ def save_trade(trade_data):
         ))
         trade_id = cur.fetchone()[0]
         conn.commit()
-        return trade_id
+        return trade_id, False
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
-        return None
+        cur.execute("""
+            SELECT id FROM trades_v11
+            WHERE symbol=%s AND direction=%s AND status='OPEN'
+            ORDER BY id DESC LIMIT 1
+        """, (trade_data["coin"], trade_data["direction"]))
+        row = cur.fetchone()
+        existing_id = row[0] if row else None
+        return existing_id, True
     finally:
         cur.close()
         conn.close()
@@ -1969,7 +1977,21 @@ Please wait ⏳
 
     for s in results:
 
-        trade_id = save_trade(s)
+        trade_id, is_duplicate = save_trade(s)
+
+        if s['score'] >= 110:
+            quality_label = "🔵 ELITE"
+        elif s['score'] >= 90:
+            quality_label = "🟢 STRONG"
+        else:
+            quality_label = "🟡 STANDARD"
+
+        if is_duplicate and trade_id:
+            id_line = f"🔄 #{trade_id} updated | 📖 /trade {trade_id}"
+        elif trade_id:
+            id_line = f"💾 #{trade_id}"
+        else:
+            id_line = "⚠️ SAVE FAILED"
 
         msg = f"""
 🚨 AHAD AI {VERSION} 🐋
@@ -1977,7 +1999,8 @@ Please wait ⏳
 {s['direction']} | 🪙 {s['coin']}
 🏦 Sector: {s['sector']}
 
-🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+🔥 Score: {s['score']} {quality_label}
+💧 Flow: {s['liquidity']}X
 🐋 Money: {s['money']}
 🪤 Trap: {s['trap']}
 
@@ -1991,11 +2014,7 @@ Please wait ⏳
 15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
 4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
 
-⚠️ {s['warning']}
-
-🧠 AHAD: HIGH QUALITY 🚀
-
-💾 #{trade_id if trade_id else 'DUPLICATE-SKIPPED'}
+{id_line}
         """
 
 

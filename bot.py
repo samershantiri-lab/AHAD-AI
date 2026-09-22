@@ -1918,6 +1918,7 @@ Please wait ⏳
                     )
                 ):
 
+                    result["passed_via"] = "Flow" if result["liquidity"] >= 1.2 else "Whale Loading"
                     long_results.append(result)
 
             elif result["direction"] == "🔴 SHORT":
@@ -1932,6 +1933,7 @@ Please wait ⏳
                     )
                 ):
 
+                    result["passed_via"] = "Flow" if result["liquidity"] >= 1.2 else "Whale Loading"
                     short_results.append(result)
 
 
@@ -2022,6 +2024,7 @@ Please wait ⏳
 💧 Flow: {s['liquidity']}X
 🐋 Money: {s['money']}
 🪤 Trap: {s['trap']}
+✅ Passed via: {s.get('passed_via', 'N/A')}
 
 🎯 Entry: {round_price_dynamic(s['entry_low'])} - {round_price_dynamic(s['entry_high'])}
 🛑 SL: {round_price_dynamic(s['sl'])}

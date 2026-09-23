@@ -2003,8 +2003,8 @@ Please wait ⏳
             else:
                 rr1 = (entry_mid - s['tp1']) / risk
                 rr2 = (entry_mid - s['tp2']) / risk
-            rr1_str = f"  ⚖️{rr1:.1f}R"
-            rr2_str = f"  ⚖️{rr2:.1f}R"
+            rr1_str = f" • {rr1:.1f}R"
+            rr2_str = f" • {rr2:.1f}R"
         else:
             rr1_str = ""
             rr2_str = ""
@@ -2017,33 +2017,37 @@ Please wait ⏳
         else:
             entry_timing = "🟢 READY TO ENTER"
 
+        passed_via_label = f"{s.get('passed_via', 'N/A').upper()} PASSED"
+
         msg = f"""
-🚨 AHAD AI {VERSION} 🐋
+🚨 `AHAD AI {VERSION}`
 
-🏆 {s['direction']} • Rank #{idx}
-🪙 {s['coin']}
+{s['direction']} `• #{idx}`
+🪙 `{s['coin']}`
 
-🔥 Score: {s['score']} {quality_label}
-💧 Flow: {s['liquidity']}X
-🐋 Money: {s['money']}
-🪤 Trap: {s['trap']}
-✅ Passed via: {s.get('passed_via', 'N/A')}
+🔥 `{s['score']}  |  {quality_label}`
+💧 `{s['liquidity']}X FLOW`
 
-🎯 Entry: {round_price_dynamic(s['entry_low'])} - {round_price_dynamic(s['entry_high'])}
-🛑 SL: {round_price_dynamic(s['sl'])}
+🎯 `Entry : {round_price_dynamic(s['entry_low'])} — {round_price_dynamic(s['entry_high'])}`
+🛑 `SL : {round_price_dynamic(s['sl'])}`
 
-🥇 TP1: {round_price_dynamic(s['tp1'])}{rr1_str}
-🥈 TP2: {round_price_dynamic(s['tp2'])}{rr2_str}
+🥇 `{round_price_dynamic(s['tp1'])}{rr1_str}`
+🥈 `{round_price_dynamic(s['tp2'])}{rr2_str}`
+
+`{s['money']}`
+`{s['trap']}`
+✅ `{passed_via_label}`
 
 {entry_timing}
-
+────────────────────────
 {id_line}
         """
 
 
         bot.send_message(
             message.chat.id,
-            msg
+            msg,
+            parse_mode='Markdown'
         )
 
 

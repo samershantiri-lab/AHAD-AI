@@ -21,7 +21,7 @@ from datetime import datetime
 from flask import Flask
 import telebot
 
-VERSION = "v11.5"
+VERSION = "v11.5.1"
 
 
 # =====================================

@@ -21,7 +21,7 @@ from datetime import datetime
 from flask import Flask
 import telebot
 
-VERSION = "v11.8"
+VERSION = "v11.5"
 
 
 # =====================================
@@ -151,7 +151,6 @@ def save_trade(trade_data):
     Duplicate protection: unique index on (symbol, direction) WHERE
     status='OPEN' prevents a second open trade for the same symbol+
     direction combo - matches the spirit of v23.4's protection.
-    Returns (trade_id, is_duplicate).
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -175,17 +174,10 @@ def save_trade(trade_data):
         ))
         trade_id = cur.fetchone()[0]
         conn.commit()
-        return trade_id, False
+        return trade_id
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
-        cur.execute("""
-            SELECT id FROM trades_v11
-            WHERE symbol=%s AND direction=%s AND status='OPEN'
-            ORDER BY id DESC LIMIT 1
-        """, (trade_data["coin"], trade_data["direction"]))
-        row = cur.fetchone()
-        existing_id = row[0] if row else None
-        return existing_id, True
+        return None
     finally:
         cur.close()
         conn.close()
@@ -279,52 +271,28 @@ def home():
 
 @bot.message_handler(commands=["report"])
 def report_command(message):
-    parts = message.text.strip().split()
-    version_filter = parts[1] if len(parts) > 1 else None
-
     conn = get_db_connection()
     cur = conn.cursor()
-
-    if version_filter:
-        cur.execute("""
-            SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
-                   COUNT(*) FILTER (WHERE status='OPEN'),
-                   COUNT(*) FILTER (WHERE result LIKE %s),
-                   COUNT(*) FILTER (WHERE result='LOSS_SL')
-            FROM trades_v11 WHERE version=%s
-        """, ('WIN%', version_filter))
-    else:
-        cur.execute("""
-            SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
-                   COUNT(*) FILTER (WHERE status='OPEN'),
-                   COUNT(*) FILTER (WHERE result LIKE 'WIN%'),
-                   COUNT(*) FILTER (WHERE result='LOSS_SL')
-            FROM trades_v11
-        """)
+    cur.execute("""
+        SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
+               COUNT(*) FILTER (WHERE status='OPEN'),
+               COUNT(*) FILTER (WHERE result LIKE 'WIN%'),
+               COUNT(*) FILTER (WHERE result='LOSS_SL')
+        FROM trades_v11
+    """)
     total, closed, open_n, wins, losses = cur.fetchone()
     decided = wins + losses
     wr = round(100.0 * wins / decided, 1) if decided > 0 else 0.0
 
-    if version_filter:
-        cur.execute("""
-            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE %s), COUNT(*) FILTER (WHERE result='LOSS_SL')
-            FROM trades_v11 WHERE status='CLOSED' AND version=%s GROUP BY direction
-        """, ('WIN%', version_filter))
-    else:
-        cur.execute("""
-            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')
-            FROM trades_v11 WHERE status='CLOSED' GROUP BY direction
-        """)
+    cur.execute("""
+        SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')
+        FROM trades_v11 WHERE status='CLOSED' GROUP BY direction
+    """)
     by_dir = cur.fetchall()
     cur.close()
     conn.close()
 
-    if version_filter and total == 0:
-        bot.reply_to(message, f"📭 No trades found for version {version_filter}.")
-        return
-
-    header = f"📊 AHAD AI {version_filter}" if version_filter else f"📊 AHAD AI {VERSION} (ALL VERSIONS)"
-    msg = f"""{header}
+    msg = f"""📊 AHAD AI {VERSION}
 
 Trades: {total}
 Closed: {closed}
@@ -1006,7 +974,7 @@ def sector_flow(symbols):
                                 volumes[-50:]
                             )
                             /
-                            50
+                            10
                         )
 
 
@@ -1088,7 +1056,7 @@ def smart_money(candles):
         volume_avg = (
             sum(volumes[-50:])
             /
-            50
+            10
         )
 
 
@@ -1640,7 +1608,7 @@ def analyze(symbol, sector):
 
 
         if (
-            len(c15)<96
+            len(c15)<60
             or len(c1h)<60
             or len(c4h)<60
             or len(c1d)<60
@@ -1736,24 +1704,16 @@ def analyze(symbol, sector):
 
         if brain["direction"] == "🟢 LONG":
 
+            sl = sr["support"] * 0.995
             tp1 = max(price + move * 2, price * 1.01)
             tp2 = max(price + move * 3, tp1 + move)
-
-            sl_raw = sr["support"] * 0.995
-            tp1_distance = tp1 - price
-            max_sl_floor = price - (2 * tp1_distance)
-            sl = max(sl_raw, max_sl_floor)
 
 
         else:
 
+            sl = sr["resistance"] * 1.005
             tp1 = min(price - move * 2, price * 0.99)
             tp2 = min(price - move * 3, tp1 - move)
-
-            sl_raw = sr["resistance"] * 1.005
-            tp1_distance = price - tp1
-            max_sl_ceiling = price + (2 * tp1_distance)
-            sl = min(sl_raw, max_sl_ceiling)
 
 
 
@@ -1900,6 +1860,11 @@ Please wait ⏳
         if result:
 
 
+            if result["score"] > 100:
+
+                result["score"] = 100
+
+
 
             if result["direction"] == "🟢 LONG":
 
@@ -1913,7 +1878,6 @@ Please wait ⏳
                     )
                 ):
 
-                    result["passed_via"] = "Flow" if result["liquidity"] >= 1.2 else "Whale Loading"
                     long_results.append(result)
 
             elif result["direction"] == "🔴 SHORT":
@@ -1928,7 +1892,6 @@ Please wait ⏳
                     )
                 ):
 
-                    result["passed_via"] = "Flow" if result["liquidity"] >= 1.2 else "Whale Loading"
                     short_results.append(result)
 
 
@@ -1972,82 +1935,41 @@ Please wait ⏳
 
 
 
-    for idx, s in enumerate(results, start=1):
+    for s in results:
 
-        trade_id, is_duplicate = save_trade(s)
-
-        if s['score'] >= 110:
-            quality_label = "🔵 ELITE"
-        elif s['score'] >= 90:
-            quality_label = "🟢 STRONG"
-        else:
-            quality_label = "🟡 STANDARD"
-
-        if is_duplicate and trade_id:
-            id_line = f"🔄 #{trade_id} updated | 📖 /trade {trade_id}"
-        elif trade_id:
-            id_line = f"💾 #{trade_id}"
-        else:
-            id_line = "⚠️ SAVE FAILED"
-
-        entry_mid = (s['entry_low'] + s['entry_high']) / 2
-        if s['direction'] == "🟢 LONG":
-            risk = entry_mid - s['sl']
-        else:
-            risk = s['sl'] - entry_mid
-
-        if risk > 0:
-            if s['direction'] == "🟢 LONG":
-                rr1 = (s['tp1'] - entry_mid) / risk
-                rr2 = (s['tp2'] - entry_mid) / risk
-            else:
-                rr1 = (entry_mid - s['tp1']) / risk
-                rr2 = (entry_mid - s['tp2']) / risk
-            rr1_str = f" • {rr1:.1f}R"
-            rr2_str = f" • {rr2:.1f}R"
-        else:
-            rr1_str = ""
-            rr2_str = ""
-
-        rsi_15m = s['multi']['15m']
-        if rsi_15m > 70:
-            entry_timing = "🟡 WAIT FOR PULLBACK"
-        elif rsi_15m < 40:
-            entry_timing = "🔴 LATE (already dropped)"
-        else:
-            entry_timing = "🟢 READY TO ENTER"
-
-        passed_via_label = f"{s.get('passed_via', 'N/A').upper()} PASSED"
+        trade_id = save_trade(s)
 
         msg = f"""
-🚨 `AHAD AI {VERSION}`
+🚨 AHAD AI {VERSION} 🐋
 
-{s['direction']} `• #{idx}`
-🪙 `{s['coin']}`
+{s['direction']} | 🪙 {s['coin']}
+🏦 Sector: {s['sector']}
 
-🔥 `{s['score']}  |  {quality_label}`
-💧 `{s['liquidity']}X FLOW`
+🔥 Score: {s['score']}/100 | 💧Flow: {s['liquidity']}X
+🐋 Money: {s['money']}
+🪤 Trap: {s['trap']}
 
-🎯 `Entry : {round_price_dynamic(s['entry_low'])} — {round_price_dynamic(s['entry_high'])}`
-🛑 `SL : {round_price_dynamic(s['sl'])}`
+🎯 Entry: {round_price_dynamic(s['entry_low'])} - {round_price_dynamic(s['entry_high'])}
+🛑 SL: {round_price_dynamic(s['sl'])}
 
-🥇 `{round_price_dynamic(s['tp1'])}{rr1_str}`
-🥈 `{round_price_dynamic(s['tp2'])}{rr2_str}`
+🥇 TP1: {round_price_dynamic(s['tp1'])}
+🥈 TP2: {round_price_dynamic(s['tp2'])}
 
-`{s['money']}`
-`{s['trap']}`
-✅ `{passed_via_label}`
+📊 RSI:
+15m:{s['multi']['15m']} | 1H:{s['multi']['1h']}
+4H:{s['multi']['4h']} | 1D:{s['multi']['1d']}
 
-{entry_timing}
-────────────────────────
-{id_line}
+⚠️ {s['warning']}
+
+🧠 AHAD: HIGH QUALITY 🚀
+
+💾 #{trade_id if trade_id else 'DUPLICATE-SKIPPED'}
         """
 
 
         bot.send_message(
             message.chat.id,
-            msg,
-            parse_mode='Markdown'
+            msg
         )
 
 

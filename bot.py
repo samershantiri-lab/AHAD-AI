@@ -271,28 +271,52 @@ def home():
 
 @bot.message_handler(commands=["report"])
 def report_command(message):
+    parts = message.text.strip().split()
+    version_filter = parts[1] if len(parts) > 1 else None
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
-               COUNT(*) FILTER (WHERE status='OPEN'),
-               COUNT(*) FILTER (WHERE result LIKE 'WIN%'),
-               COUNT(*) FILTER (WHERE result='LOSS_SL')
-        FROM trades_v11
-    """)
+
+    if version_filter:
+        cur.execute("""
+            SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
+                   COUNT(*) FILTER (WHERE status='OPEN'),
+                   COUNT(*) FILTER (WHERE result LIKE %s),
+                   COUNT(*) FILTER (WHERE result='LOSS_SL')
+            FROM trades_v11 WHERE version=%s
+        """, ('WIN%', version_filter))
+    else:
+        cur.execute("""
+            SELECT COUNT(*), COUNT(*) FILTER (WHERE status='CLOSED'),
+                   COUNT(*) FILTER (WHERE status='OPEN'),
+                   COUNT(*) FILTER (WHERE result LIKE 'WIN%'),
+                   COUNT(*) FILTER (WHERE result='LOSS_SL')
+            FROM trades_v11
+        """)
     total, closed, open_n, wins, losses = cur.fetchone()
     decided = wins + losses
     wr = round(100.0 * wins / decided, 1) if decided > 0 else 0.0
 
-    cur.execute("""
-        SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')
-        FROM trades_v11 WHERE status='CLOSED' GROUP BY direction
-    """)
+    if version_filter:
+        cur.execute("""
+            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE %s), COUNT(*) FILTER (WHERE result='LOSS_SL')
+            FROM trades_v11 WHERE status='CLOSED' AND version=%s GROUP BY direction
+        """, ('WIN%', version_filter))
+    else:
+        cur.execute("""
+            SELECT direction, COUNT(*), COUNT(*) FILTER (WHERE result LIKE 'WIN%'), COUNT(*) FILTER (WHERE result='LOSS_SL')
+            FROM trades_v11 WHERE status='CLOSED' GROUP BY direction
+        """)
     by_dir = cur.fetchall()
     cur.close()
     conn.close()
 
-    msg = f"""📊 AHAD AI {VERSION}
+    if version_filter and total == 0:
+        bot.reply_to(message, f"📭 No trades found for version {version_filter}.")
+        return
+
+    header = f"📊 AHAD AI {version_filter}" if version_filter else f"📊 AHAD AI {VERSION} (ALL VERSIONS)"
+    msg = f"""{header}
 
 Trades: {total}
 Closed: {closed}
@@ -974,7 +998,7 @@ def sector_flow(symbols):
                                 volumes[-50:]
                             )
                             /
-                            10
+                            50
                         )
 
 
@@ -1056,7 +1080,7 @@ def smart_money(candles):
         volume_avg = (
             sum(volumes[-50:])
             /
-            10
+            50
         )
 
 
